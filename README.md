@@ -4,13 +4,6 @@
 
 <div align="center">
 
-![EY](https://img.shields.io/badge/EY-Consulting-yellow)
-![Banking](https://img.shields.io/badge/Industry-Banking-blue)
-![AI](https://img.shields.io/badge/AI-Powered-success)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green)
-![React](https://img.shields.io/badge/React-Frontend-61DAFB)
-![Status](https://img.shields.io/badge/Status-In%20Development-orange)
-
 **Transforming Data into Strategic Value**
 
 *Assess • Benchmark • Simulate • Accelerate*
@@ -26,8 +19,11 @@ DataPilot is an intelligent consulting platform developed at **EY Tunisia** to h
 Unlike traditional maturity assessments that only provide a score, DataPilot goes one step further by combining:
 
 ✅ Data Maturity Assessment
+
 ✅ AI-Powered Recommendations
+
 ✅ Business Impact Simulation
+
 ✅ Strategic Roadmap Generation
 
 The objective is simple:
