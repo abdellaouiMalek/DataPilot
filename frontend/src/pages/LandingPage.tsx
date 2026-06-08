@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { BarChart3, Building2, Users, ChevronRight, TrendingUp, ShieldCheck } from 'lucide-react';
-import Select from 'react-select';
-import type { StylesConfig } from 'react-select';
-import eyLogo from '../assets/ey-logo.png';
+import Select from "react-select";
+import type { StylesConfig } from "react-select";
+import { EYLogo } from './EYLogo';
 
 const banks = [
   'Banque de Tunisie (BT)',
@@ -21,9 +21,9 @@ const banks = [
   'Banque Tuniso-Koweitienne (BTK)',
   "UBCI (Union Bancaire pour le Commerce et l'Industrie)",
   'Banque Tunisienne de Solidarité (BTS)',
-  'Wifak Bank',
-  'Autre'
+  'Wifak Bank'
 ];
+
 const departments = [
   "Systèmes d'Information",
   'Gestion des Risques',
@@ -34,6 +34,7 @@ const departments = [
   'Trésorerie',
   'Ressources Humaines'
 ];
+
 const roles = [
   'Responsable de Département',
   'Directeur',
@@ -92,7 +93,8 @@ const selectStyles: StylesConfig<any, false> = {
     borderRadius: 0,
     marginTop: '4px',
     boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-    border: '1px solid #e5e7eb'
+    border: '1px solid #e5e7eb',
+    zIndex: 9999
   }),
   menuList: (base) => ({
     ...base,
@@ -117,124 +119,136 @@ export function LandingPage() {
   const canProceed = selectedBank && selectedDepartment && selectedRole;
 
   return (
-    <div className="h-screen overflow-hidden bg-white flex flex-col font-sans">
+    <div className="min-h-screen bg-white flex flex-col font-sans lg:h-screen lg:overflow-hidden text-slate-900">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="border-b border-gray-200 px-8 py-3.5 bg-white z-10 relative flex-shrink-0"
+        className="h-16 border-b border-gray-200 px-6 md:px-8 flex items-center justify-between flex-shrink-0 bg-white z-10"
       >
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={eyLogo} alt="EY" className="w-14 h-14 object-contain" />
-            <div className="flex flex-col">
-              <span className="text-sm font-bold tracking-widest text-gray-900">DATA MATURITY</span>
-              <span className="text-xs text-gray-500 tracking-wider">ASSESSMENT PLATFORM</span>
-            </div>
+        <div className="flex items-center gap-4">
+          <EYLogo className="w-10 h-10" />
+          <div className="flex flex-col border-l border-gray-300 pl-4">
+            <span className="text-xs font-bold tracking-[0.2em] text-gray-900 leading-none">
+              DATA MATURITY
+            </span>
+            <span className="text-[10px] text-gray-500 tracking-widest mt-1">
+              ASSESSMENT PLATFORM
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            System Status: Active
           </div>
           <button
             onClick={() => navigate('/dashboard')}
-            className="group flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-black transition-colors"
+            className="flex items-center gap-2 text-sm font-bold text-gray-700 hover:text-black transition-colors outline-none cursor-pointer"
           >
-            Management Dashboard
-            <div className="p-2 bg-gray-50 group-hover:bg-[#FFE600] transition-colors rounded-sm">
+            <span className="bg-gray-100 p-1.5 rounded-sm">
               <BarChart3 className="w-4 h-4 text-black" />
-            </div>
+            </span>
+            DASHBOARD
           </button>
         </div>
       </motion.header>
 
+      {/* Main Container - Flex Row on Large Screens, Stacking Column on Mobile */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+        
         {/* Left Column - Hero */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8 }}
-          className="lg:w-[55%] bg-[#1a1a1a] text-white px-12 lg:px-20 py-10 flex flex-col justify-center relative overflow-hidden"
+          className="lg:w-[55%] bg-[#1a1a1a] text-white px-6 md:px-12 xl:px-16 py-12 flex flex-col justify-center relative overflow-hidden flex-shrink-0"
         >
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          {/* Subtle responsive ambient glowing circle */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-[#FFE600]/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2"></div>
 
-          <div className="relative z-10 space-y-7 max-w-2xl">
+          <div className="relative z-10 space-y-8 max-w-xl">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="inline-flex items-center gap-3 px-4 py-2 bg-white/10 border border-white/20 backdrop-blur-sm"
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 text-[10px] font-bold tracking-[0.2em] text-[#FFE600]"
             >
-              <ShieldCheck className="w-4 h-4 text-[#FFE600]" />
-              <span className="text-xs font-semibold tracking-widest text-white/90">SECTEUR BANCAIRE TUNISIEN</span>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>SECTEUR BANCAIRE TUNISIEN</span>
             </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              className="text-5xl lg:text-6xl font-light leading-[1.1] text-white tracking-tight"
+              transition={{ duration: 0.6, delay: 0.3 }}
+              className="text-4xl md:text-5xl lg:text-6xl font-light leading-tight tracking-tight"
             >
               Évaluez votre
               <br />
-              maturité
-              <br />
-              <span className="font-bold text-[#FFE600] mt-1 inline-block">
-                Data
-              </span>
+              maturité <span className="font-bold text-[#FFE600]">Data</span>
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-              className="text-base lg:text-lg text-gray-400 max-w-xl leading-relaxed font-light"
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="text-gray-400 text-base md:text-lg leading-relaxed font-light max-w-md"
             >
-              Une plateforme d'évaluation stratégique qui analyse votre organisation
-              selon six dimensions clés. Obtenez des recommandations actionnables et mesurez votre progression.
+              Analysez votre organisation selon six dimensions stratégiques. Obtenez des indicateurs de performance et des recommandations personnalisées.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.8 }}
-              className="grid grid-cols-2 gap-6 pt-6 border-t border-white/10"
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="grid grid-cols-2 gap-8 md:gap-12 pt-10 border-t border-white/10 max-w-md"
             >
-              <div className="space-y-1.5">
-                <div className="text-4xl font-bold text-[#FFE600]">6</div>
-                <div className="text-xs font-medium tracking-wide text-gray-400">DIMENSIONS CLÉS</div>
+              <div className="space-y-1">
+                <div className="text-4xl font-bold text-[#FFE600]">06</div>
+                <div className="text-[10px] font-bold tracking-widest text-gray-500 uppercase">
+                  Dimensions Clés
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <div className="text-4xl font-bold text-white">~20</div>
-                <div className="text-xs font-medium tracking-wide text-gray-400">MINUTES REQUISES</div>
+              <div className="space-y-1">
+                <div className="text-4xl font-bold text-white">~15</div>
+                <div className="text-[10px] font-bold tracking-widest text-gray-500 uppercase">
+                  Minutes Estimées
+                </div>
               </div>
             </motion.div>
           </div>
         </motion.div>
 
-        {/* Right Column - Form */}
+        {/* Right Column - Profile Form */}
         <motion.div
-          initial={{ opacity: 0, x: 30 }}
+          initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="lg:w-[45%] bg-gray-50 px-12 lg:px-20 py-10 flex flex-col justify-center"
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="flex-1 lg:w-[45%] bg-[#F8F9FA] px-6 md:px-12 xl:px-16 py-12 overflow-y-auto flex flex-col justify-center items-center"
         >
-          <div className="max-w-md w-full mx-auto space-y-6">
-            <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-gray-900 tracking-tight">
+          <div className="w-full max-w-sm space-y-8">
+            <div className="space-y-2 text-left w-full">
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
                 Commencer l'évaluation
-              </h3>
-              <p className="text-sm text-gray-500">Définissez votre profil pour personnaliser votre expérience d'évaluation.</p>
+              </h2>
+              <p className="text-sm text-gray-500">
+                Veuillez renseigner votre profil professionnel.
+              </p>
             </div>
 
-            <div className="space-y-4 bg-white p-6 border border-gray-200 shadow-sm">
+            <div className="space-y-5 bg-white p-6 md:p-8 border border-gray-200 shadow-sm rounded-none">
+              {/* Bank Selection */}
               <div className="space-y-2">
-                <label className="text-xs font-bold tracking-widest text-gray-700 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-gray-400" />
-                  ÉTABLISSEMENT BANCAIRE
+                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+                  Établissement Bancaire
                 </label>
                 <Select
                   options={bankOptions}
                   value={bankOptions.find(o => o.value === selectedBank) || null}
                   onChange={(option) => setSelectedBank(option?.value || '')}
-                  placeholder="Sélectionnez votre établissement"
+                  placeholder="Sélectionnez"
                   styles={selectStyles}
                   isSearchable
                   menuPortalTarget={document.body}
@@ -243,16 +257,16 @@ export function LandingPage() {
                 />
               </div>
 
+              {/* Department Selection */}
               <div className="space-y-2">
-                <label className="text-xs font-bold tracking-widest text-gray-700 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-400" />
-                  DÉPARTEMENT
+                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+                  Département
                 </label>
                 <Select
                   options={deptOptions}
                   value={deptOptions.find(o => o.value === selectedDepartment) || null}
                   onChange={(option) => setSelectedDepartment(option?.value || '')}
-                  placeholder="Sélectionnez votre département"
+                  placeholder="Sélectionnez"
                   styles={selectStyles}
                   isSearchable
                   menuPortalTarget={document.body}
@@ -261,16 +275,16 @@ export function LandingPage() {
                 />
               </div>
 
+              {/* Role Selection */}
               <div className="space-y-2">
-                <label className="text-xs font-bold tracking-widest text-gray-700 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-gray-400" />
-                  RÔLE
+                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+                  Rôle / Titre
                 </label>
                 <Select
                   options={roleOptions}
                   value={roleOptions.find(o => o.value === selectedRole) || null}
                   onChange={(option) => setSelectedRole(option?.value || '')}
-                  placeholder="Sélectionnez votre rôle"
+                  placeholder="Sélectionnez"
                   styles={selectStyles}
                   isSearchable
                   menuPortalTarget={document.body}
@@ -280,27 +294,25 @@ export function LandingPage() {
               </div>
             </div>
 
-            <motion.button
+            <button
               onClick={handleStart}
               disabled={!canProceed}
-              whileHover={canProceed ? { scale: 1.02 } : {}}
-              whileTap={canProceed ? { scale: 0.98 } : {}}
-              className={`w-full px-6 py-3.5 flex items-center justify-center gap-3 font-bold tracking-wide transition-all ${
+              className={`w-full font-bold py-4 px-6 flex items-center justify-center gap-2 transition-all border outline-none duration-150 rounded-none cursor-pointer ${
                 canProceed
-                  ? 'bg-[#FFE600] hover:bg-[#e6cf00] text-black border border-[#e6cf00]'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                  ? 'bg-[#FFE600] text-black border-transparent hover:bg-black hover:text-[#FFE600] active:scale-[0.98]'
+                  : 'bg-gray-200 text-gray-400 border-gray-100 cursor-not-allowed'
               }`}
             >
               COMMENCER L'ÉVALUATION
-              <ChevronRight className="w-5 h-5" />
-            </motion.button>
+              <ChevronRight className="w-5 h-5 flex-shrink-0" />
+            </button>
 
-            <div className="pt-4 border-t border-gray-200 text-center">
+            <div className="pt-4 flex justify-center w-full">
               <button
                 onClick={() => navigate('/results')}
-                className="text-sm font-semibold text-gray-500 hover:text-black transition-colors inline-flex items-center gap-1"
+                className="text-xs font-bold text-gray-400 hover:text-black border-b border-transparent hover:border-black py-1 transition-all uppercase tracking-wider outline-none cursor-pointer"
               >
-                Accéder aux évaluations précédentes <ChevronRight className="w-4 h-4" />
+                CONSULTER LES RÉSULTATS PRÉCÉDENTS
               </button>
             </div>
           </div>
