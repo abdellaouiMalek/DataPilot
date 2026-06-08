@@ -16,7 +16,7 @@ import {
 import { Filter, TrendingUp, Users, Building2, Calendar, ChevronDown, ChevronRight, Download, BarChart3 } from 'lucide-react';
 import Select from 'react-select';
 import type { StylesConfig } from 'react-select';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { toast } from 'sonner';
 
 const mockHistoricalData = [

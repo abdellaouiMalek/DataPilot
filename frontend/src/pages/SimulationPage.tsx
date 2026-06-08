@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
 import {
   BarChart,

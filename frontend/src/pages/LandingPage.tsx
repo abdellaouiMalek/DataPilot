@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { BarChart3, Building2, Users, ChevronRight, TrendingUp, ShieldCheck } from 'lucide-react';
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
-import { EYLogo } from './EYLogo';
+import EyLogo from '../assets/EY_logo2.png';
 
 const banks = [
   'Banque de Tunisie (BT)',
@@ -128,7 +128,11 @@ export function LandingPage() {
         className="h-16 border-b border-gray-200 px-6 md:px-8 flex items-center justify-between flex-shrink-0 bg-white z-10"
       >
         <div className="flex items-center gap-4">
-          <EYLogo className="w-10 h-10" />
+          <img 
+            src={EyLogo} 
+            alt="EY Logo" 
+            className="h-7 w-auto object-contain select-none pointer-events-none" 
+            />
           <div className="flex flex-col border-l border-gray-300 pl-4">
             <span className="text-xs font-bold tracking-[0.2em] text-gray-900 leading-none">
               DATA MATURITY
@@ -228,92 +232,114 @@ export function LandingPage() {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="flex-1 lg:w-[45%] bg-[#F8F9FA] px-6 md:px-12 xl:px-16 py-12 overflow-y-auto flex flex-col justify-center items-center"
         >
-          <div className="w-full max-w-sm space-y-8">
-            <div className="space-y-2 text-left w-full">
-              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Commencer l'évaluation
-              </h2>
-              <p className="text-sm text-gray-500">
-                Veuillez renseigner votre profil professionnel.
-              </p>
-            </div>
+          <div className="w-full max-w-[420px]">
+  
+            {/* Carte rigoureuse à haut contraste */}
+            <div className="relative bg-white text-black border-2 border-white shadow-[0_25px_60px_-15px_rgba(255,255,255,0.1)]">
+              
+              {/* Ligne jaune EY supérieure */}
+              <div className="absolute top-0 left-0 w-full h-[6px] bg-[#FFE600]" />
 
-            <div className="space-y-5 bg-white p-6 md:p-8 border border-gray-200 shadow-sm rounded-none">
-              {/* Bank Selection */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
-                  Établissement Bancaire
-                </label>
-                <Select
-                  options={bankOptions}
-                  value={bankOptions.find(o => o.value === selectedBank) || null}
-                  onChange={(option) => setSelectedBank(option?.value || '')}
-                  placeholder="Sélectionnez"
-                  styles={selectStyles}
-                  isSearchable
-                  menuPortalTarget={document.body}
-                  menuPosition="fixed"
-                  components={{ IndicatorSeparator: () => null }}
-                />
+              {/* Wrapper du formulaire avec rembourrage étendu */}
+              <div className="p-8 md:p-10">
+                
+                {/* En-tête / Titre */}
+                <div className="space-y-2 mb-8 text-center sm:text-left">
+                  <span className="text-[10px] font-extrabold tracking-[0.25em] text-[#FFE600] bg-black px-2.5 py-1 uppercase inline-block font-mono">
+                    ÉVALUATION PROFESSIONNELLE EY
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-light text-black tracking-tight pt-2 font-display">
+                    Commencer <span className="font-extrabold block">l'évaluation</span>
+                  </h2>
+                  <p className="text-xs text-neutral-500 font-light leading-relaxed">
+                    Veuillez renseigner votre profil professionnel pour accéder aux modules d'audit.
+                  </p>
+                </div>
+
+                {/* Formulaire contenant les sélections */}
+                <div className="space-y-5">
+                  
+                  {/* 1. ÉTABLISSEMENT BANCAIRE */}
+                  <div className="space-y-2">
+                    <label className="text-black text-[10px] font-bold uppercase tracking-widest block font-mono">
+                      Établissement Bancaire
+                    </label>
+                    <Select
+                      options={bankOptions}
+                      value={bankOptions.find(o => o.value === selectedBank) || null}
+                      onChange={(option) => setSelectedBank(option?.value || '')}
+                      placeholder="Sélectionnez"
+                      styles={selectStyles}
+                      isSearchable
+                      menuPortalTarget={document.body}
+                      menuPosition="fixed"
+                      components={{ IndicatorSeparator: () => null }}
+                    />
+                  </div>
+
+                  {/* 2. DÉPARTEMENT */}
+                  <div className="space-y-2">
+                    <label className="text-black text-[10px] font-bold uppercase tracking-widest block font-mono">
+                      Département
+                    </label>
+                    <Select
+                      options={deptOptions}
+                      value={deptOptions.find(o => o.value === selectedDepartment) || null}
+                      onChange={(option) => setSelectedDepartment(option?.value || '')}
+                      placeholder="Sélectionnez"
+                      styles={selectStyles}
+                      isSearchable
+                      menuPortalTarget={document.body}
+                      menuPosition="fixed"
+                      components={{ IndicatorSeparator: () => null }}
+                    />
+                  </div>
+
+                  {/* 3. RÔLE / TITRE */}
+                  <div className="space-y-2">
+                    <label className="text-black text-[10px] font-bold uppercase tracking-widest block font-mono">
+                      Rôle / Titre
+                    </label>
+                    <Select
+                      options={roleOptions}
+                      value={roleOptions.find(o => o.value === selectedRole) || null}
+                      onChange={(option) => setSelectedRole(option?.value || '')}
+                      placeholder="Sélectionnez"
+                      styles={selectStyles}
+                      isSearchable
+                      menuPortalTarget={document.body}
+                      menuPosition="fixed"
+                      components={{ IndicatorSeparator: () => null }}
+                    />
+                  </div>
+
+                  {/* BOUTON D'ACTION PRINCIPAL */}
+                  <button
+                    onClick={handleStart}
+                    disabled={!canProceed}
+                    className={`w-full h-12 tracking-widest text-xs uppercase font-bold flex items-center justify-center gap-2.5 transition-all mt-8 border-2 cursor-pointer ${
+                      canProceed
+                        ? 'bg-black text-white border-black hover:bg-[#FFE600] hover:text-black active:scale-[0.99]'
+                        : 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed'
+                    }`}
+                  >
+                    <span>COMMENCER L'ÉVALUATION</span>
+                    <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                  </button>
+
+                </div>
+
+                {/* Support / Lien secondaire inférieur */}
+                <div className="mt-8 pt-6 border-t border-neutral-100 flex justify-center w-full">
+                  <button
+                    onClick={() => navigate('/results')}
+                    className="text-[10px] font-bold text-neutral-400 hover:text-black border-b border-transparent hover:border-black py-1 transition-all uppercase tracking-widest font-mono outline-none cursor-pointer"
+                  >
+                    CONSULTER LES RÉSULTATS PRÉCÉDENTS
+                  </button>
+                </div>
+
               </div>
-
-              {/* Department Selection */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
-                  Département
-                </label>
-                <Select
-                  options={deptOptions}
-                  value={deptOptions.find(o => o.value === selectedDepartment) || null}
-                  onChange={(option) => setSelectedDepartment(option?.value || '')}
-                  placeholder="Sélectionnez"
-                  styles={selectStyles}
-                  isSearchable
-                  menuPortalTarget={document.body}
-                  menuPosition="fixed"
-                  components={{ IndicatorSeparator: () => null }}
-                />
-              </div>
-
-              {/* Role Selection */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
-                  Rôle / Titre
-                </label>
-                <Select
-                  options={roleOptions}
-                  value={roleOptions.find(o => o.value === selectedRole) || null}
-                  onChange={(option) => setSelectedRole(option?.value || '')}
-                  placeholder="Sélectionnez"
-                  styles={selectStyles}
-                  isSearchable
-                  menuPortalTarget={document.body}
-                  menuPosition="fixed"
-                  components={{ IndicatorSeparator: () => null }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleStart}
-              disabled={!canProceed}
-              className={`w-full font-bold py-4 px-6 flex items-center justify-center gap-2 transition-all border outline-none duration-150 rounded-none cursor-pointer ${
-                canProceed
-                  ? 'bg-[#FFE600] text-black border-transparent hover:bg-black hover:text-[#FFE600] active:scale-[0.98]'
-                  : 'bg-gray-200 text-gray-400 border-gray-100 cursor-not-allowed'
-              }`}
-            >
-              COMMENCER L'ÉVALUATION
-              <ChevronRight className="w-5 h-5 flex-shrink-0" />
-            </button>
-
-            <div className="pt-4 flex justify-center w-full">
-              <button
-                onClick={() => navigate('/results')}
-                className="text-xs font-bold text-gray-400 hover:text-black border-b border-transparent hover:border-black py-1 transition-all uppercase tracking-wider outline-none cursor-pointer"
-              >
-                CONSULTER LES RÉSULTATS PRÉCÉDENTS
-              </button>
             </div>
           </div>
         </motion.div>

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, ChevronRight, Download, Share2, Target, BarChart3, Settings2, Check } from 'lucide-react';
