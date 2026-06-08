@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Check, Save, LayoutDashboard, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, LayoutDashboard, Flag } from 'lucide-react';
 import { toast } from 'sonner';
 
 const dimensions = [
@@ -68,7 +68,16 @@ export function QuestionnairePage() {
   const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (Object.keys(answers).length === 0) return;
+    setSaveStatus('saving');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => setSaveStatus('saved'), 900);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [answers]);
 
   const currentDimension = dimensions[currentDimensionIndex];
   const currentQuestions = questions[currentDimension.id as keyof typeof questions];
@@ -124,25 +133,12 @@ export function QuestionnairePage() {
     currentDimensionIndex === dimensions.length - 1 &&
     currentQuestionIndex === currentQuestions.length - 1;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLastSaved(new Date());
-      if (Math.random() > 0.8) {
-        toast('Progression sauvegardée', {
-          description: 'Vos réponses ont été enregistrées localement.',
-          icon: <Save className="w-4 h-4" />,
-        });
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [answers]);
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1400px] mx-auto px-8 py-5">
-          <div className="flex items-center justify-between mb-6">
+      <header className="bg-white border-b border-gray-200 z-50 flex-shrink-0">
+        <div className="max-w-[1400px] mx-auto px-8 py-3.5">
+          <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => navigate('/')}
               className="group flex items-center gap-2 text-sm font-semibold tracking-wide text-gray-500 hover:text-black transition-colors"
@@ -152,13 +148,41 @@ export function QuestionnairePage() {
               </div>
               QUITTER L'ÉVALUATION
             </button>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-100 text-xs font-medium text-gray-500">
-              <Save className="w-3.5 h-3.5" />
-              {lastSaved ? `Sauvegardé à ${lastSaved.toLocaleTimeString()}` : 'Sauvegarde automatique...'}
-            </div>
+
+            <AnimatePresence mode="wait">
+              {saveStatus === 'saving' && (
+                <motion.div
+                  key="saving"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-2 text-xs font-medium text-gray-400 tracking-wide"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFE600] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FFE600]" />
+                  </span>
+                  Sauvegarde...
+                </motion.div>
+              )}
+              {saveStatus === 'saved' && (
+                <motion.div
+                  key="saved"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-2 text-xs font-medium text-gray-400 tracking-wide"
+                >
+                  <span className="h-2 w-2 rounded-full bg-green-400 inline-flex" />
+                  Sauvegardé
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex justify-between text-xs font-bold tracking-widest text-gray-600">
               <span>PROGRESSION GLOBALE</span>
               <span>{Math.round(progress)}%</span>
@@ -173,7 +197,7 @@ export function QuestionnairePage() {
             </div>
           </div>
 
-          <div className="flex gap-2 mt-8 pb-2 w-full">
+          <div className="flex gap-2 mt-4 w-full">
             {dimensions.map((dim, index) => {
               const dimAnswers = answers[dim.id] || {};
               const dimQuestions = questions[dim.id as keyof typeof questions];
@@ -188,7 +212,7 @@ export function QuestionnairePage() {
                     setCurrentDimensionIndex(index);
                     setCurrentQuestionIndex(0);
                   }}
-                  className={`flex-1 min-w-0 px-3 py-4 border transition-all relative overflow-hidden flex flex-col justify-center ${
+                  className={`flex-1 min-w-0 px-3 py-2.5 border transition-all relative overflow-hidden flex flex-col justify-center ${
                     isActive
                       ? 'border-black bg-black text-white shadow-md'
                       : isCompleted
@@ -196,14 +220,14 @@ export function QuestionnairePage() {
                       : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-3 w-full relative z-10">
+                  <div className="flex items-center justify-between mb-2 w-full relative z-10">
                     <span className={`text-[10px] md:text-xs font-bold tracking-wider uppercase truncate pr-2 ${isActive ? 'text-[#FFE600]' : ''}`}>
                       {dim.name}
                     </span>
-                    {isCompleted && !isActive && <Check className="w-4 h-4 flex-shrink-0 text-green-600" />}
-                    {isActive && <Flag className="w-4 h-4 flex-shrink-0 text-white" />}
+                    {isCompleted && !isActive && <Check className="w-3.5 h-3.5 flex-shrink-0 text-green-600" />}
+                    {isActive && <Flag className="w-3.5 h-3.5 flex-shrink-0 text-white" />}
                   </div>
-                  <div className="h-1 w-full bg-gray-800/20 relative z-10 rounded-full overflow-hidden">
+                  <div className="h-0.5 w-full bg-gray-800/20 relative z-10 rounded-full overflow-hidden">
                     <div
                       style={{ width: `${dimProgress}%` }}
                       className={`h-full transition-all duration-300 ${
@@ -211,9 +235,6 @@ export function QuestionnairePage() {
                       }`}
                     />
                   </div>
-                  {isActive && (
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                  )}
                 </button>
               );
             })}
@@ -221,7 +242,8 @@ export function QuestionnairePage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1000px] w-full mx-auto px-8 py-16 flex flex-col justify-center">
+      <main className="flex-1 min-h-0 flex items-center overflow-hidden">
+        <div className="max-w-[900px] w-full mx-auto px-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={`${currentDimension.id}-${currentQuestionIndex}`}
@@ -229,24 +251,27 @@ export function QuestionnairePage() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.4, ease: "easeInOut" }}
-            className="space-y-12"
+            className="space-y-10"
           >
-            <div className="flex items-center gap-4 border-b border-gray-200 pb-4">
-              <div className="text-sm font-bold tracking-widest text-gray-400">
-                QUESTION {currentQuestionIndex + 1} DE {currentQuestions.length}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-sm">
+                <LayoutDashboard className="w-3.5 h-3.5 text-[#FFE600]" />
+                <span className="text-xs font-bold tracking-widest text-gray-500 uppercase">{currentDimension.name}</span>
               </div>
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-              <div className="text-sm font-bold tracking-widest text-black flex items-center gap-2">
-                <LayoutDashboard className="w-4 h-4 text-[#FFE600]" />
-                {currentDimension.name.toUpperCase()}
+              <div className="w-1 h-1 rounded-full bg-gray-300" />
+              <div className="text-xs font-bold tracking-widest text-gray-400">
+                {currentQuestionIndex + 1} / {currentQuestions.length}
               </div>
             </div>
 
-            <h2 className="text-4xl md:text-5xl font-light leading-tight text-gray-900 tracking-tight max-w-4xl">
-              {currentQuestion}
-            </h2>
+            <div className="space-y-2">
+              <div className="w-8 h-0.5 bg-[#FFE600]" />
+              <h2 className="text-3xl md:text-[2.6rem] font-light leading-snug text-gray-900 tracking-tight">
+                {currentQuestion}
+              </h2>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
               {likertOptions.map((option) => {
                 const isSelected = answers[currentDimension.id]?.[currentQuestionIndex] === option.value;
 
@@ -256,10 +281,10 @@ export function QuestionnairePage() {
                     onClick={() => handleAnswer(option.value)}
                     whileHover={{ y: -4 }}
                     whileTap={{ scale: 0.96 }}
-                    className={`flex flex-col items-center justify-center gap-4 px-6 py-10 border transition-all ${
+                    className={`flex flex-col items-center justify-center gap-4 px-4 py-8 border-2 transition-all ${
                       isSelected
-                        ? 'border-black bg-black text-white shadow-xl'
-                        : 'border-gray-200 bg-white hover:border-black/30 hover:shadow-md text-gray-700'
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-200 bg-white hover:border-gray-400 text-gray-700'
                     }`}
                   >
                     <div
@@ -267,13 +292,13 @@ export function QuestionnairePage() {
                         isSelected ? 'border-[#FFE600] bg-[#FFE600]' : 'border-gray-300'
                       }`}
                     >
-                      {isSelected && <Check className="w-5 h-5 text-black" />}
+                      {isSelected
+                        ? <Check className="w-5 h-5 text-black" />
+                        : <span className="text-sm font-bold text-gray-400">{option.value}</span>
+                      }
                     </div>
                     <div className="text-center">
-                      <div className="text-sm font-bold tracking-wider mb-1">{option.label}</div>
-                      <div className={`text-xs font-semibold ${isSelected ? 'text-[#FFE600]' : 'text-gray-400'}`}>
-                        {option.value} / 5
-                      </div>
+                      <div className="text-sm font-bold tracking-wide">{option.label}</div>
                     </div>
                   </motion.button>
                 );
@@ -281,16 +306,17 @@ export function QuestionnairePage() {
             </div>
           </motion.div>
         </AnimatePresence>
+        </div>
       </main>
 
-      <footer className="bg-white border-t border-gray-200 sticky bottom-0 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="max-w-[1400px] mx-auto px-8 py-6 flex items-center justify-between">
+      <footer className="bg-white border-t border-gray-200 z-50 flex-shrink-0">
+        <div className="max-w-[1400px] mx-auto px-8 py-3 flex items-center justify-between">
           <button
             onClick={goPrevious}
             disabled={currentDimensionIndex === 0 && currentQuestionIndex === 0}
-            className="group px-6 py-3 border border-gray-200 text-black font-semibold tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-3"
+            className="group px-4 py-2 border border-gray-200 text-black text-sm font-semibold tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-2"
           >
-            <ChevronLeft className="w-5 h-5 text-gray-400 group-hover:text-black" />
+            <ChevronLeft className="w-4 h-4 text-gray-400 group-hover:text-black" />
             PRÉCÉDENT
           </button>
 
@@ -300,27 +326,27 @@ export function QuestionnairePage() {
               disabled={!canGoNext}
               whileHover={canGoNext ? { scale: 1.02 } : {}}
               whileTap={canGoNext ? { scale: 0.98 } : {}}
-              className={`px-8 py-4 font-bold tracking-widest transition-all flex items-center gap-3 ${
+              className={`px-6 py-2 text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
                 canGoNext
                   ? 'bg-[#FFE600] hover:bg-[#e6cf00] text-black border border-[#e6cf00] shadow-md'
                   : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
               }`}
             >
               VOIR LES RÉSULTATS
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4" />
             </motion.button>
           ) : (
             <button
               onClick={goNext}
               disabled={!canGoNext}
-              className={`px-8 py-4 font-bold tracking-widest transition-all flex items-center gap-3 ${
+              className={`px-6 py-2 text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
                 canGoNext
                   ? 'bg-black text-white hover:bg-gray-900 shadow-md'
                   : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
               }`}
             >
               SUIVANT
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           )}
         </div>

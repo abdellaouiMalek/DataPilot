@@ -87,9 +87,7 @@ export function SimulationPage() {
         <div className="max-w-[1600px] mx-auto px-8 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-black flex items-center justify-center">
-                <img src={eyLogo} alt="EY" className="w-7 h-7 object-contain" />
-              </div>
+              <img src={eyLogo} alt="EY" className="w-12 h-12 object-contain" />
               <div>
                 <div className="text-sm tracking-wide text-black/60">MOTEUR DE SIMULATION</div>
                 <div className="text-xs text-black/40">Modélisation d'impact what-if</div>

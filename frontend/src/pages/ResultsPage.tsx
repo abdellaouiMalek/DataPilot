@@ -85,9 +85,7 @@ export function ResultsPage() {
         <div className="max-w-[1400px] mx-auto px-8 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-black flex items-center justify-center shadow-sm cursor-pointer" onClick={() => navigate('/')}>
-                <img src={eyLogo} alt="EY" className="w-9 h-9 object-contain" />
-              </div>
+              <img src={eyLogo} alt="EY" className="w-14 h-14 object-contain cursor-pointer" onClick={() => navigate('/')} />
               <div className="flex flex-col">
                 <span className="text-sm font-bold tracking-widest text-gray-900">RÉSULTATS D'ÉVALUATION</span>
                 <span className="text-xs text-gray-500 tracking-wider">
