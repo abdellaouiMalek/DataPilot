@@ -12,6 +12,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import EyLogo from '../assets/EY_logo2.png';
+import ClairEyLogo from '../assets/ey-logo.png'
 
 export default function LoginPage() {
   const [pageLoading, setPageLoading] = useState(true);
@@ -67,7 +68,11 @@ export default function LoginPage() {
             
             {/* Inner Brand Block */}
             <div className="z-10 bg-black text-[#FFE600] font-sans font-black text-2xl w-14 h-14 flex items-center justify-center shadow-lg border border-black transition-all">
-              EY
+              <img 
+            src={ClairEyLogo} 
+            alt="EY Logo" 
+            className="h-7 w-auto object-contain select-none pointer-events-none" 
+            />
             </div>
             
           </div>
