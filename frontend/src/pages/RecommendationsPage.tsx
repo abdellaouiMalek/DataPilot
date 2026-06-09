@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
 import {
   Zap,
@@ -13,282 +13,65 @@ import {
   Circle,
 } from 'lucide-react';
 
-const recommendations = [
+// --- INTERFACES & MOCKS ---
+interface Recommendation {
+  id: number;
+  priority: 'quick-win' | 'structurant';
+  dimension: string;
+  title: string;
+  description: string;
+  timeline: string;
+  impact: string;
+  effort: string;
+  businessValue: {
+    risk: string;
+    time: string;
+    compliance: string;
+  };
+}
+
+const recommendations: Recommendation[] = [
   {
     id: 1,
-    dimension: 'Gouvernance des données',
-    title: 'Mettre en place un comité de gouvernance des données',
-    description: 'Créer une instance de décision formelle avec des représentants métier et IT, définir les rôles (CDO, data owners).',
     priority: 'quick-win',
-    effort: 'Moyen',
+    dimension: 'Sécurité & Infrastructure',
+    title: 'Optimisation de la configuration Redis et Kafka',
+    description: 'Mise en place de politiques de rétention strictes et isolation des clusters de messagerie pour éliminer la latence sur les services transactionnels.',
+    timeline: '2 semaines',
     impact: 'Élevé',
-    timeline: '2-3 mois',
+    effort: 'Faible',
     businessValue: {
-      risk: 'Réduction de 40% des risques de non-conformité BCT',
-      time: 'Gain de 15h/semaine sur les arbitrages',
-      compliance: 'Alignement BCT, BCBS 239 et réglementations bancaires',
-    },
+      risk: 'Réduction des goulots d\'étranglement de 40%',
+      time: 'Gain immédiat sur les temps de réponse API',
+      compliance: 'Alignement avec les SLAs de production'
+    }
   },
   {
     id: 2,
-    dimension: 'Qualité des données',
-    title: 'Déployer un outil de data quality monitoring',
-    description: "Implémenter une solution automatisée de détection et d'alerte qualité (complétude, exactitude, cohérence).",
-    priority: 'quick-win',
-    effort: 'Faible',
-    impact: 'Élevé',
-    timeline: '1-2 mois',
-    businessValue: {
-      risk: "Détection proactive de 85% des anomalies",
-      time: 'Économie de 25h/mois de correction manuelle',
-      compliance: 'Traçabilité complète pour les audits BCT',
-    },
-  },
-  {
-    id: 3,
-    dimension: 'Architecture & Infrastructure Data',
-    title: "Moderniser l'infrastructure data (Data Lake / DWH)",
-    description: 'Centraliser les données avec Data Lake et entrepôt moderne, automatiser les pipelines ETL/ELT.',
     priority: 'structurant',
+    dimension: 'Architecture Cloud',
+    title: 'Déploiement du cluster Kubernetes sur cloud privé OpenStack',
+    description: 'Migration et orchestration complète des microservices vers l\'infrastructure interne pour une résilience accrue et un meilleur contrôle des coûts.',
+    timeline: '2 mois',
+    impact: 'Critique',
     effort: 'Élevé',
-    impact: 'Très élevé',
-    timeline: '12-18 mois',
     businessValue: {
-      risk: 'Résilience et disaster recovery améliorés',
-      time: 'Réduction de 60% des temps de traitement',
-      compliance: 'Sécurité renforcée (RBAC, chiffrement)',
-    },
-  },
-  {
-    id: 4,
-    dimension: 'Usage & Analytics',
-    title: 'Développer des tableaux de bord BI métiers',
-    description: 'Créer des dashboards pour risque, finance, marketing avec outils de visualisation modernes.',
-    priority: 'quick-win',
-    effort: 'Moyen',
-    impact: 'Élevé',
-    timeline: '2-3 mois',
-    businessValue: {
-      risk: 'Meilleure détection des risques en temps réel',
-      time: 'Réduction de 40% du temps de reporting',
-      compliance: 'Reporting réglementaire automatisé',
-    },
-  },
-  {
-    id: 5,
-    dimension: 'Culture Data & Compétences',
-    title: 'Lancer un programme de Data Literacy',
-    description: 'Former les équipes métier et IT à la culture data, adoption des outils analytics.',
-    priority: 'quick-win',
-    effort: 'Moyen',
-    impact: 'Moyen',
-    timeline: '3-4 mois',
-    businessValue: {
-      risk: "Réduction des erreurs d'interprétation",
-      time: "Gain de 20% d'autonomie métier",
-      compliance: 'Meilleure appropriation des contraintes réglementaires',
-    },
-  },
-  {
-    id: 6,
-    dimension: 'Stratégie & Vision Data',
-    title: 'Établir une roadmap et vision data stratégique',
-    description: 'Définir la stratégie data alignée avec les objectifs business, prioriser les initiatives.',
-    priority: 'structurant',
-    effort: 'Faible',
-    impact: 'Très élevé',
-    timeline: '1 mois',
-    businessValue: {
-      risk: 'Cohérence des investissements data',
-      time: 'Accélération des décisions stratégiques',
-      compliance: 'Alignement avec la stratégie bancaire',
-    },
-  },
-  {
-    id: 7,
-    dimension: 'Qualité des données',
-    title: 'Standardiser les processus de data validation',
-    description: 'Créer un framework de règles de validation réutilisables pour garantir la cohérence et unicité.',
-    priority: 'structurant',
-    effort: 'Moyen',
-    impact: 'Élevé',
-    timeline: '4-6 mois',
-    businessValue: {
-      risk: 'Homogénéisation des contrôles qualité',
-      time: 'Réduction de 30% du time-to-market',
-      compliance: 'Conformité by-design',
-    },
-  },
-  {
-    id: 8,
-    dimension: 'Usage & Analytics',
-    title: "Implémenter des modèles d'advanced analytics",
-    description: 'Déployer des modèles prédictifs pour le risque crédit, détection de fraude, scoring client.',
-    priority: 'structurant',
-    effort: 'Élevé',
-    impact: 'Très élevé',
-    timeline: '8-12 mois',
-    businessValue: {
-      risk: 'Amélioration de 30% de la détection de fraude',
-      time: "Automatisation de 50% du scoring",
-      compliance: 'Modèles conformes aux exigences BCT',
-    },
-  },
+      risk: 'Souveraineté totale des données sensibles',
+      time: 'CI/CD automatisé et scalabilité horizontale',
+      compliance: 'Conformité renforcée aux standards d\'audit'
+    }
+  }
 ];
 
-const generateSimulatedRecommendations = (currentScores: Record<string, number>, targetScores: Record<string, number>) => {
-  const generated: any[] = [];
-  let id = 100;
+function generateSimulatedRecommendations(currentScores: any, targetScores: any): Recommendation[] {
+  return recommendations.map(rec => ({
+    ...rec,
+    title: `[Simulé] ${rec.title}`,
+    description: `Ajusté selon l'écart de score ciblé (${currentScores.infra || 0} → ${targetScores.infra || 5}). ${rec.description}`
+  }));
+}
 
-  const dimensionData = [
-    {
-      id: 'gouvernance',
-      dimension: 'Gouvernance des données',
-      structurant: {
-        title: "Structurer l'organisation Data par l'objectif",
-        description: "Mettre en place un modèle opérationnel cible pour supporter l'ambition simulée de gouvernance.",
-        timeline: '6-9 mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Responsabilités clarifiées", time: "Prise de décision accélérée", compliance: "Conformité garantie" }
-      },
-      quickWin: {
-        title: 'Nommer des Data Owners pilotes',
-        description: 'Désigner immédiatement des responsables sur les domaines de données prioritaires.',
-        timeline: '1-2 mois', effort: 'Moyen', impact: 'Élevé',
-        businessValue: { risk: "Identification des anomalies", time: "Résolution plus rapide", compliance: "Début de traçabilité" }
-      }
-    },
-    {
-      id: 'qualite',
-      dimension: 'Qualité des données',
-      structurant: {
-        title: 'Industrialiser la gestion de la qualité',
-        description: "Déployer une plateforme d'entreprise pour le monitoring continu de la qualité des données.",
-        timeline: '9-12 mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Fiabilité des reportings", time: "Baisse des retraitements", compliance: "Auditabilité complète" }
-      },
-      quickWin: {
-        title: 'Corriger les anomalies critiques',
-        description: "Lancer une campagne coup de poing sur les 20% de données causant 80% des problèmes.",
-        timeline: '2-3 mois', effort: 'Faible', impact: 'Élevé',
-        businessValue: { risk: "Baisse immédiate du risque", time: "Gains de productivité", compliance: "Conformité ciblée" }
-      }
-    },
-    {
-      id: 'architecture',
-      dimension: 'Architecture & Infrastructure Data',
-      structurant: {
-        title: 'Refonte vers une architecture Cloud Data',
-        description: "Migration vers un socle technologique évolutif permettant de soutenir l'échelle visée.",
-        timeline: '12-18 mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Haute disponibilité", time: "Time-to-market divisé par 3", compliance: "Sécurité by-design" }
-      },
-      quickWin: {
-        title: 'Optimiser les flux existants',
-        description: "Identifier et corriger les goulots d'étranglement sur l'infrastructure actuelle.",
-        timeline: '1-3 mois', effort: 'Moyen', impact: 'Moyen',
-        businessValue: { risk: "Réduction des incidents", time: "Temps de calcul réduits", compliance: "Amélioration SLA" }
-      }
-    },
-    {
-      id: 'usage',
-      dimension: 'Usage & Analytics',
-      structurant: {
-        title: "Déploiement de l'IA et Machine Learning",
-        description: 'Intégration de modèles prédictifs dans les processus métiers cœur de la banque.',
-        timeline: '9-12 mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Détection avancée des fraudes", time: "Processus automatisés", compliance: "Modèles explicables" }
-      },
-      quickWin: {
-        title: 'Démocratiser la BI en libre-service',
-        description: 'Mettre à disposition des dashboards interactifs pour les utilisateurs métiers clés.',
-        timeline: '2-4 mois', effort: 'Moyen', impact: 'Élevé',
-        businessValue: { risk: "Une seule source de vérité", time: "Reporting instantané", compliance: "Accessibilité contrôlée" }
-      }
-    },
-    {
-      id: 'culture',
-      dimension: 'Culture Data & Compétences',
-      structurant: {
-        title: 'Programme de transformation culturelle',
-        description: "Plan global d'acculturation et de montée en compétences (upskilling/reskilling).",
-        timeline: '12+ mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Culture du risque data", time: "Autonomie des équipes", compliance: "Sensibilisation générale" }
-      },
-      quickWin: {
-        title: 'Lancer une communauté Data',
-        description: "Créer un réseau d'ambassadeurs pour partager les bonnes pratiques et succès.",
-        timeline: '1-2 mois', effort: 'Faible', impact: 'Moyen',
-        businessValue: { risk: "Partage des standards", time: "Entraide collaborative", compliance: "Diffusion des règles" }
-      }
-    },
-    {
-      id: 'strategie',
-      dimension: 'Stratégie & Vision Data',
-      structurant: {
-        title: 'Alignement stratégique global',
-        description: "Intégration native de la data dans le plan stratégique de développement de la banque.",
-        timeline: '6-9 mois', effort: 'Élevé', impact: 'Très élevé',
-        businessValue: { risk: "Cohérence des investissements", time: "Priorisation claire", compliance: "Vision réglementaire long-terme" }
-      },
-      quickWin: {
-        title: "Définir les cas d'usage prioritaires",
-        description: "Identifier 3 à 5 initiatives data générant un ROI à très court terme.",
-        timeline: '1 mois', effort: 'Faible', impact: 'Élevé',
-        businessValue: { risk: "Validation par la preuve", time: "Succès rapide", compliance: "Focus métier" }
-      }
-    }
-  ];
-
-  Object.keys(targetScores).forEach(key => {
-    const delta = targetScores[key] - (currentScores[key] || 0);
-    const dimData = dimensionData.find(d => d.id === key);
-
-    if (delta > 0 && dimData) {
-      if (delta >= 1.0) {
-        generated.push({
-          id: id++,
-          dimension: dimData.dimension,
-          title: `[Objectif +${delta.toFixed(1)}] ${dimData.structurant.title}`,
-          description: dimData.structurant.description,
-          priority: 'structurant',
-          effort: dimData.structurant.effort,
-          impact: dimData.structurant.impact,
-          timeline: dimData.structurant.timeline,
-          businessValue: dimData.structurant.businessValue
-        });
-      } else {
-        generated.push({
-          id: id++,
-          dimension: dimData.dimension,
-          title: `[Objectif +${delta.toFixed(1)}] ${dimData.quickWin.title}`,
-          description: dimData.quickWin.description,
-          priority: 'quick-win',
-          effort: dimData.quickWin.effort,
-          impact: dimData.quickWin.impact,
-          timeline: dimData.quickWin.timeline,
-          businessValue: dimData.quickWin.businessValue
-        });
-      }
-    }
-  });
-
-  if (generated.length === 0) {
-    generated.push({
-      id: 999,
-      dimension: "Maturité Globale",
-      title: "Maintenir l'existant",
-      description: "Vous n'avez simulé aucune amélioration. Continuez de monitorer les systèmes.",
-      priority: 'quick-win',
-      effort: 'Faible',
-      impact: 'Moyen',
-      timeline: 'Continu',
-      businessValue: { risk: "Maintien des standards", time: "Processus habituels", compliance: "Conformité de base" }
-    });
-  }
-
-  return generated;
-};
-
+// --- MAIN COMPONENT ---
 export function RecommendationsPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -326,19 +109,20 @@ export function RecommendationsPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Header */}
       <div className="border-b border-black/5">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img src={eyLogo} alt="EY" className="w-12 h-12 object-contain" />
+              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
               <div>
-                <div className="text-sm tracking-wide text-black/60">RECOMMANDATIONS</div>
-                <div className="text-xs text-black/40">{pageSubtitle}</div>
+                <div className="text-xs sm:text-sm tracking-wide text-black/60 font-medium">RECOMMANDATIONS</div>
+                <div className="text-[10px] sm:text-xs text-black/40">{pageSubtitle}</div>
               </div>
             </div>
             <button
               onClick={() => isSimulation ? navigate('/simulation', { state: { scores: currentScores } }) : navigate('/dashboard')}
-              className="px-4 py-2 border border-black/10 text-black hover:bg-black/5 transition-colors"
+              className="w-full sm:w-auto text-center px-4 py-2.5 border border-black/10 text-xs sm:text-sm text-black hover:bg-black/5 transition-colors"
             >
               {isSimulation ? "Retour au simulateur" : "Retour au dashboard"}
             </button>
@@ -346,52 +130,56 @@ export function RecommendationsPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 py-16">
+      {/* Main Content Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-16">
+        {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-16"
+          className="mb-8 sm:mb-16"
         >
-          <div className="grid grid-cols-12 gap-16">
-            <div className="col-span-7 space-y-6">
-              <h1 className="text-6xl leading-tight text-black">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-16">
+            <div className="lg:col-span-7 space-y-3 sm:space-y-4">
+              <h1 className="text-3xl sm:text-6xl font-light leading-tight text-black">
                 Plan d'action
                 <br />
-                <span className="relative inline-block">
+                <span className="relative inline-block font-normal">
                   {isSimulation ? 'simulé' : 'stratégique'}
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: '100%' }}
                     transition={{ duration: 0.8, delay: 0.5 }}
-                    className="absolute -bottom-2 left-0 h-4 bg-[#FFE600] -z-10"
+                    className="absolute -bottom-1 left-0 h-1.5 sm:h-2 bg-[#FFE600] -z-10"
                   />
                 </span>
               </h1>
-              <p className="text-lg text-black/70 max-w-xl">
+              <p className="text-xs sm:text-base md:text-lg text-black/70 max-w-xl">
                 {pageDescription}
               </p>
             </div>
 
-            <div className="col-span-5 grid grid-cols-2 gap-4">
-              <div className="border border-black/5 bg-[#fafafa] p-6 space-y-3">
-                <Zap className="w-8 h-8 text-[#FFE600]" />
-                <div className="text-3xl">{quickWins.length}</div>
-                <div className="text-sm text-black/60">Quick Wins</div>
+            {/* KPI Cards */}
+            <div className="lg:col-span-5 grid grid-cols-2 gap-3">
+              <div className="border border-black/5 bg-[#fafafa] p-4 space-y-2">
+                <Zap className="w-5 h-5 text-[#FFE600]" />
+                <div className="text-xl sm:text-3xl font-light">{quickWins.length}</div>
+                <div className="text-[11px] sm:text-xs text-black/60">Quick Wins</div>
               </div>
-              <div className="border border-black/5 bg-[#fafafa] p-6 space-y-3">
-                <Building className="w-8 h-8 text-black" />
-                <div className="text-3xl">{structurants.length}</div>
-                <div className="text-sm text-black/60">Projets Structurants</div>
+              <div className="border border-black/5 bg-[#fafafa] p-4 space-y-2">
+                <Building className="w-5 h-5 text-black" />
+                <div className="text-xl sm:text-3xl font-light">{structurants.length}</div>
+                <div className="text-[11px] sm:text-xs text-black/60">Projets Structurants</div>
               </div>
             </div>
           </div>
         </motion.div>
 
-        <div className="mb-12 flex gap-3">
+        {/* Filters - Mobile Scrollable Bar */}
+        <div className="mb-6 sm:mb-10 flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
           <button
             onClick={() => setSelectedPriority('all')}
-            className={`px-6 py-2 border transition-all ${
+            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all ${
               selectedPriority === 'all'
                 ? 'border-black bg-black text-white'
                 : 'border-black/10 bg-white text-black hover:border-black/30'
@@ -401,38 +189,39 @@ export function RecommendationsPage() {
           </button>
           <button
             onClick={() => setSelectedPriority('quick-win')}
-            className={`px-6 py-2 border transition-all flex items-center gap-2 ${
+            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all flex items-center gap-2 ${
               selectedPriority === 'quick-win'
                 ? 'border-[#FFE600] bg-[#FFE600] text-black'
                 : 'border-black/10 bg-white text-black hover:border-black/30'
             }`}
           >
-            <Zap className="w-4 h-4" />
+            <Zap className="w-3.5 h-3.5" />
             Quick Wins ({quickWins.length})
           </button>
           <button
             onClick={() => setSelectedPriority('structurant')}
-            className={`px-6 py-2 border transition-all flex items-center gap-2 ${
+            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all flex items-center gap-2 ${
               selectedPriority === 'structurant'
                 ? 'border-black bg-black text-white'
                 : 'border-black/10 bg-white text-black hover:border-black/30'
             }`}
           >
-            <Building className="w-4 h-4" />
+            <Building className="w-3.5 h-3.5" />
             Structurants ({structurants.length})
           </button>
         </div>
 
-        <div className="space-y-6">
+        {/* Recommendations List */}
+        <div className="space-y-4">
           {filteredRecommendations.map((rec, index) => {
             const isCompleted = completedIds.includes(rec.id);
 
             return (
               <motion.div
                 key={rec.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                transition={{ duration: 0.4, delay: index * 0.04 }}
                 className={`border transition-all ${
                   isCompleted
                     ? 'border-black/10 bg-black/5'
@@ -441,82 +230,90 @@ export function RecommendationsPage() {
                     : 'border-black/10 bg-white hover:border-black/30'
                 }`}
               >
-                <div className="p-8">
-                  <div className="flex gap-8">
-                    <button
-                      onClick={() => toggleComplete(rec.id)}
-                      className="flex-shrink-0 w-6 h-6 mt-1"
-                    >
-                      {isCompleted ? (
-                        <CheckCircle2 className="w-6 h-6 text-[#2e8b57]" />
-                      ) : (
-                        <Circle className="w-6 h-6 text-black/20 hover:text-black/60 transition-colors" />
-                      )}
-                    </button>
+                <div className="p-4 sm:p-6 md:p-8">
+                  <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
+                    
+                    {/* Checkbox and Content Wrapper */}
+                    <div className="flex gap-3 w-full flex-1">
+                      <button
+                        onClick={() => toggleComplete(rec.id)}
+                        className="flex-shrink-0 w-5 h-5 mt-0.5"
+                        aria-label="Marquer comme complété"
+                      >
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-5 h-5 text-[#2e8b57]" />
+                        ) : (
+                          <Circle className="w-5 h-5 text-black/20 hover:text-black/60 transition-colors" />
+                        )}
+                      </button>
 
-                    <div className="flex-1 space-y-6">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="inline-block border border-black/10 px-3 py-1">
-                            <span className="text-xs tracking-wider text-black/60">
-                              {rec.dimension.toUpperCase()}
-                            </span>
-                          </div>
-                          {rec.priority === 'quick-win' && (
-                            <div className="flex items-center gap-1 bg-[#FFE600] px-3 py-1">
-                              <Zap className="w-3 h-3" />
-                              <span className="text-xs tracking-wider">QUICK WIN</span>
+                      <div className="flex-1 space-y-4 min-w-0">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="inline-block border border-black/10 px-2 py-0.5">
+                              <span className="text-[9px] tracking-wider text-black/60 font-medium">
+                                {rec.dimension.toUpperCase()}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                        <h3 className={`text-2xl ${isCompleted ? 'line-through text-black/40' : 'text-black'}`}>
-                          {rec.title}
-                        </h3>
-                        <p className={`text-black/70 ${isCompleted ? 'opacity-50' : ''}`}>
-                          {rec.description}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock className="w-4 h-4 text-black/40" />
-                          <span className="text-black/60">Durée :</span>
-                          <span>{rec.timeline}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <TrendingUp className="w-4 h-4 text-black/40" />
-                          <span className="text-black/60">Impact :</span>
-                          <span>{rec.impact}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Building className="w-4 h-4 text-black/40" />
-                          <span className="text-black/60">Effort :</span>
-                          <span>{rec.effort}</span>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-black/5 pt-6 space-y-3">
-                        <div className="text-sm tracking-wider text-black/60">VALEUR BUSINESS</div>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="flex items-start gap-2">
-                            <Shield className="w-4 h-4 text-[#FFE600] flex-shrink-0 mt-1" />
-                            <div className="text-sm text-black/70">{rec.businessValue.risk}</div>
+                            {rec.priority === 'quick-win' && (
+                              <div className="flex items-center gap-1 bg-[#FFE600] px-2 py-0.5">
+                                <Zap className="w-2.5 h-2.5" />
+                                <span className="text-[9px] tracking-wider font-semibold">QUICK WIN</span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-start gap-2">
-                            <Clock className="w-4 h-4 text-[#FFE600] flex-shrink-0 mt-1" />
-                            <div className="text-sm text-black/70">{rec.businessValue.time}</div>
+                          <h3 className={`text-base sm:text-xl md:text-2xl font-light break-words ${isCompleted ? 'line-through text-black/40' : 'text-black'}`}>
+                            {rec.title}
+                          </h3>
+                          <p className={`text-xs sm:text-sm md:text-base text-black/70 leading-relaxed break-words ${isCompleted ? 'opacity-50' : ''}`}>
+                            {rec.description}
+                          </p>
+                        </div>
+
+                        {/* Metadata Grid - Balanced 2 columns on Mobile */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 border-t border-b md:border-b-0 border-black/5 py-3 md:py-0">
+                          <div className="flex items-center gap-2 text-xs">
+                            <Clock className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
+                            <span className="text-black/60">Durée :</span>
+                            <span className="font-medium truncate">{rec.timeline}</span>
                           </div>
-                          <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-[#FFE600] flex-shrink-0 mt-1" />
-                            <div className="text-sm text-black/70">{rec.businessValue.compliance}</div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <TrendingUp className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
+                            <span className="text-black/60">Impact :</span>
+                            <span className="font-medium truncate">{rec.impact}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs col-span-2 md:col-span-1">
+                            <Building className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
+                            <span className="text-black/60">Effort :</span>
+                            <span className="font-medium truncate">{rec.effort}</span>
+                          </div>
+                        </div>
+
+                        {/* Business Value Section - Card/List block stacked on mobile */}
+                        <div className="md:border-t md:border-black/5 md:pt-4 space-y-2">
+                          <div className="text-[9px] tracking-wider text-black/60 font-semibold">VALEUR BUSINESS</div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded">
+                              <Shield className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-black/70 break-words">{rec.businessValue.risk}</div>
+                            </div>
+                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded">
+                              <Clock className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-black/70 break-words">{rec.businessValue.time}</div>
+                            </div>
+                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded sm:col-span-2 md:col-span-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-black/70 break-words">{rec.businessValue.compliance}</div>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <button className="flex-shrink-0 px-6 py-3 border border-black/10 hover:border-black hover:bg-black hover:text-white transition-all self-start h-fit">
-                      Détails
-                      <ChevronRight className="w-4 h-4 inline ml-2" />
+                    {/* Action Button */}
+                    <button className="w-full md:w-auto flex items-center justify-between md:justify-center px-4 py-2.5 border border-black/10 hover:border-black hover:bg-black hover:text-white transition-all text-xs font-medium mt-1 md:mt-0">
+                      <span>Détails</span>
+                      <ChevronRight className="w-4 h-4 ml-2" />
                     </button>
                   </div>
                 </div>
@@ -525,29 +322,32 @@ export function RecommendationsPage() {
           })}
         </div>
 
+        {/* Roadmap Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="mt-20 border-t border-black/5 pt-16"
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="mt-12 sm:mt-20 border-t border-black/5 pt-10"
         >
-          <div className="space-y-8">
-            <h2 className="text-3xl">Vue roadmap</h2>
+          <div className="space-y-6">
+            <h2 className="text-xl sm:text-3xl font-light">Vue roadmap</h2>
             <div className="relative">
-              <div className="absolute top-6 left-0 right-0 h-0.5 bg-black/10" />
-              <div className="grid grid-cols-4 gap-4 relative">
+              <div className="hidden md:block absolute top-6 left-0 right-0 h-0.5 bg-black/10" />
+              <div className="absolute top-0 bottom-0 left-1.5 w-0.5 bg-black/10 md:hidden" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative pl-6 md:pl-0">
                 {['Q2 2026', 'Q3 2026', 'Q4 2026', 'Q1 2027'].map((quarter, index) => (
-                  <div key={quarter} className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 bg-[#FFE600] rounded-full" />
-                      <span className="text-sm tracking-wide text-black/60">{quarter}</span>
+                  <div key={quarter} className="space-y-2 relative">
+                    <div className="absolute -left-[22px] top-1.5 md:static w-2.5 h-2.5 bg-[#FFE600] rounded-full z-10" />
+                    <div>
+                      <span className="text-xs font-semibold tracking-wide text-black/60">{quarter}</span>
                     </div>
-                    <div className="space-y-2 pl-6">
+                    <div className="space-y-1.5 md:pl-2">
                       {filteredRecommendations
                         .filter((_, i) => i % 4 === index)
                         .map((rec) => (
-                          <div key={rec.id} className="text-sm text-black/70 border-l-2 border-black/10 pl-3 py-1">
-                            {rec.title.substring(0, 40)}...
+                          <div key={rec.id} className="text-xs text-black/70 border-l-2 border-black/10 pl-2 py-1 bg-[#fafafa] md:bg-transparent rounded-r truncate">
+                            {rec.title}
                           </div>
                         ))}
                     </div>
@@ -558,25 +358,26 @@ export function RecommendationsPage() {
           </div>
         </motion.div>
 
+        {/* Bottom CTA Block */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.8 }}
-          className="mt-16 border border-black/5 bg-[#fafafa] p-10"
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="mt-12 border border-black/5 bg-[#fafafa] p-5 sm:p-10"
         >
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <h3 className="text-2xl">Prêt à modéliser l'impact ?</h3>
-              <p className="text-black/70">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-1">
+              <h3 className="text-lg sm:text-2xl font-light">Prêt à modéliser l'impact ?</h3>
+              <p className="text-xs sm:text-base text-black/70">
                 Simulez les gains potentiels de ces recommandations sur vos métriques business.
               </p>
             </div>
             <button
               onClick={() => navigate('/simulation')}
-              className="px-8 py-4 bg-[#FFE600] hover:bg-[#f5dc00] text-black transition-colors flex items-center gap-3"
+              className="w-full lg:w-auto px-5 py-3.5 bg-[#FFE600] hover:bg-[#f5dc00] text-black font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
             >
-              Lancer une simulation
-              <ChevronRight className="w-5 h-5" />
+              <span>Lancer une simulation</span>
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </motion.div>

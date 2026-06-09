@@ -16,7 +16,7 @@ import {
 import { Filter, TrendingUp, Users, Building2, Calendar, ChevronDown, ChevronRight, Download, BarChart3 } from 'lucide-react';
 import Select from 'react-select';
 import type { StylesConfig } from 'react-select';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { toast } from 'sonner';
 
 const mockHistoricalData = [
@@ -98,35 +98,38 @@ export function DashboardPage() {
   const deptOptions = depts.map(d => ({ value: d, label: d }));
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-gray-50 font-sans antialiased overflow-x-hidden">
+      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-8 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img src={eyLogo} alt="EY" className="w-14 h-14 object-contain" />
-              <div className="flex flex-col">
-                <span className="text-sm font-bold tracking-widest text-gray-900">MANAGEMENT DASHBOARD</span>
-                <span className="text-xs text-gray-500 tracking-wider">Vue stratégique consolidée</span>
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-4 sm:py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-14 sm:h-14 object-contain flex-shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-900 truncate">MANAGEMENT DASHBOARD</span>
+                <span className="text-[10px] sm:text-xs text-gray-500 tracking-wider truncate">Vue stratégique consolidée</span>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className={`px-5 py-2.5 border transition-all flex items-center gap-2 text-sm font-bold tracking-wide ${
+                className={`p-2.5 sm:px-5 sm:py-2.5 border transition-all flex items-center gap-2 text-sm font-bold tracking-wide ${
                   showFilters
                     ? 'border-black bg-black text-white'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
+                aria-label="Filtres"
               >
                 <Filter className="w-4 h-4" />
-                FILTRES
+                <span className="hidden sm:inline">FILTRES</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
               </button>
               <button
                 onClick={() => navigate('/')}
-                className="px-5 py-2.5 bg-[#FFE600] text-black font-bold tracking-wide hover:bg-[#e6cf00] border border-[#e6cf00] transition-colors shadow-sm"
+                className="px-3 py-2.5 sm:px-5 sm:py-2.5 bg-[#FFE600] text-black font-bold text-xs sm:text-wide tracking-wide hover:bg-[#e6cf00] border border-[#e6cf00] transition-colors shadow-sm"
               >
-                NOUVELLE ÉVALUATION
+                <span className="sm:hidden">NOUVEAU</span>
+                <span className="hidden sm:inline">NOUVELLE ÉVALUATION</span>
               </button>
             </div>
           </div>
@@ -136,19 +139,20 @@ export function DashboardPage() {
             animate={{ height: showFilters ? 'auto' : 0, opacity: showFilters ? 1 : 0 }}
             className="overflow-hidden"
           >
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="space-y-3">
-                  <label className="text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
+            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:grid-cols-1 lg:gap-8 pb-2">
+                {/* Période */}
+                <div className="space-y-2">
+                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-[#FFE600]" />
                     PÉRIODE D'ANALYSE
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
                     {periods.map((period) => (
                       <button
                         key={period}
                         onClick={() => setSelectedPeriod(period)}
-                        className={`flex-1 px-3 py-2.5 border text-sm font-semibold transition-all ${
+                        className={`flex-1 min-w-[50px] px-2 py-2 sm:py-2.5 border text-xs sm:text-sm font-semibold transition-all ${
                           selectedPeriod === period
                             ? 'border-black bg-black text-white shadow-md'
                             : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
@@ -160,8 +164,9 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
+                {/* Établissement */}
+                <div className="space-y-2">
+                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-[#FFE600]" />
                     ÉTABLISSEMENT
                   </label>
@@ -177,8 +182,9 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
+                {/* Département */}
+                <div className="space-y-2">
+                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
                     <Users className="w-4 h-4 text-[#FFE600]" />
                     DÉPARTEMENT
                   </label>
@@ -199,27 +205,29 @@ export function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-8 py-12">
+      {/* Main Grid */}
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-12 space-y-6 sm:space-y-12">
+        {/* KPIs Cards */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12"
+          transition={{ duration: 0.5 }}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
         >
           {kpis.map((kpi, index) => (
             <div
               key={index}
-              className="bg-white border border-gray-200 p-8 hover:shadow-lg transition-all hover:-translate-y-1 relative overflow-hidden"
+              className="bg-white border border-gray-200 p-5 sm:p-8 hover:shadow-lg transition-all relative overflow-hidden"
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-[#FFE600]" />
-              <div className="space-y-4">
-                <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">{kpi.label}</div>
-                <div className="flex items-baseline gap-4">
-                  <div className="text-5xl font-light text-gray-900 tracking-tight">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 uppercase truncate">{kpi.label}</div>
+                <div className="flex items-baseline justify-between sm:justify-start sm:gap-4">
+                  <div className="text-3xl sm:text-5xl font-light text-gray-900 tracking-tight">
                     {kpi.value}
                   </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 text-sm font-bold rounded-sm">
-                    <TrendingUp className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs sm:text-sm font-bold rounded-sm">
+                    <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     {kpi.change}
                   </div>
                 </div>
@@ -228,53 +236,53 @@ export function DashboardPage() {
           ))}
         </motion.div>
 
+        {/* Line Chart Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-12"
+          transition={{ duration: 0.5, delay: 0.1 }}
         >
-          <div className="bg-white border border-gray-200 p-10 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 pb-6 border-b border-gray-100">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-gray-50 rounded-sm">
-                  <BarChart3 className="w-6 h-6 text-gray-700" />
+          <div className="bg-white border border-gray-200 p-4 sm:p-10 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-10 pb-4 sm:pb-6 border-b border-gray-100">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="p-2 sm:p-3 bg-gray-50 rounded-sm">
+                  <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-light text-gray-900 tracking-tight mb-1">
+                  <h3 className="text-lg sm:text-2xl font-light text-gray-900 tracking-tight mb-0.5">
                     Évolution de la maturité
                   </h3>
-                  <p className="text-sm font-medium text-gray-500">Suivi historique des scores par dimension</p>
+                  <p className="text-xs sm:text-sm font-medium text-gray-500">Suivi historique des scores par dimension</p>
                 </div>
               </div>
-              <div className="mt-4 md:mt-0 flex items-center gap-3">
-                <div className="text-sm font-bold tracking-widest text-gray-400">DERNIERS 6 MOIS</div>
+              <div className="flex items-center justify-between sm:justify-end gap-3 mt-1 sm:mt-0">
+                <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400">DERNIERS 6 MOIS</div>
                 <button
                   onClick={() => toast.success('Export des données', { description: 'Le fichier CSV a été téléchargé avec succès.' })}
                   className="p-2 bg-gray-50 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors border border-gray-200"
+                  aria-label="Exporter CSV"
                 >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="h-[400px] w-full">
+            <div className="h-[280px] sm:h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mockHistoricalData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <LineChart data={mockHistoricalData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis
                     dataKey="month"
-                    tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }}
-                    axisLine={{ stroke: '#E5E7EB', strokeWidth: 2 }}
+                    tick={{ fill: '#6B7280', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#E5E7EB', strokeWidth: 1.5 }}
                     tickLine={false}
-                    dy={10}
+                    dy={8}
                   />
                   <YAxis
                     domain={[0, 5]}
-                    tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }}
+                    tick={{ fill: '#6B7280', fontSize: 11, fontWeight: 600 }}
                     axisLine={false}
                     tickLine={false}
-                    dx={-10}
                   />
                   <Tooltip
                     contentStyle={{
@@ -282,94 +290,91 @@ export function DashboardPage() {
                       border: 'none',
                       borderRadius: '4px',
                       color: '#F9FAFB',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                      fontSize: '12px'
                     }}
-                    itemStyle={{ color: '#F9FAFB', fontWeight: 500 }}
                   />
-                  <Legend wrapperStyle={{ paddingTop: '30px' }} iconType="circle" iconSize={8} />
-                  <Line type="monotone" dataKey="gouvernance" stroke="#FFE600" strokeWidth={3} dot={{ fill: '#FFE600', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Gouvernance" />
-                  <Line type="monotone" dataKey="qualite" stroke="#111827" strokeWidth={3} dot={{ fill: '#111827', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Qualité" />
-                  <Line type="monotone" dataKey="architecture" stroke="#6B7280" strokeWidth={3} dot={{ fill: '#6B7280', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Architecture" />
-                  <Line type="monotone" dataKey="usage" stroke="#9CA3AF" strokeWidth={3} dot={{ fill: '#9CA3AF', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Usage" />
-                  <Line type="monotone" dataKey="culture" stroke="#D1D5DB" strokeWidth={3} dot={{ fill: '#D1D5DB', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Culture" />
-                  <Line type="monotone" dataKey="strategie" stroke="#4B5563" strokeWidth={3} dot={{ fill: '#4B5563', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, strokeWidth: 0 }} name="Stratégie" />
+                  <Legend 
+                    wrapperStyle={{ paddingTop: '20px', fontSize: '11px' }} 
+                    iconType="circle" 
+                    iconSize={6}
+                    layout={window.innerWidth < 640 ? 'horizontal' : 'horizontal'}
+                  />
+                  <Line type="monotone" dataKey="gouvernance" stroke="#FFE600" strokeWidth={2.5} dot={{ fill: '#FFE600', r: 3 }} name="Gouvernance" />
+                  <Line type="monotone" dataKey="qualite" stroke="#111827" strokeWidth={2.5} dot={{ fill: '#111827', r: 3 }} name="Qualité" />
+                  <Line type="monotone" dataKey="architecture" stroke="#6B7280" strokeWidth={2.5} dot={{ fill: '#6B7280', r: 3 }} name="Architecture" />
+                  <Line type="monotone" dataKey="usage" stroke="#9CA3AF" strokeWidth={2.5} dot={{ fill: '#9CA3AF', r: 3 }} name="Usage" />
+                  <Line type="monotone" dataKey="culture" stroke="#D1D5DB" strokeWidth={2.5} dot={{ fill: '#D1D5DB', r: 3 }} name="Culture" />
+                  <Line type="monotone" dataKey="strategie" stroke="#4B5563" strokeWidth={2.5} dot={{ fill: '#4B5563', r: 3 }} name="Stratégie" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         </motion.div>
 
+        {/* Bottom Split Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="grid grid-cols-1 lg:grid-cols-12 gap-8"
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8"
         >
+          {/* Benchmark Bar Chart */}
           <div className="lg:col-span-8">
-            <div className="bg-white border border-gray-200 p-10 shadow-sm h-full">
-              <div className="mb-10 pb-6 border-b border-gray-100">
-                <h3 className="text-2xl font-light text-gray-900 tracking-tight mb-1">
+            <div className="bg-white border border-gray-200 p-5 sm:p-10 shadow-sm h-full">
+              <div className="mb-6 sm:mb-10 pb-4 sm:pb-6 border-b border-gray-100">
+                <h3 className="text-lg sm:text-2xl font-light text-gray-900 tracking-tight mb-0.5">
                   Comparaison inter-établissements
                 </h3>
-                <p className="text-sm font-medium text-gray-500">Benchmark des scores globaux de maturité</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-500">Benchmark des scores globaux de maturité</p>
               </div>
 
-              <div className="h-[350px] w-full">
+              <div className="h-[300px] sm:h-[350px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mockEntityComparison} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <BarChart data={mockEntityComparison} layout="vertical" margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-                    <XAxis type="number" domain={[0, 5]} tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                    <XAxis type="number" domain={[0, 5]} tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis
                       type="category"
                       dataKey="entity"
-                      tick={{ fill: '#111827', fontSize: 13, fontWeight: 600 }}
-                      width={180}
-                      axisLine={{ stroke: '#E5E7EB', strokeWidth: 2 }}
+                      tick={{ fill: '#111827', fontSize: 11, fontWeight: 600 }}
+                      width={window.innerWidth < 640 ? 100 : 140}
+                      axisLine={{ stroke: '#E5E7EB', strokeWidth: 1.5 }}
                       tickLine={false}
                     />
-                    <Tooltip
-                      cursor={{ fill: '#F3F4F6' }}
-                      contentStyle={{
-                        backgroundColor: '#1F2937',
-                        border: 'none',
-                        borderRadius: '4px',
-                        color: '#F9FAFB',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                      }}
-                    />
-                    <Bar dataKey="score" fill="#111827" radius={[0, 4, 4, 0]} barSize={32} />
+                    <Tooltip cursor={{ fill: '#F3F4F6' }} contentStyle={{ backgroundColor: '#1F2937', border: 'none', color: '#F9FAFB', fontSize: '12px' }} />
+                    <Bar dataKey="score" fill="#111827" radius={[0, 2, 2, 0]} barSize={window.innerWidth < 640 ? 18 : 26} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-4 space-y-8">
-            <div className="bg-gray-900 text-white p-8 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFE600]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-
-              <div className="relative z-10 space-y-8">
+          {/* Top Performers & Quick Actions Stack */}
+          <div className="lg:col-span-4 space-y-6 sm:space-y-8">
+            {/* Top Performers widget */}
+            <div className="bg-gray-900 text-white p-6 sm:p-8 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#FFE600]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
+              <div className="relative z-10 space-y-6">
                 <div className="flex items-center gap-3 border-b border-gray-700 pb-4">
-                  <TrendingUp className="w-5 h-5 text-[#FFE600]" />
-                  <div className="text-xs font-bold tracking-widest text-gray-400">TOP PERFORMERS</div>
+                  <TrendingUp className="w-4 h-4 text-[#FFE600]" />
+                  <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400">TOP PERFORMERS</div>
                 </div>
-
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {mockEntityComparison
                     .sort((a, b) => b.score - a.score)
                     .slice(0, 3)
                     .map((entity, index) => (
-                      <div key={entity.entity} className="flex items-center gap-5">
+                      <div key={entity.entity} className="flex items-center gap-4">
                         <div
-                          className={`text-xl font-bold w-12 h-12 flex items-center justify-center shadow-md ${
+                          className={`text-base sm:text-xl font-bold w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shadow-md ${
                             index === 0 ? 'bg-[#FFE600] text-black' : 'bg-gray-800 text-white border border-gray-700'
                           }`}
                         >
                           0{index + 1}
                         </div>
-                        <div className="flex-1">
-                          <div className="text-base font-semibold tracking-tight">{entity.entity}</div>
-                          <div className="text-sm text-[#FFE600] font-bold">{entity.score.toFixed(1)} / 5.0</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm sm:text-base font-semibold tracking-tight truncate">{entity.entity}</div>
+                          <div className="text-xs sm:text-sm text-[#FFE600] font-bold">{entity.score.toFixed(1)} / 5.0</div>
                         </div>
                       </div>
                     ))}
@@ -377,32 +382,33 @@ export function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 p-8 shadow-sm">
-              <div className="space-y-6">
-                <div className="text-xs font-bold tracking-widest text-gray-400 uppercase border-b border-gray-100 pb-4">
+            {/* Quick Actions widget */}
+            <div className="bg-white border border-gray-200 p-6 sm:p-8 shadow-sm">
+              <div className="space-y-4">
+                <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 uppercase border-b border-gray-100 pb-3">
                   ACTIONS RAPIDES
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <button
                     onClick={() => navigate('/recommendations')}
-                    className="w-full px-5 py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
+                    className="w-full px-4 py-3 sm:py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-xs sm:text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
                   >
                     Voir les recommandations
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-black" />
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-black flex-shrink-0" />
                   </button>
                   <button
                     onClick={() => navigate('/simulation')}
-                    className="w-full px-5 py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
+                    className="w-full px-4 py-3 sm:py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-xs sm:text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
                   >
                     Lancer une simulation
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-black" />
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-black flex-shrink-0" />
                   </button>
                   <button
                     onClick={() => navigate('/results')}
-                    className="w-full px-5 py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
+                    className="w-full px-4 py-3 sm:py-4 border border-gray-200 text-left hover:border-black hover:shadow-md transition-all text-xs sm:text-sm font-bold text-gray-700 hover:text-black flex items-center justify-between group"
                   >
                     Exporter les rapports
-                    <Download className="w-4 h-4 text-gray-400 group-hover:text-black" />
+                    <Download className="w-4 h-4 text-gray-400 group-hover:text-black flex-shrink-0" />
                   </button>
                 </div>
               </div>

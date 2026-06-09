@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import eyLogo from '../assets/ey-logo.png';
+import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, ChevronRight, Download, Share2, Target, BarChart3, Settings2, Check } from 'lucide-react';
@@ -73,104 +73,111 @@ export function ResultsPage() {
   const dimensionLabels: Record<string, string> = {
     gouvernance: 'Gouvernance des données',
     qualite: 'Qualité des données',
-    architecture: 'Architecture & Infrastructure',
+    architecture: 'Architecture & Infra',
     usage: 'Usage & Analytics',
     culture: 'Culture Data & Compétences',
     strategie: 'Stratégie & Vision Data',
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-gray-50 font-sans antialiased overflow-x-hidden">
+      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1400px] mx-auto px-8 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img src={eyLogo} alt="EY" className="w-14 h-14 object-contain cursor-pointer" onClick={() => navigate('/')} />
-              <div className="flex flex-col">
-                <span className="text-sm font-bold tracking-widest text-gray-900">RÉSULTATS D'ÉVALUATION</span>
-                <span className="text-xs text-gray-500 tracking-wider">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-4 sm:py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-14 sm:h-14 object-contain cursor-pointer flex-shrink-0" onClick={() => navigate('/')} />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-900 truncate">RÉSULTATS D'ÉVALUATION</span>
+                <span className="text-[10px] sm:text-xs text-gray-500 tracking-wider truncate">
                   {profile.bank || 'Analyse détaillée'}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               <button
                 onClick={() => toast('Lien copié dans le presse-papiers', { icon: <Check className="w-4 h-4 text-green-500" /> })}
-                className="px-5 py-2.5 border border-gray-200 text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
+                className="p-2.5 sm:px-5 sm:py-2.5 border border-gray-200 text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
+                aria-label="Partager"
               >
                 <Share2 className="w-4 h-4 text-gray-500" />
-                PARTAGER
+                <span className="hidden sm:inline">PARTAGER</span>
               </button>
               <button
                 onClick={() => toast.success('Génération du rapport PDF...', { description: 'Le téléchargement commencera sous peu.' })}
-                className="px-5 py-2.5 bg-black text-white hover:bg-gray-900 shadow-md transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
+                className="p-2.5 sm:px-5 sm:py-2.5 bg-black text-white hover:bg-gray-900 shadow-md transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
+                aria-label="Télécharger PDF"
               >
                 <Download className="w-4 h-4" />
-                TÉLÉCHARGER PDF
+                <span className="hidden sm:inline">TÉLÉCHARGER PDF</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-8 py-16">
+      {/* Main Content */}
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8 sm:py-16 space-y-8 sm:space-y-16">
+        {/* Global Banner and Dimension Details */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="mb-16 bg-white border border-gray-200 shadow-sm overflow-hidden"
+          transition={{ duration: 0.6 }}
+          className="bg-white border border-gray-200 shadow-sm overflow-hidden"
         >
           <div className="grid grid-cols-1 lg:grid-cols-12">
-            <div className="lg:col-span-7 p-12 lg:p-16 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-900 text-white relative">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-[#FFE600]/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+            {/* Score Summary Banner */}
+            <div className="lg:col-span-7 p-6 sm:p-12 lg:p-16 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-900 text-white relative">
+              <div className="absolute top-0 right-0 w-48 h-48 sm:w-64 h-64 bg-[#FFE600]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
 
-              <div className="relative z-10 space-y-10">
-                <div className="inline-flex items-center gap-3 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20">
-                  <span className="text-xs font-bold tracking-widest text-gray-300">
-                    DATE DE L'ÉVALUATION :
+              <div className="relative z-10 space-y-6 sm:space-y-10">
+                <div className="inline-flex items-center gap-3 px-3 py-1.5 bg-white/10 backdrop-blur-sm border border-white/20">
+                  <span className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-300">
+                    DATE :
                   </span>
-                  <span className="text-xs font-bold text-white uppercase">
+                  <span className="text-[10px] sm:text-xs font-bold text-white uppercase">
                     {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </span>
                 </div>
 
-                <div className="space-y-4">
-                  <h1 className="text-xl md:text-2xl font-light text-gray-400 tracking-wide">
+                <div className="space-y-2 sm:space-y-4">
+                  <h1 className="text-sm sm:text-xl font-light text-gray-400 tracking-wide">
                     Niveau de maturité global
                   </h1>
-                  <div className="text-5xl md:text-7xl font-bold tracking-tight">
+                  <div className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight">
                     {maturity.label}
                   </div>
-                  <p className="text-lg text-gray-400 max-w-xl font-light leading-relaxed">
+                  <p className="text-sm sm:text-lg text-gray-400 max-w-xl font-light leading-relaxed">
                     {maturity.description}
                   </p>
                 </div>
 
-                <div className="pt-8 border-t border-gray-800">
-                  <div className="text-xs font-bold tracking-widest text-gray-500 mb-2">SCORE CONSOLIDÉ</div>
-                  <div className="flex items-baseline gap-4">
-                    <div className="text-7xl font-light tracking-tighter text-[#FFE600]">
+                <div className="pt-6 sm:pt-8 border-t border-gray-800">
+                  <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 mb-1 sm:mb-2">SCORE CONSOLIDÉ</div>
+                  <div className="flex items-baseline gap-2 sm:gap-4">
+                    <div className="text-5xl sm:text-7xl font-light tracking-tighter text-[#FFE600]">
                       {globalScore.toFixed(1)}
                     </div>
-                    <div className="text-2xl font-bold text-gray-600">/ 5.0</div>
+                    <div className="text-xl sm:text-2xl font-bold text-gray-600">/ 5.0</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-5 p-12 lg:p-16 bg-white">
-              <div className="space-y-8">
+            {/* Bars Detail */}
+            <div className="lg:col-span-5 p-6 sm:p-12 lg:p-16 bg-white">
+              <div className="space-y-6 sm:space-y-8">
                 <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
-                  <Target className="w-5 h-5 text-[#FFE600]" />
-                  <div className="text-sm font-bold tracking-widest text-gray-800">DÉTAIL PAR DIMENSION</div>
+                  <Target className="w-5 h-5 text-[#FFE600] flex-shrink-0" />
+                  <div className="text-xs sm:text-sm font-bold tracking-widest text-gray-800">DÉTAIL PAR DIMENSION</div>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {Object.entries(displayScores).map(([dim, score]) => (
-                    <div key={dim} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-gray-600">{dimensionLabels[dim]}</span>
-                        <span className="text-lg font-bold text-gray-900">
+                    <div key={dim} className="space-y-1.5 sm:space-y-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-xs sm:text-sm font-bold text-gray-600 truncate">{dimensionLabels[dim]}</span>
+                        <span className="text-sm sm:text-lg font-bold text-gray-900 flex-shrink-0">
                           {score.toFixed(1)}
                         </span>
                       </div>
@@ -193,63 +200,66 @@ export function ResultsPage() {
           </div>
         </motion.div>
 
+        {/* Charts & Insights Grid */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="mb-16 grid grid-cols-1 lg:grid-cols-12 gap-8"
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8"
         >
-          <div className="lg:col-span-7 bg-white border border-gray-200 shadow-sm p-10 h-full flex flex-col justify-center min-h-[500px]">
-            <div className="text-center mb-8">
-              <h3 className="text-2xl font-light text-gray-900 tracking-tight">Empreinte de maturité</h3>
-              <p className="text-sm text-gray-500 font-medium mt-1">Distribution des scores sur les 6 axes d'analyse</p>
+          {/* Radar Chart Container */}
+          <div className="lg:col-span-7 bg-white border border-gray-200 shadow-sm p-4 sm:p-10 flex flex-col justify-center min-h-[350px] sm:min-h-[500px]">
+            <div className="text-center mb-4 sm:mb-8">
+              <h3 className="text-lg sm:text-2xl font-light text-gray-900 tracking-tight">Empreinte de maturité</h3>
+              <p className="text-xs sm:text-sm text-gray-500 font-medium mt-1">Distribution des scores sur les 6 axes d'analyse</p>
             </div>
 
-            <div className="flex-1 w-full relative">
+            <div className="flex-1 w-full relative min-h-[250px] sm:min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={radarData} outerRadius="75%">
+                <RadarChart data={radarData} outerRadius="70%">
                   <PolarGrid stroke="#E5E7EB" />
                   <PolarAngleAxis
                     dataKey="dimension"
-                    tick={{ fill: '#374151', fontSize: 13, fontWeight: 600 }}
+                    tick={{ fill: '#374151', fontSize: window.innerWidth < 640 ? 10 : 12, fontWeight: 600 }}
                   />
-                  <PolarRadiusAxis angle={90} domain={[0, 5]} tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+                  <PolarRadiusAxis angle={90} domain={[0, 5]} tick={{ fill: '#9CA3AF', fontSize: 10 }} />
                   <Radar
                     name="Votre Score"
                     dataKey="value"
                     stroke="#111827"
-                    strokeWidth={3}
+                    strokeWidth={2}
                     fill="#FFE600"
-                    fillOpacity={0.4}
+                    fillOpacity={0.35}
                   />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="lg:col-span-5 space-y-8 flex flex-col h-full">
-            <div className="bg-white border border-gray-200 shadow-sm p-10 flex-1">
-              <div className="space-y-4 mb-8 border-b border-gray-100 pb-6">
-                <h3 className="text-2xl font-light text-gray-900 tracking-tight">
+          {/* Text Insights Card */}
+          <div className="lg:col-span-5 flex flex-col">
+            <div className="bg-white border border-gray-200 shadow-sm p-6 sm:p-10 flex-1">
+              <div className="space-y-2 sm:space-y-4 mb-6 sm:mb-8 border-b border-gray-100 pb-6">
+                <h3 className="text-lg sm:text-2xl font-light text-gray-900 tracking-tight">
                   Analyse des résultats
                 </h3>
-                <p className="text-gray-500 text-sm leading-relaxed font-medium">
+                <p className="text-gray-500 text-xs sm:text-sm leading-relaxed font-medium">
                   Synthèse de vos forces et des axes prioritaires nécessitant une intervention stratégique.
                 </p>
               </div>
 
-              <div className="space-y-8">
+              <div className="space-y-6 sm:space-y-8">
                 {insights.strengths.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs font-bold tracking-widest text-emerald-600 bg-emerald-50 px-3 py-2 border-l-2 border-emerald-500 inline-flex">
-                      <TrendingUp className="w-4 h-4" />
-                      POINTS FORTS IDENTIFIÉS
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-bold tracking-widest text-emerald-600 bg-emerald-50 px-2.5 py-1.5 border-l-2 border-emerald-500 inline-flex">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      POINTS FORTS
                     </div>
-                    <div className="space-y-3 pl-1">
+                    <div className="space-y-2.5 pl-1">
                       {insights.strengths.map((dim) => (
-                        <div key={dim} className="flex items-center justify-between text-sm">
-                          <span className="font-semibold text-gray-800">{dimensionLabels[dim]}</span>
-                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm">
+                        <div key={dim} className="flex items-center justify-between gap-4 text-xs sm:text-sm">
+                          <span className="font-semibold text-gray-800 truncate">{dimensionLabels[dim]}</span>
+                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm flex-shrink-0">
                             {displayScores[dim as keyof typeof displayScores].toFixed(1)}
                           </span>
                         </div>
@@ -259,16 +269,16 @@ export function ResultsPage() {
                 )}
 
                 {insights.weaknesses.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs font-bold tracking-widest text-red-600 bg-red-50 px-3 py-2 border-l-2 border-red-500 inline-flex">
-                      <TrendingDown className="w-4 h-4" />
-                      AXES D'AMÉLIORATION PRIORITAIRES
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-bold tracking-widest text-red-600 bg-red-50 px-2.5 py-1.5 border-l-2 border-red-500 inline-flex">
+                      <TrendingDown className="w-3.5 h-3.5" />
+                      AXES PRIORITAIRES
                     </div>
-                    <div className="space-y-3 pl-1">
+                    <div className="space-y-2.5 pl-1">
                       {insights.weaknesses.map((dim) => (
-                        <div key={dim} className="flex items-center justify-between text-sm">
-                          <span className="font-semibold text-gray-800">{dimensionLabels[dim]}</span>
-                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm">
+                        <div key={dim} className="flex items-center justify-between gap-4 text-xs sm:text-sm">
+                          <span className="font-semibold text-gray-800 truncate">{dimensionLabels[dim]}</span>
+                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm flex-shrink-0">
                             {displayScores[dim as keyof typeof displayScores].toFixed(1)}
                           </span>
                         </div>
@@ -278,7 +288,7 @@ export function ResultsPage() {
                 )}
 
                 {insights.strengths.length === 0 && insights.weaknesses.length === 0 && (
-                  <div className="p-6 bg-gray-50 border border-gray-200 text-center text-gray-500 font-medium">
+                  <div className="p-4 sm:p-6 bg-gray-50 border border-gray-200 text-center text-xs sm:text-sm text-gray-500 font-medium">
                     Vos scores sont équilibrés sur l'ensemble des dimensions de maturité.
                   </div>
                 )}
@@ -287,83 +297,87 @@ export function ResultsPage() {
           </div>
         </motion.div>
 
+        {/* Recommended Steps Block */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="border-t border-gray-200 pt-16"
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="border-t border-gray-200 pt-8 sm:pt-16"
         >
-          <div className="space-y-10">
-            <div className="flex items-center gap-4">
-              <div className="w-8 h-8 bg-black flex items-center justify-center">
+          <div className="space-y-6 sm:space-y-10">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-8 h-8 bg-black flex items-center justify-center flex-shrink-0">
                 <ChevronRight className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-3xl font-light tracking-tight text-gray-900">
+              <h3 className="text-xl sm:text-3xl font-light tracking-tight text-gray-900">
                 Prochaines étapes recommandées
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:grid-cols-1 lg:gap-6">
+              {/* Card 1 */}
               <button
                 onClick={() => navigate('/recommendations', { state: { scores: displayScores, maturity } })}
-                className="bg-white border border-gray-200 p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
+                className="bg-white border border-gray-200 p-6 sm:p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-1 h-0 bg-black group-hover:h-full transition-all duration-300" />
-                <div className="space-y-6 flex-1">
-                  <div className="p-3 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
-                    <Target className="w-6 h-6" />
+                <div className="space-y-4 sm:space-y-6 flex-1">
+                  <div className="p-2.5 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
+                    <Target className="w-5 h-5 sm:w-6 h-6" />
                   </div>
-                  <div className="space-y-3">
-                    <h4 className="text-lg font-bold text-gray-900">Plan d'action & Recommandations</h4>
-                    <p className="text-sm text-gray-500 leading-relaxed font-medium">
+                  <div className="space-y-2">
+                    <h4 className="text-base sm:text-lg font-bold text-gray-900">Plan d'action & Recommandations</h4>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-relaxed font-medium">
                       Découvrez les actions priorisées et personnalisées pour améliorer votre maturité sur chaque axe.
                     </p>
                   </div>
                 </div>
-                <div className="pt-8 flex items-center text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
-                  Consulter le plan <ChevronRight className="w-4 h-4 ml-1" />
+                <div className="pt-6 sm:pt-8 flex items-center text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
+                  Consulter le plan <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </div>
               </button>
 
+              {/* Card 2 */}
               <button
                 onClick={() => navigate('/simulation', { state: { scores: displayScores } })}
-                className="bg-white border border-gray-200 p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
+                className="bg-white border border-gray-200 p-6 sm:p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-1 h-0 bg-black group-hover:h-full transition-all duration-300" />
-                <div className="space-y-6 flex-1">
-                  <div className="p-3 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
-                    <Settings2 className="w-6 h-6" />
+                <div className="space-y-4 sm:space-y-6 flex-1">
+                  <div className="p-2.5 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
+                    <Settings2 className="w-5 h-5 sm:w-6 h-6" />
                   </div>
-                  <div className="space-y-3">
-                    <h4 className="text-lg font-bold text-gray-900">Simulateur d'impact</h4>
-                    <p className="text-sm text-gray-500 leading-relaxed font-medium">
+                  <div className="space-y-2">
+                    <h4 className="text-base sm:text-lg font-bold text-gray-900">Simulateur d'impact</h4>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-relaxed font-medium">
                       Modélisez virtuellement les gains potentiels de maturité en ajustant vos investissements stratégiques.
                     </p>
                   </div>
                 </div>
-                <div className="pt-8 flex items-center text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
-                  Lancer la simulation <ChevronRight className="w-4 h-4 ml-1" />
+                <div className="pt-6 sm:pt-8 flex items-center text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
+                  Lancer la simulation <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </div>
               </button>
 
+              {/* Card 3 */}
               <button
                 onClick={() => navigate('/dashboard')}
-                className="bg-white border border-gray-200 p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
+                className="bg-white border border-gray-200 p-6 sm:p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-1 h-0 bg-black group-hover:h-full transition-all duration-300" />
-                <div className="space-y-6 flex-1">
-                  <div className="p-3 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
-                    <BarChart3 className="w-6 h-6" />
+                <div className="space-y-4 sm:space-y-6 flex-1">
+                  <div className="p-2.5 bg-gray-50 inline-block text-gray-800 group-hover:bg-[#FFE600] group-hover:text-black transition-colors">
+                    <BarChart3 className="w-5 h-5 sm:w-6 h-6" />
                   </div>
-                  <div className="space-y-3">
-                    <h4 className="text-lg font-bold text-gray-900">Dashboard Management</h4>
-                    <p className="text-sm text-gray-500 leading-relaxed font-medium">
+                  <div className="space-y-2">
+                    <h4 className="text-base sm:text-lg font-bold text-gray-900">Dashboard Management</h4>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-relaxed font-medium">
                       Accédez à la vue consolidée, suivez l'évolution historique et comparez-vous au benchmark du marché.
                     </p>
                   </div>
                 </div>
-                <div className="pt-8 flex items-center text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
-                  Accéder au Dashboard <ChevronRight className="w-4 h-4 ml-1" />
+                <div className="pt-6 sm:pt-8 flex items-center text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 group-hover:text-black transition-colors uppercase mt-auto">
+                  Accéder au Dashboard <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </div>
               </button>
             </div>

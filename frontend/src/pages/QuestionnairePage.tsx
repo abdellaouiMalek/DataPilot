@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 const dimensions = [
   { id: 'gouvernance', name: 'Gouvernance des données', color: '#FFE600' },
   { id: 'qualite', name: 'Qualité des données', color: '#2e2e2e' },
-  { id: 'architecture', name: 'Architecture & Infrastructure Data', color: '#6b6b6b' },
+  { id: 'architecture', name: 'Architecture & Infra Data', color: '#6b6b6b' },
   { id: 'usage', name: 'Usage & Analytics', color: '#8b8b8b' },
   { id: 'culture', name: 'Culture Data & Compétences', color: '#a8a8a8' },
   { id: 'strategie', name: 'Stratégie & Vision Data', color: '#c4c4c4' },
@@ -134,19 +134,20 @@ export function QuestionnairePage() {
     currentQuestionIndex === currentQuestions.length - 1;
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
+    <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans overflow-x-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 z-50 flex-shrink-0">
-        <div className="max-w-[1400px] mx-auto px-8 py-3.5">
-          <div className="flex items-center justify-between mb-4">
+      <header className="bg-white border-b border-gray-200 z-50 flex-shrink-0 sticky top-0">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-3.5">
+          <div className="flex items-center justify-between mb-3">
             <button
               onClick={() => navigate('/')}
-              className="group flex items-center gap-2 text-sm font-semibold tracking-wide text-gray-500 hover:text-black transition-colors"
+              className="group flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-gray-500 hover:text-black transition-colors"
             >
               <div className="p-1.5 bg-gray-50 group-hover:bg-gray-100 rounded-sm transition-colors">
                 <ChevronLeft className="w-4 h-4" />
               </div>
-              QUITTER L'ÉVALUATION
+              <span className="hidden sm:inline">QUITTER L'ÉVALUATION</span>
+              <span className="sm:hidden">QUITTER</span>
             </button>
 
             <AnimatePresence mode="wait">
@@ -182,8 +183,8 @@ export function QuestionnairePage() {
             </AnimatePresence>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs font-bold tracking-widest text-gray-600">
+          <div className="space-y-1.5 mb-3.5">
+            <div className="flex justify-between text-[10px] sm:text-xs font-bold tracking-widest text-gray-600">
               <span>PROGRESSION GLOBALE</span>
               <span>{Math.round(progress)}%</span>
             </div>
@@ -197,7 +198,8 @@ export function QuestionnairePage() {
             </div>
           </div>
 
-          <div className="flex gap-2 mt-4 w-full">
+          {/* Dimensions Navigation - Horizontal Scrollable on Mobile */}
+          <div className="flex gap-2 w-full overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth">
             {dimensions.map((dim, index) => {
               const dimAnswers = answers[dim.id] || {};
               const dimQuestions = questions[dim.id as keyof typeof questions];
@@ -212,7 +214,7 @@ export function QuestionnairePage() {
                     setCurrentDimensionIndex(index);
                     setCurrentQuestionIndex(0);
                   }}
-                  className={`flex-1 min-w-0 px-3 py-2.5 border transition-all relative overflow-hidden flex flex-col justify-center ${
+                  className={`flex-shrink-0 sm:flex-1 min-w-[140px] sm:min-w-0 px-3 py-2 border transition-all relative overflow-hidden flex flex-col justify-center ${
                     isActive
                       ? 'border-black bg-black text-white shadow-md'
                       : isCompleted
@@ -220,12 +222,12 @@ export function QuestionnairePage() {
                       : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2 w-full relative z-10">
-                    <span className={`text-[10px] md:text-xs font-bold tracking-wider uppercase truncate pr-2 ${isActive ? 'text-[#FFE600]' : ''}`}>
+                  <div className="flex items-center justify-between mb-1.5 w-full relative z-10 gap-1">
+                    <span className={`text-[10px] font-bold tracking-wider uppercase truncate ${isActive ? 'text-[#FFE600]' : ''}`}>
                       {dim.name}
                     </span>
-                    {isCompleted && !isActive && <Check className="w-3.5 h-3.5 flex-shrink-0 text-green-600" />}
-                    {isActive && <Flag className="w-3.5 h-3.5 flex-shrink-0 text-white" />}
+                    {isCompleted && !isActive && <Check className="w-3 h-3 flex-shrink-0 text-green-600" />}
+                    {isActive && <Flag className="w-3 h-3 flex-shrink-0 text-white" />}
                   </div>
                   <div className="h-0.5 w-full bg-gray-800/20 relative z-10 rounded-full overflow-hidden">
                     <div
@@ -242,79 +244,86 @@ export function QuestionnairePage() {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 flex items-center overflow-hidden">
-        <div className="max-w-[900px] w-full mx-auto px-8">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`${currentDimension.id}-${currentQuestionIndex}`}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.4, ease: "easeInOut" }}
-            className="space-y-10"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-sm">
-                <LayoutDashboard className="w-3.5 h-3.5 text-[#FFE600]" />
-                <span className="text-xs font-bold tracking-widest text-gray-500 uppercase">{currentDimension.name}</span>
+      {/* Main Content */}
+      <main className="flex-1 flex items-center py-6 sm:py-12 overflow-y-auto">
+        <div className="max-w-[900px] w-full mx-auto px-4 sm:px-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${currentDimension.id}-${currentQuestionIndex}`}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+              className="space-y-6 sm:space-y-10"
+            >
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex items-center gap-2 px-2.5 py-1 bg-gray-100 rounded-sm max-w-[70%] sm:max-w-none">
+                  <LayoutDashboard className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0" />
+                  <span className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 uppercase truncate">
+                    {currentDimension.name}
+                  </span>
+                </div>
+                <div className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
+                <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 flex-shrink-0">
+                  {currentQuestionIndex + 1} / {currentQuestions.length}
+                </div>
               </div>
-              <div className="w-1 h-1 rounded-full bg-gray-300" />
-              <div className="text-xs font-bold tracking-widest text-gray-400">
-                {currentQuestionIndex + 1} / {currentQuestions.length}
+
+              <div className="space-y-2">
+                <div className="w-8 h-0.5 bg-[#FFE600]" />
+                <h2 className="text-xl sm:text-2xl md:text-[2.6rem] font-light leading-snug text-gray-900 tracking-tight">
+                  {currentQuestion}
+                </h2>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <div className="w-8 h-0.5 bg-[#FFE600]" />
-              <h2 className="text-3xl md:text-[2.6rem] font-light leading-snug text-gray-900 tracking-tight">
-                {currentQuestion}
-              </h2>
-            </div>
+              {/* Likert Options Grid/List */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2 sm:gap-3">
+                {likertOptions.map((option) => {
+                  const isSelected = answers[currentDimension.id]?.[currentQuestionIndex] === option.value;
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
-              {likertOptions.map((option) => {
-                const isSelected = answers[currentDimension.id]?.[currentQuestionIndex] === option.value;
-
-                return (
-                  <motion.button
-                    key={option.value}
-                    onClick={() => handleAnswer(option.value)}
-                    whileHover={{ y: -4 }}
-                    whileTap={{ scale: 0.96 }}
-                    className={`flex flex-col items-center justify-center gap-4 px-4 py-8 border-2 transition-all ${
-                      isSelected
-                        ? 'border-black bg-black text-white'
-                        : 'border-gray-200 bg-white hover:border-gray-400 text-gray-700'
-                    }`}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
-                        isSelected ? 'border-[#FFE600] bg-[#FFE600]' : 'border-gray-300'
+                  return (
+                    <motion.button
+                      key={option.value}
+                      onClick={() => handleAnswer(option.value)}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      className={`flex flex-row md:flex-col items-center justify-start md:justify-center gap-4 px-4 py-4 md:py-8 border-2 transition-all w-full text-left md:text-center ${
+                        isSelected
+                          ? 'border-black bg-black text-white'
+                          : 'border-gray-200 bg-white hover:border-gray-400 text-gray-700'
                       }`}
                     >
-                      {isSelected
-                        ? <Check className="w-5 h-5 text-black" />
-                        : <span className="text-sm font-bold text-gray-400">{option.value}</span>
-                      }
-                    </div>
-                    <div className="text-center">
-                      <div className="text-sm font-bold tracking-wide">{option.label}</div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </motion.div>
-        </AnimatePresence>
+                      <div
+                        className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${
+                          isSelected ? 'border-[#FFE600] bg-[#FFE600]' : 'border-gray-300'
+                        }`}
+                      >
+                        {isSelected
+                          ? <Check className="w-4 h-4 md:w-5 md:h-5 text-black" />
+                          : <span className="text-xs md:text-sm font-bold text-gray-400">{option.value}</span>
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold tracking-wide truncate md:whitespace-normal">
+                          {option.label}
+                        </div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
 
-      <footer className="bg-white border-t border-gray-200 z-50 flex-shrink-0">
-        <div className="max-w-[1400px] mx-auto px-8 py-3 flex items-center justify-between">
+      {/* Footer Navigation */}
+      <footer className="bg-white border-t border-gray-200 z-50 flex-shrink-0 sticky bottom-0">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
           <button
             onClick={goPrevious}
             disabled={currentDimensionIndex === 0 && currentQuestionIndex === 0}
-            className="group px-4 py-2 border border-gray-200 text-black text-sm font-semibold tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-2"
+            className="group px-3 sm:px-4 py-2 border border-gray-200 text-black text-xs sm:text-sm font-semibold tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-2"
           >
             <ChevronLeft className="w-4 h-4 text-gray-400 group-hover:text-black" />
             PRÉCÉDENT
@@ -326,20 +335,20 @@ export function QuestionnairePage() {
               disabled={!canGoNext}
               whileHover={canGoNext ? { scale: 1.02 } : {}}
               whileTap={canGoNext ? { scale: 0.98 } : {}}
-              className={`px-6 py-2 text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
+              className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-bold tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${
                 canGoNext
                   ? 'bg-[#FFE600] hover:bg-[#e6cf00] text-black border border-[#e6cf00] shadow-md'
                   : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
               }`}
             >
-              VOIR LES RÉSULTATS
+              FINIR
               <ChevronRight className="w-4 h-4" />
             </motion.button>
           ) : (
             <button
               onClick={goNext}
               disabled={!canGoNext}
-              className={`px-6 py-2 text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
+              className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
                 canGoNext
                   ? 'bg-black text-white hover:bg-gray-900 shadow-md'
                   : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'

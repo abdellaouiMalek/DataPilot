@@ -7,7 +7,6 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/datapilot"
 )
 
 engine = create_async_engine(DATABASE_URL, echo=False)
@@ -26,3 +25,5 @@ async def get_db() -> AsyncSession:
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+from app.models.User import User
