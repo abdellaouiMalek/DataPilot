@@ -9,7 +9,6 @@ import {
   Loader2, 
   AlertCircle, 
   ShieldAlert,
-  HelpCircle,
 } from 'lucide-react';
 import EyLogo from '../assets/EY_logo2.png';
 import ClairEyLogo from '../assets/ey-logo.png'

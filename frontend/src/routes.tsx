@@ -15,4 +15,6 @@ export const router = createBrowserRouter([
   { path: '/recommendations', Component: RecommendationsPage },
   { path: '/simulation', Component: SimulationPage },
   { path: '/login', Component: LoginPage }
-]);
+], {
+  basename: import.meta.env.BASE_URL,
+});

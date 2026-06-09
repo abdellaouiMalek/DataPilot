@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { BarChart3, Building2, Users, ChevronRight, TrendingUp, ShieldCheck } from 'lucide-react';
+import { BarChart3, ChevronRight, ShieldCheck } from 'lucide-react';
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 import EyLogo from '../assets/EY_logo2.png';
