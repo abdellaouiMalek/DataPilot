@@ -1,15 +1,23 @@
-import psycopg2
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from app.db.database import Base
 
-SYNC_URL = "postgresql+psycopg2://postgres:root@127.0.0.1:5432/datapilot"
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL est manquant dans le fichier .env")
+
+SYNC_URL = DATABASE_URL.replace("+asyncpg", "+psycopg2")
 
 def test_and_run():
     print("Vérification de la connexion à PostgreSQL...")
+    engine = create_engine(SYNC_URL)
     try:
-        # Tentative de connexion brute pour intercepter l'erreur Windows
-        conn = psycopg2.connect("host=127.0.0.1 user=postgres password=root dbname=datapilot")
-        conn.close()
+        # Tentative de connexion pour intercepter l'erreur Windows
+        with engine.connect():
+            pass
     except Exception as e:
         print("\n❌ ERREUR DE CONNEXION POSTGRESQL :")
         try:
@@ -18,11 +26,10 @@ def test_and_run():
             print(error_msg)
         except:
             print(e)
-        print("\nVérifie : 1. Si la base 'datapilot' existe. 2. Si le mot de passe est bien 'root'.")
+        print("\nVérifie : 1. Si la base 'datapilot' existe. 2. Si le DATABASE_URL du .env est correct.")
         return
 
     print("Connexion réussie ! Création des tables...")
-    engine = create_engine(SYNC_URL)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     print("🚀 Tables créées avec succès !")

@@ -8,6 +8,7 @@ keycloak
     onLoad: "login-required",
     pkceMethod: "S256",
     redirectUri: window.location.origin + import.meta.env.BASE_URL,
+    checkLoginIframe: false,
   })
   .then(() => {
     ReactDOM.createRoot(document.getElementById("root")!).render(
