@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.db.database import get_db, init_db
 from app.routers.UserRouter import router as user_router
+from app.core.cors import setup_cors
 
 
 
@@ -139,6 +140,8 @@ app = FastAPI(
     description="Backend de l'application DataPilot",
     version="1.0.0"
 )
+
+setup_cors(app)
 
 # Inclusion du router d'utilisateurs
 app.include_router(user_router)
