@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -13,11 +12,9 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { Filter, TrendingUp, Users, Building2, Calendar, ChevronDown, ChevronRight, Download, BarChart3 } from 'lucide-react';
-import Select from 'react-select';
-import type { StylesConfig } from 'react-select';
-import eyLogo from '../assets/EY_logo2.png';
+import { TrendingUp, ChevronRight, Download, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Navbar } from '../components/Navbar';
 
 const mockHistoricalData = [
   { month: 'Jan', gouvernance: 2.8, qualite: 3.2, architecture: 2.5, usage: 3.0, culture: 2.9, strategie: 3.1 },
@@ -44,166 +41,12 @@ const kpis = [
   { label: 'Taux de progression', value: '15%', change: '+3%', trend: 'up' },
 ];
 
-const selectStyles: StylesConfig<any, false> = {
-  control: (base, state) => ({
-    ...base,
-    borderRadius: 0,
-    minHeight: '44px',
-    boxShadow: 'none',
-    borderColor: state.isFocused ? '#000' : '#e5e7eb',
-    '&:hover': {
-      borderColor: state.isFocused ? '#000' : '#d1d5db'
-    },
-    backgroundColor: '#fff',
-    cursor: 'pointer'
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isSelected ? '#FFE600' : state.isFocused ? '#f3f4f6' : 'white',
-    color: state.isSelected ? 'black' : '#374151',
-    fontWeight: state.isSelected ? 600 : 400,
-    '&:active': { backgroundColor: '#FFE600' },
-    cursor: 'pointer',
-    padding: '10px 14px',
-    fontSize: '14px'
-  }),
-  singleValue: (base) => ({
-    ...base,
-    color: '#111827',
-    fontWeight: 500,
-    fontSize: '14px'
-  }),
-  menu: (base) => ({
-    ...base,
-    borderRadius: 0,
-    marginTop: '4px',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #e5e7eb',
-    zIndex: 50
-  })
-};
-
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [selectedPeriod, setSelectedPeriod] = useState('6M');
-  const [selectedEntity, setSelectedEntity] = useState('Tous');
-  const [selectedDept, setSelectedDept] = useState('Tous les départements');
-  const [showFilters, setShowFilters] = useState(false);
-
-  const periods = ['1M', '3M', '6M', '1A', 'Tout'];
-  const entities = ['Tous', 'BIAT', 'Attijari Bank', 'Amen Bank', 'UIB', 'STB', 'BNA', 'Banque de Tunisie'];
-  const depts = ["Tous les départements", "Systèmes d'Information", "Gestion des Risques", "Conformité & Audit", "Opérations Bancaires", "Finance & Comptabilité"];
-
-  const entityOptions = entities.map(e => ({ value: e, label: e }));
-  const deptOptions = depts.map(d => ({ value: d, label: d }));
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans antialiased overflow-x-hidden">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-4 sm:py-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-14 sm:h-14 object-contain flex-shrink-0" />
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-900 truncate">MANAGEMENT DASHBOARD</span>
-                <span className="text-[10px] sm:text-xs text-gray-500 tracking-wider truncate">Vue stratégique consolidée</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`p-2.5 sm:px-5 sm:py-2.5 border transition-all flex items-center gap-2 text-sm font-bold tracking-wide ${
-                  showFilters
-                    ? 'border-black bg-black text-white'
-                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                aria-label="Filtres"
-              >
-                <Filter className="w-4 h-4" />
-                <span className="hidden sm:inline">FILTRES</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-              </button>
-              <button
-                onClick={() => navigate('/')}
-                className="px-3 py-2.5 sm:px-5 sm:py-2.5 bg-[#FFE600] text-black font-bold text-xs sm:text-wide tracking-wide hover:bg-[#e6cf00] border border-[#e6cf00] transition-colors shadow-sm"
-              >
-                <span className="sm:hidden">NOUVEAU</span>
-                <span className="hidden sm:inline">NOUVELLE ÉVALUATION</span>
-              </button>
-            </div>
-          </div>
-
-          <motion.div
-            initial={false}
-            animate={{ height: showFilters ? 'auto' : 0, opacity: showFilters ? 1 : 0 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:grid-cols-1 lg:gap-8 pb-2">
-                {/* Période */}
-                <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-[#FFE600]" />
-                    PÉRIODE D'ANALYSE
-                  </label>
-                  <div className="flex gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
-                    {periods.map((period) => (
-                      <button
-                        key={period}
-                        onClick={() => setSelectedPeriod(period)}
-                        className={`flex-1 min-w-[50px] px-2 py-2 sm:py-2.5 border text-xs sm:text-sm font-semibold transition-all ${
-                          selectedPeriod === period
-                            ? 'border-black bg-black text-white shadow-md'
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        {period}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Établissement */}
-                <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-[#FFE600]" />
-                    ÉTABLISSEMENT
-                  </label>
-                  <div className="relative z-50">
-                    <Select
-                      options={entityOptions}
-                      value={entityOptions.find(o => o.value === selectedEntity) || null}
-                      onChange={(option) => setSelectedEntity(option?.value || 'Tous')}
-                      styles={selectStyles}
-                      isSearchable
-                      components={{ IndicatorSeparator: () => null }}
-                    />
-                  </div>
-                </div>
-
-                {/* Département */}
-                <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-[#FFE600]" />
-                    DÉPARTEMENT
-                  </label>
-                  <div className="relative z-40">
-                    <Select
-                      options={deptOptions}
-                      value={deptOptions.find(o => o.value === selectedDept) || null}
-                      onChange={(option) => setSelectedDept(option?.value || 'Tous les départements')}
-                      styles={selectStyles}
-                      isSearchable
-                      components={{ IndicatorSeparator: () => null }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Main Grid */}
       <main className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-12 space-y-6 sm:space-y-12">

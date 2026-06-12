@@ -7,7 +7,6 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.db.database import get_db, init_db
-from app.routers.UserRouter import router as user_router
 from app.core.cors import setup_cors
 
 
@@ -142,9 +141,6 @@ app = FastAPI(
 )
 
 setup_cors(app)
-
-# Inclusion du router d'utilisateurs
-app.include_router(user_router)
 
 @app.get("/")
 def read_root():

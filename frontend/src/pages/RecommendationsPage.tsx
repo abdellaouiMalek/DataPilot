@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
+import { Navbar } from '../components/Navbar';
 import {
   Zap,
   Building,
@@ -96,7 +96,6 @@ export function RecommendationsPage() {
   const quickWins = activeRecommendations.filter((r) => r.priority === 'quick-win');
   const structurants = activeRecommendations.filter((r) => r.priority === 'structurant');
 
-  const pageSubtitle = isSimulation ? "Généré sur mesure selon vos objectifs de simulation." : "Plan d'action priorisé";
   const pageDescription = isSimulation
     ? `Ces ${activeRecommendations.length} recommandations sont générées dynamiquement pour vous aider à atteindre la cible que vous venez de simuler.`
     : `${activeRecommendations.length} recommandations priorisées pour accélérer votre transformation et générer de la valeur business mesurable.`;
@@ -109,26 +108,7 @@ export function RecommendationsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-black/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
-              <div>
-                <div className="text-xs sm:text-sm tracking-wide text-black/60 font-medium">RECOMMANDATIONS</div>
-                <div className="text-[10px] sm:text-xs text-black/40">{pageSubtitle}</div>
-              </div>
-            </div>
-            <button
-              onClick={() => isSimulation ? navigate('/simulation', { state: { scores: currentScores } }) : navigate('/dashboard')}
-              className="w-full sm:w-auto text-center px-4 py-2.5 border border-black/10 text-xs sm:text-sm text-black hover:bg-black/5 transition-colors"
-            >
-              {isSimulation ? "Retour au simulateur" : "Retour au dashboard"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <Navbar />
 
       {/* Main Content Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-16">

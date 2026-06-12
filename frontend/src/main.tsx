@@ -11,6 +11,10 @@ keycloak
     checkLoginIframe: false,
   })
   .then(() => {
+    keycloak.onTokenExpired = () => {
+      keycloak.updateToken(30).catch(() => keycloak.login());
+    };
+
     ReactDOM.createRoot(document.getElementById("root")!).render(
       <App />
     );

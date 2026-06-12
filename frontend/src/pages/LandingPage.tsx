@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { BarChart3, ChevronRight, ShieldCheck } from 'lucide-react';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
-import EyLogo from '../assets/EY_logo2.png';
+import { Navbar } from '../components/Navbar';
 
 const banks = [
   'Banque de Tunisie (BT)',
@@ -121,43 +121,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans lg:h-screen lg:overflow-hidden text-slate-900">
       {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="h-16 border-b border-gray-200 px-6 md:px-8 flex items-center justify-between flex-shrink-0 bg-white z-10"
-      >
-        <div className="flex items-center gap-4">
-          <img 
-            src={EyLogo} 
-            alt="EY Logo" 
-            className="h-7 w-auto object-contain select-none pointer-events-none" 
-            />
-          <div className="flex flex-col border-l border-gray-300 pl-4">
-            <span className="text-xs font-bold tracking-[0.2em] text-gray-900 leading-none">
-              DATA MATURITY
-            </span>
-            <span className="text-[10px] text-gray-500 tracking-widest mt-1">
-              ASSESSMENT PLATFORM
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            System Status: Active
-          </div>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-sm font-bold text-gray-700 hover:text-black transition-colors outline-none cursor-pointer"
-          >
-            <span className="bg-gray-100 p-1.5 rounded-sm">
-              <BarChart3 className="w-4 h-4 text-black" />
-            </span>
-            DASHBOARD
-          </button>
-        </div>
-      </motion.header>
+      <Navbar />
 
       {/* Main Container - Flex Row on Large Screens, Stacking Column on Mobile */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">

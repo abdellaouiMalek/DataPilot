@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Check, LayoutDashboard, Flag } from 'lucide-react';
 import { toast } from 'sonner';
+import { Navbar } from '../components/Navbar';
 
 const dimensions = [
   { id: 'gouvernance', name: 'Gouvernance des données', color: '#FFE600' },
@@ -68,26 +69,10 @@ export function QuestionnairePage() {
   const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (Object.keys(answers).length === 0) return;
-    setSaveStatus('saving');
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => setSaveStatus('saved'), 900);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [answers]);
 
   const currentDimension = dimensions[currentDimensionIndex];
   const currentQuestions = questions[currentDimension.id as keyof typeof questions];
   const currentQuestion = currentQuestions[currentQuestionIndex];
-  const totalQuestions = Object.values(questions).flat().length;
-  const answeredQuestions = Object.values(answers).reduce(
-    (acc, dim) => acc + Object.keys(dim).length,
-    0
-  );
-  const progress = (answeredQuestions / totalQuestions) * 100;
 
   const handleAnswer = (value: number) => {
     setAnswers((prev) => ({
@@ -135,69 +120,10 @@ export function QuestionnairePage() {
 
   return (
     <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans overflow-x-hidden">
-      {/* Header */}
+      <Navbar />
+      {/* Section Navigation */}
       <header className="bg-white border-b border-gray-200 z-50 flex-shrink-0 sticky top-0">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-3.5">
-          <div className="flex items-center justify-between mb-3">
-            <button
-              onClick={() => navigate('/')}
-              className="group flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-gray-500 hover:text-black transition-colors"
-            >
-              <div className="p-1.5 bg-gray-50 group-hover:bg-gray-100 rounded-sm transition-colors">
-                <ChevronLeft className="w-4 h-4" />
-              </div>
-              <span className="hidden sm:inline">QUITTER L'ÉVALUATION</span>
-              <span className="sm:hidden">QUITTER</span>
-            </button>
-
-            <AnimatePresence mode="wait">
-              {saveStatus === 'saving' && (
-                <motion.div
-                  key="saving"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-2 text-xs font-medium text-gray-400 tracking-wide"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFE600] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FFE600]" />
-                  </span>
-                  Sauvegarde...
-                </motion.div>
-              )}
-              {saveStatus === 'saved' && (
-                <motion.div
-                  key="saved"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-2 text-xs font-medium text-gray-400 tracking-wide"
-                >
-                  <span className="h-2 w-2 rounded-full bg-green-400 inline-flex" />
-                  Sauvegardé
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div className="space-y-1.5 mb-3.5">
-            <div className="flex justify-between text-[10px] sm:text-xs font-bold tracking-widest text-gray-600">
-              <span>PROGRESSION GLOBALE</span>
-              <span>{Math.round(progress)}%</span>
-            </div>
-            <div className="h-1.5 bg-gray-200 relative overflow-hidden rounded-full">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-                className="absolute inset-y-0 left-0 bg-[#FFE600]"
-              />
-            </div>
-          </div>
-
           {/* Dimensions Navigation - Horizontal Scrollable on Mobile */}
           <div className="flex gap-2 w-full overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth">
             {dimensions.map((dim, index) => {

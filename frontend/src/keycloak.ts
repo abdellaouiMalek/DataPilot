@@ -6,4 +6,10 @@ const keycloak = new Keycloak({
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
 });
 
+
+export const logout = () =>
+  keycloak.logout({
+    redirectUri: window.location.origin + import.meta.env.BASE_URL,
+  });
+
 export default keycloak;

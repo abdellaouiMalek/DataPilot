@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
+import { Navbar } from '../components/Navbar';
 import {
   BarChart,
   Bar,
@@ -14,7 +14,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { TrendingUp, DollarSign, Clock, Shield, RotateCcw, Play } from 'lucide-react';
+import { TrendingUp, DollarSign, Clock, Shield, Play } from 'lucide-react';
 
 interface Scores {
   gouvernance: number;
@@ -98,48 +98,9 @@ export function SimulationPage() {
     { month: 'M12', score: targetAvg },
   ];
 
-  const handleReset = () => {
-    setTargetScores({
-      gouvernance: 4.0,
-      qualite: 4.2,
-      architecture: 3.8,
-      usage: 4.0,
-      culture: 3.9,
-      strategie: 4.1,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-black/5">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
-              <div>
-                <div className="text-xs sm:text-sm tracking-wide text-black/60 font-medium">MOTEUR DE SIMULATION</div>
-                <div className="text-[10px] sm:text-xs text-black/40">Modélisation d'impact what-if</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-              <button
-                onClick={handleReset}
-                className="flex-1 sm:flex-initial justify-center px-3 sm:px-4 py-2 border border-black/10 text-xs sm:text-sm text-black hover:bg-black/5 transition-colors flex items-center gap-2"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Réinitialiser
-              </button>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex-1 sm:flex-initial justify-center px-3 sm:px-4 py-2 bg-black text-white hover:bg-black/90 text-xs sm:text-sm transition-colors"
-              >
-                Retour
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Navbar />
 
       {/* Main Content */}
       <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8 sm:py-16">

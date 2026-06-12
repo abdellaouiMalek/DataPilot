@@ -1,9 +1,8 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import eyLogo from '../assets/EY_logo2.png';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, ChevronRight, Download, Share2, Target, BarChart3, Settings2, Check } from 'lucide-react';
-import { toast } from 'sonner';
+import { TrendingUp, TrendingDown, ChevronRight, Target, BarChart3, Settings2 } from 'lucide-react';
+import { Navbar } from '../components/Navbar';
 
 const maturityLevels = [
   { min: 0, max: 1.9, label: 'Initial', color: '#f87171', description: 'Non-conformité BCT probable. Urgence absolue.', bg: 'bg-red-400', text: 'text-red-900' },
@@ -16,7 +15,7 @@ const maturityLevels = [
 export function ResultsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { answers = {}, profile = {} } = location.state || {};
+  const { answers = {} } = location.state || {};
 
   const calculateDimensionScore = (dimensionId: string) => {
     const dimAnswers = answers[dimensionId] || {};
@@ -81,40 +80,7 @@ export function ResultsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans antialiased overflow-x-hidden">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-4 sm:py-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-              <img src={eyLogo} alt="EY" className="w-10 h-10 sm:w-14 sm:h-14 object-contain cursor-pointer flex-shrink-0" onClick={() => navigate('/')} />
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-900 truncate">RÉSULTATS D'ÉVALUATION</span>
-                <span className="text-[10px] sm:text-xs text-gray-500 tracking-wider truncate">
-                  {profile.bank || 'Analyse détaillée'}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <button
-                onClick={() => toast('Lien copié dans le presse-papiers', { icon: <Check className="w-4 h-4 text-green-500" /> })}
-                className="p-2.5 sm:px-5 sm:py-2.5 border border-gray-200 text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
-                aria-label="Partager"
-              >
-                <Share2 className="w-4 h-4 text-gray-500" />
-                <span className="hidden sm:inline">PARTAGER</span>
-              </button>
-              <button
-                onClick={() => toast.success('Génération du rapport PDF...', { description: 'Le téléchargement commencera sous peu.' })}
-                className="p-2.5 sm:px-5 sm:py-2.5 bg-black text-white hover:bg-gray-900 shadow-md transition-all flex items-center gap-2 text-sm font-bold tracking-wide"
-                aria-label="Télécharger PDF"
-              >
-                <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">TÉLÉCHARGER PDF</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Main Content */}
       <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8 sm:py-16 space-y-8 sm:space-y-16">

@@ -28,9 +28,11 @@ node_modules/
 frontend/dist/
 frontend/dist-ssr/
 *.local
+*.tsbuildinfo
 # Logs
 logs
 *.log
+*.err
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -47,3 +49,5 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+.claude/
