@@ -1,6 +1,6 @@
 import { LogOut } from 'lucide-react';
 import eyLogo from '../assets/EY_logo2.png';
-import { logout } from '../keycloak';
+import { logout } from '../lib/keycloak';
 
 /** Barre de navigation commune : logo + slogan + bouton de déconnexion. */
 export function Navbar() {

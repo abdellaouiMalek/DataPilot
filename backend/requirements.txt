@@ -7,3 +7,5 @@ alembic
 python-dotenv
 pydantic[email]
 pydantic-settings
+python-jose[cryptography]
+requests
