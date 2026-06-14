@@ -1,17 +1,16 @@
-import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Check, LayoutDashboard, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import { Navbar } from '../components/Navbar';
 
 const dimensions = [
-  { id: 'gouvernance', name: 'Gouvernance des données', color: '#FFE600' },
-  { id: 'qualite', name: 'Qualité des données', color: '#2e2e2e' },
-  { id: 'architecture', name: 'Architecture & Infra Data', color: '#6b6b6b' },
-  { id: 'usage', name: 'Usage & Analytics', color: '#8b8b8b' },
-  { id: 'culture', name: 'Culture Data & Compétences', color: '#a8a8a8' },
-  { id: 'strategie', name: 'Stratégie & Vision Data', color: '#c4c4c4' },
+  { id: 'gouvernance', name: 'Gouvernance des données', shortName: 'Gouvernance', code: '01', description: 'Cadre de responsabilités, politiques et conformité réglementaire autour de la donnée.' },
+  { id: 'qualite', name: 'Qualité des données', shortName: 'Qualité', code: '02', description: 'Exactitude, cohérence et disponibilité des données à travers les systèmes.' },
+  { id: 'architecture', name: 'Architecture & Infrastructure', shortName: 'Architecture', code: '03', description: 'Centralisation, intégration et sécurité des plateformes et pipelines data.' },
+  { id: 'usage', name: 'Usage & Analytics', shortName: 'Usage', code: '04', description: 'Exploitation analytique et impact réel de la donnée dans la prise de décision.' },
+  { id: 'culture', name: 'Culture Data & Compétences', shortName: 'Culture', code: '05', description: 'Maturité humaine, adoption des outils et collaboration métiers-IT autour de la data.' },
+  { id: 'strategie', name: 'Stratégie & Vision Data', shortName: 'Stratégie', code: '06', description: 'Alignement de la vision data avec les objectifs business et mesure du ROI.' },
 ];
 
 const questions = {
@@ -30,7 +29,7 @@ const questions = {
   architecture: [
     'Avez-vous centralisé vos données (Data Lake, DWH, MDM) ?',
     'Les systèmes communiquent-ils de manière fluide via APIs et services ?',
-    "Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?",
+    'Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?',
     "La sécurité et le contrôle d'accès (RBAC, chiffrement) sont-ils en place ?",
   ],
   usage: [
@@ -40,25 +39,25 @@ const questions = {
     "Avez-vous des cas d'usage métiers opérationnels (risque, marketing, finance) ?",
   ],
   culture: [
-    'Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?',
+    "Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?",
     'Existe-t-il des programmes de formation et montée en compétences data ?',
     'Les outils data sont-ils adoptés et utilisés par les équipes ?',
     'Y a-t-il une bonne collaboration entre métiers et IT sur les sujets data ?',
   ],
   strategie: [
     'Avez-vous une vision et roadmap data claire et partagée ?',
-    'La stratégie data est-elle alignée avec les objectifs business de la banque ?',
+    "La stratégie data est-elle alignée avec les objectifs business de la banque ?",
     'Les initiatives data sont-elles priorisées de manière structurée ?',
     "Mesurez-vous le ROI et l'impact business des projets data ?",
   ],
 };
 
 const likertOptions = [
-  { value: 1, label: 'Pas du tout' },
-  { value: 2, label: 'Faiblement' },
-  { value: 3, label: 'Partiellement' },
-  { value: 4, label: 'Largement' },
-  { value: 5, label: 'Totalement' },
+  { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
+  { value: 2, label: 'Faiblement', sublabel: 'Embryonnaire', color: '#f97316', bg: '#fff7ed', dot: '●●' },
+  { value: 3, label: 'Partiellement', sublabel: 'En cours', color: '#eab308', bg: '#fefce8', dot: '●●●' },
+  { value: 4, label: 'Largement', sublabel: 'Avancé', color: '#22c55e', bg: '#f0fdf4', dot: '●●●●' },
+  { value: 5, label: 'Totalement', sublabel: 'Optimisé', color: '#3b82f6', bg: '#eff6ff', dot: '●●●●●' },
 ];
 
 export function QuestionnairePage() {
@@ -67,225 +66,414 @@ export function QuestionnairePage() {
   const profileData = location.state || {};
 
   const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
+  const [completing, setCompleting] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [justAnswered, setJustAnswered] = useState<number | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => setLastSaved(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const currentDimension = dimensions[currentDimensionIndex];
   const currentQuestions = questions[currentDimension.id as keyof typeof questions];
-  const currentQuestion = currentQuestions[currentQuestionIndex];
+  const currentAnswers = answers[currentDimension.id] || {};
+  const dimAnsweredCount = Object.keys(currentAnswers).length;
+  const dimCompleted = dimAnsweredCount === currentQuestions.length;
+  const isLastDimension = currentDimensionIndex === dimensions.length - 1;
 
-  const handleAnswer = (value: number) => {
+  const totalQuestions = Object.values(questions).flat().length;
+  const answeredTotal = Object.values(answers).reduce((acc, dim) => acc + Object.keys(dim).length, 0);
+  const globalProgress = (answeredTotal / totalQuestions) * 100;
+
+  const getDimProgress = (id: string) => {
+    const dimAnswers = answers[id] || {};
+    const dimQs = questions[id as keyof typeof questions];
+    return (Object.keys(dimAnswers).length / dimQs.length) * 100;
+  };
+
+  const handleAnswer = (questionIndex: number, value: number) => {
     setAnswers((prev) => ({
       ...prev,
-      [currentDimension.id]: {
-        ...(prev[currentDimension.id] || {}),
-        [currentQuestionIndex]: value,
-      },
+      [currentDimension.id]: { ...(prev[currentDimension.id] || {}), [questionIndex]: value },
     }));
+    setJustAnswered(questionIndex);
+    setTimeout(() => setJustAnswered(null), 600);
   };
 
-  const goNext = () => {
-    if (currentQuestionIndex < currentQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else if (currentDimensionIndex < dimensions.length - 1) {
-      setCurrentDimensionIndex(currentDimensionIndex + 1);
-      setCurrentQuestionIndex(0);
+  const handleNext = () => {
+    if (isLastDimension) {
+      setCompleting(true);
+      toast.success('Évaluation terminée !', { description: 'Génération de votre profil de maturité en cours...', duration: 3000 });
+      setTimeout(() => navigate('/results', { state: { answers, profile: profileData } }), 1000);
+    } else {
+      setCurrentDimensionIndex((i) => i + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
-
-  const goPrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-    } else if (currentDimensionIndex > 0) {
-      setCurrentDimensionIndex(currentDimensionIndex - 1);
-      const prevDimension = dimensions[currentDimensionIndex - 1];
-      setCurrentQuestionIndex(questions[prevDimension.id as keyof typeof questions].length - 1);
-    }
-  };
-
-  const handleSubmit = () => {
-    toast.success('Évaluation terminée !', {
-      description: 'Génération de votre profil de maturité en cours...',
-      duration: 3000,
-    });
-    setTimeout(() => {
-      navigate('/results', { state: { answers, profile: profileData } });
-    }, 800);
-  };
-
-  const canGoNext = answers[currentDimension.id]?.[currentQuestionIndex] !== undefined;
-  const isLastQuestion =
-    currentDimensionIndex === dimensions.length - 1 &&
-    currentQuestionIndex === currentQuestions.length - 1;
 
   return (
-    <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans overflow-x-hidden">
-      <Navbar />
-      {/* Section Navigation */}
-      <header className="bg-white border-b border-gray-200 z-50 flex-shrink-0 sticky top-0">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-3.5">
-          {/* Dimensions Navigation - Horizontal Scrollable on Mobile */}
-          <div className="flex gap-2 w-full overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth">
+    <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
+
+      {/* ── HEADER ───────────────────────────────────────────────── */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-50" style={{ boxShadow: '0 1px 12px rgba(0,0,0,0.06)' }}>
+        <div className="max-w-[1400px] mx-auto px-8 py-5">
+
+          {/* Top row */}
+          <div className="flex items-center justify-between mb-5">
+            <button
+              onClick={() => navigate('/')}
+              className="group flex items-center gap-2.5 text-sm font-semibold text-gray-400 hover:text-gray-900 transition-colors duration-200"
+            >
+              <div className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center group-hover:border-gray-400 group-hover:bg-gray-50 transition-all">
+                <ChevronLeft className="w-4 h-4" />
+              </div>
+              Quitter l'évaluation
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <Save className="w-3.5 h-3.5" />
+                {lastSaved ? `Sauvegardé à ${lastSaved.toLocaleTimeString()}` : 'Sauvegarde automatique'}
+              </div>
+              <div className="w-px h-4 bg-gray-200" />
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+                <span className="text-gray-900">{answeredTotal}</span>
+                <span>/ {totalQuestions} questions</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="flex items-center gap-4 mb-6">
+            <span className="text-xs font-semibold text-gray-400 shrink-0 tracking-wide">PROGRESSION</span>
+            <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${globalProgress}%` }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+                className="h-full rounded-full"
+                style={{ background: 'linear-gradient(90deg, #FFE600 0%, #f5c800 100%)' }}
+              />
+            </div>
+            <span className="text-xs font-bold text-gray-700 shrink-0">{Math.round(globalProgress)}%</span>
+          </div>
+
+          {/* Dimension tabs */}
+          <div className="flex gap-2">
             {dimensions.map((dim, index) => {
-              const dimAnswers = answers[dim.id] || {};
-              const dimQuestions = questions[dim.id as keyof typeof questions];
-              const dimProgress = (Object.keys(dimAnswers).length / dimQuestions.length) * 100;
+              const progress = getDimProgress(dim.id);
               const isActive = index === currentDimensionIndex;
-              const isCompleted = dimProgress === 100;
+              const isCompleted = progress === 100;
+              const isAccessible = index <= currentDimensionIndex || isCompleted;
 
               return (
-                <button
+                <motion.button
                   key={dim.id}
-                  onClick={() => {
-                    setCurrentDimensionIndex(index);
-                    setCurrentQuestionIndex(0);
-                  }}
-                  className={`flex-shrink-0 sm:flex-1 min-w-[140px] sm:min-w-0 px-3 py-2 border transition-all relative overflow-hidden flex flex-col justify-center ${
+                  onClick={() => isAccessible && setCurrentDimensionIndex(index)}
+                  disabled={!isAccessible}
+                  whileHover={isAccessible ? { y: -1 } : {}}
+                  className={`flex-1 min-w-0 px-3 py-3.5 rounded-xl border transition-all duration-200 relative overflow-hidden flex flex-col gap-2 text-left ${
                     isActive
-                      ? 'border-black bg-black text-white shadow-md'
+                      ? 'border-gray-900 bg-gray-900 text-white shadow-lg'
                       : isCompleted
-                      ? 'border-gray-200 bg-white text-black hover:border-gray-300'
-                      : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      ? 'border-green-200 bg-green-50 text-gray-700 hover:border-green-300 cursor-pointer'
+                      : 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed opacity-60'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5 w-full relative z-10 gap-1">
-                    <span className={`text-[10px] font-bold tracking-wider uppercase truncate ${isActive ? 'text-[#FFE600]' : ''}`}>
-                      {dim.name}
-                    </span>
-                    {isCompleted && !isActive && <Check className="w-3 h-3 flex-shrink-0 text-green-600" />}
-                    {isActive && <Flag className="w-3 h-3 flex-shrink-0 text-white" />}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black tracking-widest" style={{ color: isActive ? '#FFE600' : isCompleted ? '#22c55e' : '#9ca3af' }}>{dim.code}</span>
+                    {isCompleted && !isActive && (
+                      <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-white" />
+                      </div>
+                    )}
+                    {isActive && <Flag className="w-3.5 h-3.5 text-[#FFE600]" />}
                   </div>
-                  <div className="h-0.5 w-full bg-gray-800/20 relative z-10 rounded-full overflow-hidden">
-                    <div
-                      style={{ width: `${dimProgress}%` }}
-                      className={`h-full transition-all duration-300 ${
-                        isActive ? 'bg-[#FFE600]' : 'bg-green-500'
-                      }`}
+                  <span className={`text-[10px] font-bold tracking-wide uppercase truncate ${isActive ? 'text-gray-300' : ''}`}>
+                    {dim.shortName}
+                  </span>
+                  <div className={`h-0.5 w-full rounded-full overflow-hidden ${isActive ? 'bg-white/20' : 'bg-gray-200'}`}>
+                    <motion.div
+                      animate={{ width: `${progress}%` }}
+                      transition={{ duration: 0.4 }}
+                      className={`h-full rounded-full ${isActive ? 'bg-[#FFE600]' : 'bg-green-400'}`}
                     />
                   </div>
-                </button>
+                </motion.button>
               );
             })}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex items-center py-6 sm:py-12 overflow-y-auto">
-        <div className="max-w-[900px] w-full mx-auto px-4 sm:px-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${currentDimension.id}-${currentQuestionIndex}`}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="space-y-6 sm:space-y-10"
-            >
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="flex items-center gap-2 px-2.5 py-1 bg-gray-100 rounded-sm max-w-[70%] sm:max-w-none">
-                  <LayoutDashboard className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0" />
-                  <span className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 uppercase truncate">
-                    {currentDimension.name}
+      {/* ── MAIN ─────────────────────────────────────────────────── */}
+      <main className="flex-1 py-12 px-8">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentDimension.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.38, ease: 'easeOut' }}
+            className="max-w-[780px] mx-auto"
+          >
+            {/* Dimension heading */}
+            <div className="mb-10">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-bold tracking-widest text-gray-400">
+                    DIMENSION {currentDimensionIndex + 1} / {dimensions.length}
                   </span>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
-                <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-400 flex-shrink-0">
-                  {currentQuestionIndex + 1} / {currentQuestions.length}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="w-8 h-0.5 bg-[#FFE600]" />
-                <h2 className="text-xl sm:text-2xl md:text-[2.6rem] font-light leading-snug text-gray-900 tracking-tight">
-                  {currentQuestion}
-                </h2>
-              </div>
-
-              {/* Likert Options Grid/List */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-2 sm:gap-3">
-                {likertOptions.map((option) => {
-                  const isSelected = answers[currentDimension.id]?.[currentQuestionIndex] === option.value;
-
-                  return (
-                    <motion.button
-                      key={option.value}
-                      onClick={() => handleAnswer(option.value)}
-                      whileHover={{ y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      className={`flex flex-row md:flex-col items-center justify-start md:justify-center gap-4 px-4 py-4 md:py-8 border-2 transition-all w-full text-left md:text-center ${
-                        isSelected
-                          ? 'border-black bg-black text-white'
-                          : 'border-gray-200 bg-white hover:border-gray-400 text-gray-700'
-                      }`}
+                  {dimCompleted && (
+                    <motion.span
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full"
                     >
+                      <Check className="w-3 h-3" /> Complété
+                    </motion.span>
+                  )}
+                </div>
+                <h1 className="text-2xl font-semibold text-gray-900 leading-snug">{currentDimension.name}</h1>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">{currentDimension.description}</p>
+              </div>
+            </div>
+
+            {/* Questions */}
+            <div className="space-y-4">
+              {currentQuestions.map((question, qIndex) => {
+                const selectedValue = currentAnswers[qIndex];
+                const isAnswered = selectedValue !== undefined;
+                const selectedOption = likertOptions.find(o => o.value === selectedValue);
+                const isJustAnswered = justAnswered === qIndex;
+
+                return (
+                  <motion.div
+                    key={qIndex}
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: qIndex * 0.07, duration: 0.32, ease: 'easeOut' }}
+                    className="bg-white rounded-2xl overflow-hidden transition-all duration-300"
+                    style={{
+                      border: isAnswered
+                        ? `1.5px solid ${selectedOption?.color}30`
+                        : '1.5px solid #f0f0ee',
+                      boxShadow: isJustAnswered
+                        ? `0 0 0 3px ${selectedOption?.color}25, 0 4px 20px rgba(0,0,0,0.07)`
+                        : isAnswered
+                        ? '0 2px 12px rgba(0,0,0,0.05)'
+                        : '0 1px 4px rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    {/* Answered accent bar */}
+                    {isAnswered && (
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        className="h-0.5 w-full origin-left"
+                        style={{ background: selectedOption?.color }}
+                      />
+                    )}
+
+                    <div className="px-7 pt-6 pb-6">
+                      {/* Question text row */}
+                      <div className="flex items-start gap-4 mb-6">
+                        <motion.div
+                          animate={{
+                            background: isAnswered ? selectedOption?.color : '#f5f5f3',
+                            color: isAnswered ? '#ffffff' : '#9ca3af',
+                          }}
+                          transition={{ duration: 0.3 }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                        >
+                          {isAnswered
+                            ? <Check className="w-4 h-4" />
+                            : <span className="text-xs font-black">{qIndex + 1}</span>
+                          }
+                        </motion.div>
+                        <p className="text-[15px] text-gray-800 leading-relaxed font-medium flex-1 pt-0.5">
+                          {question}
+                        </p>
+                      </div>
+
+                      {/* Likert scale — horizontal pill row */}
+                      <div className="flex gap-2">
+                        {likertOptions.map((option) => {
+                          const isSelected = selectedValue === option.value;
+                          return (
+                            <motion.button
+                              key={option.value}
+                              onClick={() => handleAnswer(qIndex, option.value)}
+                              whileHover={{ y: -3, scale: 1.02 }}
+                              whileTap={{ scale: 0.95 }}
+                              className="flex-1 flex flex-col items-center gap-2 py-3.5 px-1 rounded-xl border-2 transition-all duration-200 relative overflow-hidden"
+                              style={{
+                                borderColor: isSelected ? option.color : '#eeeeec',
+                                background: isSelected ? option.bg : '#fafaf8',
+                              }}
+                            >
+                              {/* Level dots */}
+                              <span
+                                className="text-[8px] tracking-tighter leading-none font-black"
+                                style={{ color: isSelected ? option.color : '#d1d5db', letterSpacing: '1px' }}
+                              >
+                                {option.dot}
+                              </span>
+                              <span
+                                className="text-[11px] font-bold leading-tight text-center"
+                                style={{ color: isSelected ? option.color : '#6b7280' }}
+                              >
+                                {option.label}
+                              </span>
+                              <span
+                                className="text-[9px] leading-tight text-center font-medium"
+                                style={{ color: isSelected ? option.color + 'bb' : '#9ca3af' }}
+                              >
+                                {option.sublabel}
+                              </span>
+
+                              {isSelected && (
+                                <motion.div
+                                  layoutId={`check-${qIndex}`}
+                                  className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                                  style={{ background: option.color }}
+                                >
+                                  <Check className="w-2.5 h-2.5 text-white" />
+                                </motion.div>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Feedback strip when answered */}
+                      <AnimatePresence>
+                        {isAnswered && selectedOption && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                            animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                            className="flex items-center gap-2 text-xs rounded-lg px-3 py-2"
+                            style={{ background: selectedOption.bg, color: selectedOption.color }}
+                          >
+                            <span className="font-black">Niveau {selectedOption.value}/5</span>
+                            <span className="opacity-60">·</span>
+                            <span className="font-semibold">{selectedOption.label}</span>
+                            <span className="opacity-60">—</span>
+                            <span>{selectedOption.sublabel}</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* ── CTA — dimension completed ── */}
+            <AnimatePresence>
+              {dimCompleted && (
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="mt-8 rounded-2xl overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  <div className="px-8 py-7 flex items-center justify-between gap-6">
+                    <div className="flex items-center gap-5">
                       <div
-                        className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${
-                          isSelected ? 'border-[#FFE600] bg-[#FFE600]' : 'border-gray-300'
-                        }`}
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
+                        style={{ background: '#FFE600' }}
                       >
-                        {isSelected
-                          ? <Check className="w-4 h-4 md:w-5 md:h-5 text-black" />
-                          : <span className="text-xs md:text-sm font-bold text-gray-400">{option.value}</span>
+                        {isLastDimension
+                          ? <Sparkles className="w-6 h-6 text-black" />
+                          : <Check className="w-6 h-6 text-black" />
                         }
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold tracking-wide truncate md:whitespace-normal">
-                          {option.label}
-                        </div>
+                      <div>
+                        <p className="font-bold text-white text-base leading-snug">
+                          {isLastDimension
+                            ? 'Évaluation complète !'
+                            : `Dimension « ${currentDimension.shortName} » validée`}
+                        </p>
+                        <p className="text-sm text-gray-400 mt-0.5">
+                          {isLastDimension
+                            ? 'Votre profil de maturité data est prêt à être généré.'
+                            : `Prochaine étape : ${dimensions[currentDimensionIndex + 1]?.name}`}
+                        </p>
                       </div>
+                    </div>
+                    <motion.button
+                      onClick={handleNext}
+                      disabled={completing}
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-bold text-sm shrink-0 transition-all disabled:opacity-50"
+                      style={{ background: '#FFE600', color: '#1a1a1a' }}
+                    >
+                      {completing ? 'Génération...' : isLastDimension ? 'Voir les résultats' : 'Dimension suivante'}
+                      {!completing && (isLastDimension
+                        ? <ArrowRight className="w-4 h-4" />
+                        : <ChevronRight className="w-4 h-4" />
+                      )}
                     </motion.button>
-                  );
-                })}
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
+                  </div>
+
+                  {/* Subtle progress dots */}
+                  <div className="px-8 pb-5 flex items-center gap-1.5">
+                    {dimensions.map((_, i) => (
+                      <div
+                        key={i}
+                        className="h-1 rounded-full transition-all duration-300"
+                        style={{
+                          width: i === currentDimensionIndex ? 24 : 8,
+                          background: i < currentDimensionIndex
+                            ? '#22c55e'
+                            : i === currentDimensionIndex
+                            ? '#FFE600'
+                            : '#444',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Hint when not completed */}
+            {!dimCompleted && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400"
+              >
+                <div className="flex gap-1">
+                  {currentQuestions.map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full transition-all duration-300"
+                      style={{ background: currentAnswers[i] !== undefined ? '#22c55e' : '#e5e7eb' }}
+                    />
+                  ))}
+                </div>
+                <span className="font-medium">
+                  {dimAnsweredCount}/{currentQuestions.length} réponses
+                </span>
+              </motion.div>
+            )}
+
+            <div className="h-20" />
+          </motion.div>
+        </AnimatePresence>
       </main>
-
-      {/* Footer Navigation */}
-      <footer className="bg-white border-t border-gray-200 z-50 flex-shrink-0 sticky bottom-0">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
-          <button
-            onClick={goPrevious}
-            disabled={currentDimensionIndex === 0 && currentQuestionIndex === 0}
-            className="group px-3 sm:px-4 py-2 border border-gray-200 text-black text-xs sm:text-sm font-semibold tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors flex items-center gap-2"
-          >
-            <ChevronLeft className="w-4 h-4 text-gray-400 group-hover:text-black" />
-            PRÉCÉDENT
-          </button>
-
-          {isLastQuestion ? (
-            <motion.button
-              onClick={handleSubmit}
-              disabled={!canGoNext}
-              whileHover={canGoNext ? { scale: 1.02 } : {}}
-              whileTap={canGoNext ? { scale: 0.98 } : {}}
-              className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-bold tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${
-                canGoNext
-                  ? 'bg-[#FFE600] hover:bg-[#e6cf00] text-black border border-[#e6cf00] shadow-md'
-                  : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-              }`}
-            >
-              FINIR
-              <ChevronRight className="w-4 h-4" />
-            </motion.button>
-          ) : (
-            <button
-              onClick={goNext}
-              disabled={!canGoNext}
-              className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-bold tracking-widest transition-all flex items-center gap-2 ${
-                canGoNext
-                  ? 'bg-black text-white hover:bg-gray-900 shadow-md'
-                  : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-              }`}
-            >
-              SUIVANT
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </footer>
     </div>
   );
 }
