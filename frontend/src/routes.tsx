@@ -1,20 +1,23 @@
 import { createBrowserRouter } from 'react-router-dom';
+import { RequireAuth } from './components/RequireAuth';
 import { LandingPage } from './pages/LandingPage';
 import { QuestionnairePage } from './pages/QuestionnairePage';
 import { ResultsPage } from './pages/ResultsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
 import { SimulationPage } from './pages/SimulationPage';
-import LoginPage from './pages/LoginPage';
 
 export const router = createBrowserRouter([
+  // Public — accessible sans authentification
   { path: '/', Component: LandingPage },
-  { path: '/questionnaire', Component: QuestionnairePage },
-  { path: '/results', Component: ResultsPage },
-  { path: '/dashboard', Component: DashboardPage },
-  { path: '/recommendations', Component: RecommendationsPage },
-  { path: '/simulation', Component: SimulationPage },
-  { path: '/login', Component: LoginPage }
+
+  // Protégées — redirigent vers Keycloak si non connecté
+  { path: '/questionnaire', element: <RequireAuth><QuestionnairePage /></RequireAuth> },
+  { path: '/results', element: <RequireAuth><ResultsPage /></RequireAuth> },
+  { path: '/dashboard', element: <RequireAuth><DashboardPage /></RequireAuth> },
+  { path: '/recommendations', element: <RequireAuth><RecommendationsPage /></RequireAuth> },
+  { path: '/simulation', element: <RequireAuth><SimulationPage /></RequireAuth> },
+
 ], {
   basename: import.meta.env.BASE_URL,
 });

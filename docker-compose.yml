@@ -1,0 +1,34 @@
+# Keycloak for DataPilot — reproduces the previously hand-run `docker run` container,
+# now with: a persistent data volume, the Keycloakify EY login theme mounted as a
+# provider, and automatic realm import on first boot.
+#
+# Build the theme jar before `up` (it's a local build artifact, not committed):
+#   cd keycloakify-starter && npm run build-keycloak-theme
+#
+# First switch-over (replaces the old hand-run container):
+#   docker rm -f keycloak           # remove the old ephemeral container
+#   docker compose up -d            # imports keycloak/import/datapilot-realm.json
+#
+# NOTE: the exported realm file does NOT contain users (partial export). Recreate
+# any test users in the admin console after first boot, or replace the import file
+# with a full export that includes users.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8085:8080"
+    volumes:
+      # Persist realm/user data across container recreation
+      - keycloak-data:/opt/keycloak/data
+      # EY Keycloakify login theme (rebuild the jar, then `docker compose restart keycloak`)
+      - ./keycloakify-starter/dist_keycloak/keycloak-theme-for-kc-all-other-versions.jar:/opt/keycloak/providers/datapilot-theme.jar:ro
+      # Realm imported on first boot (skipped if the realm already exists in the volume)
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+
+volumes:
+  keycloak-data:

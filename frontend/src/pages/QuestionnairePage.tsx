@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { Navbar } from '@/components/Navbar';
 
 const dimensions = [
   { id: 'gouvernance', name: 'Gouvernance des données', shortName: 'Gouvernance', code: '01', description: 'Cadre de responsabilités, politiques et conformité réglementaire autour de la donnée.' },
@@ -115,6 +116,8 @@ export function QuestionnairePage() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
+      {/* Header */}
+            <Navbar />
 
       {/* ── HEADER ───────────────────────────────────────────────── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50" style={{ boxShadow: '0 1px 12px rgba(0,0,0,0.06)' }}>

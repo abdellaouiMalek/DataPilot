@@ -5,9 +5,12 @@ import keycloak from "./lib/keycloak";
 
 keycloak
   .init({
-    onLoad: "login-required",
+    // check-sso: render the app whether or not the user is logged in (the landing
+    // page is public). Protected routes trigger login on demand via RequireAuth.
+    onLoad: "check-sso",
+    silentCheckSsoRedirectUri:
+      window.location.origin + import.meta.env.BASE_URL + "silent-check-sso.html",
     pkceMethod: "S256",
-    redirectUri: window.location.origin + import.meta.env.BASE_URL,
     checkLoginIframe: false,
   })
   .then(() => {

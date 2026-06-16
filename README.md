@@ -286,63 +286,29 @@ The framework is specifically adapted to the Tunisian banking sector through:
 
 # 🏁 Getting Started
 
-Follow these steps to run DataPilot locally for the first time.
+DataPilot runs as three local services — a **React** frontend, a **FastAPI** backend, and **Keycloak** (in Docker) for authentication, backed by **PostgreSQL**.
 
 ## ✅ Prerequisites
 
-| Requirement    | Version / Notes                                                                 |
-| -------------- | ------------------------------------------------------------------------------- |
-| **Node.js**    | 22.x (Vite 8)                                                                   |
-| **Python**     | 3.11 or 3.12 recommended (some DB driver wheels lag on newer versions)          |
-| **PostgreSQL** | Running locally; a database named **`datapilot`** must exist                    |
-| **Keycloak**   | Required for auth. A realm with a **public** client (PKCE / `S256`) and tokens whose **audience is `react-app`** (the backend enforces this) |
+| Requirement    | Version / Notes                                                        |
+| -------------- | --------------------------------------------------------------------- |
+| **Node.js**    | 22.x (Vite 8)                                                         |
+| **Python**     | 3.11 or 3.12 recommended                                              |
+| **PostgreSQL** | Running locally; a database named **`datapilot`**                     |
+| **Docker**     | Docker Desktop / Compose v2 — runs Keycloak                           |
+| **JDK + Maven**| JDK 17+ & Maven — only to build the custom Keycloak (Keycloakify) theme |
 
-## 1. Clone & configure environment
+## ▶️ Running it locally
+
+In short: configure env files → start Keycloak → run the backend → run the frontend.
 
 ```bash
-git clone <repo-url>
-cd DataPilot
-
-# Backend env: copy the template and fill in your values
+git clone <repo-url> && cd DataPilot
 cp backend/.env.example backend/.env
-
-# Frontend env: copy the template and fill in your values
 cp frontend/.env.example frontend/.env
 ```
 
-## 2. Backend (FastAPI)
-
-```bash
-cd backend
-python -m venv .venv
-
-# Windows (PowerShell)
-.\.venv\Scripts\Activate.ps1
-# macOS / Linux
-# source .venv/bin/activate
-
-pip install -r requirements.txt
-
-# Create the database tables (drops & recreates)
-python -m app.db.init_db
-
-# Run the API (http://localhost:8000)
-uvicorn app.main:app --reload
-```
-
-## 3. Frontend (React + Vite)
-
-```bash
-cd frontend
-npm install
-npm run dev          # http://localhost:5173
-```
-
-> **Windows / PowerShell note:** if `npm run dev` exits immediately after printing `> vite`, use `npm.cmd run dev` (or run it from Command Prompt). The PowerShell `npm` wrapper can send the dev server an early stdin EOF that shuts it down.
-
-## 4. Open the app
-
-Visit **http://localhost:5173**. You'll be redirected to Keycloak to log in (the app uses `login-required`), so Keycloak must be running and configured before the UI will render.
+> 📄 **Full step-by-step instructions** (Keycloak/Docker setup, the EY login theme, creating a user, backend & frontend commands, troubleshooting) live in **`SETUP.local.md`** at the repo root — kept out of version control so this README stays focused on the project itself.
 
 ---
 

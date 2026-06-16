@@ -38,6 +38,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+
+# ---- Keycloak (local theme deploy / DB backup / realm import) ----
+# Ignore everything under keycloak/ EXCEPT the realm import file (kept for compose bootstrap)
+keycloak/*
+!keycloak/import/
+
 # ---- Editors / OS ----
 .vscode/*
 !.vscode/extensions.json
