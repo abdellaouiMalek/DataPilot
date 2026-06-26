@@ -1,4 +1,6 @@
-import { LogOut, LogIn } from 'lucide-react';
+import { LogOut, LogIn, Shield, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { DropdownMenu } from 'radix-ui';
 import eyLogo from '../assets/EY_logo2.png';
 import { login, logout, getCurrentUser } from '../lib/keycloak';
 
@@ -36,34 +38,70 @@ export function Navbar() {
 
       {user ? (
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-sm bg-black text-[#FFE600] flex items-center justify-center text-xs font-black tracking-wide select-none"
-              aria-hidden="true"
-            >
-              {initials(user.name)}
-            </div>
-            <div className="hidden sm:flex flex-col leading-tight">
-              <span className="text-xs font-bold text-gray-900">{user.name}</span>
-              {user.email && (
-                <span className="text-[10px] text-gray-500 tracking-wide">{user.email}</span>
-              )}
-            </div>
-          </div>
+          {user.isAdmin && (
+            <>
+              <Link
+                to="/admin"
+                className="flex items-center gap-2 text-sm font-bold text-gray-700 hover:text-black transition-colors outline-none"
+                title="Espace administrateur"
+              >
+                <span className="bg-gray-100 p-1.5 rounded-sm">
+                  <Shield className="w-4 h-4 text-black" />
+                </span>
+                <span className="hidden sm:inline">ADMIN</span>
+              </Link>
+              <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+            </>
+          )}
 
-          <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-black text-[#FFE600] outline-none focus:outline-none focus-visible:outline-none transition-colors hover:bg-gray-800 cursor-pointer data-[state=open]:bg-gray-800"
+                aria-label="Menu du profil"
+              >
+                <User className="w-5 h-5" />
+              </button>
+            </DropdownMenu.Trigger>
 
-          <button
-            onClick={() => logout()}
-            className="flex items-center gap-2 text-sm font-bold text-gray-700 hover:text-red-600 transition-colors outline-none cursor-pointer"
-            aria-label="Se déconnecter"
-            title="Se déconnecter"
-          >
-            <span className="bg-gray-100 p-1.5 rounded-sm">
-              <LogOut className="w-4 h-4 text-black" />
-            </span>
-            DÉCONNEXION
-          </button>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={8}
+                className="z-[60] min-w-[240px] rounded-md border border-gray-200 bg-white p-1.5 shadow-lg"
+              >
+                {/* En-tête profil */}
+                <div className="flex items-center gap-3 px-3 py-3">
+                  <div className="w-10 h-10 rounded-sm bg-black text-[#FFE600] flex items-center justify-center text-sm font-black tracking-wide select-none shrink-0">
+                    {initials(user.name)}
+                  </div>
+                  <div className="flex flex-col leading-tight min-w-0">
+                    <span className="text-sm font-bold text-gray-900 truncate">{user.name}</span>
+                    {user.email && (
+                      <span className="text-[11px] text-gray-500 tracking-wide truncate">
+                        {user.email}
+                      </span>
+                    )}
+                    {user.isAdmin && (
+                      <span className="mt-1 w-fit inline-flex items-center text-[9px] font-bold tracking-widest text-black bg-[#FFE600] px-1.5 py-0.5 rounded-sm uppercase">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <DropdownMenu.Separator className="h-px bg-gray-100 my-1" />
+
+                <DropdownMenu.Item
+                  onSelect={() => logout()}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-700 rounded-sm cursor-pointer outline-none transition-colors data-[highlighted]:bg-red-50 data-[highlighted]:text-red-600"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Déconnexion
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       ) : (
         <button

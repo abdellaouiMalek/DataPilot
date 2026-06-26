@@ -77,6 +77,21 @@ The realm import does **not** include users, so create one:
 
 You can now sign in to the app with that user.
 
+### Grant admin access (back-office)
+
+The app gates the admin back-office (`/admin`) behind the **`admin` realm role**. Fresh
+realm imports include this role automatically (`keycloak/import/datapilot-realm.json`).
+
+> If your Keycloak was created **before** this role was added, the import won't re-run on an
+> existing volume. Either create the role manually (**Realm roles → Create role → `admin`**),
+> or wipe & re-import the realm (`docker compose down -v` then `docker compose up -d` — this
+> **deletes all Keycloak users/data**).
+
+To make a user an admin: **Users** → pick the user → **Role mapping** → **Assign role** →
+filter by *realm roles* → select **`admin`**. After they log in again, the **ADMIN** link
+appears in the navbar and `/admin` becomes accessible. The backend enforces the same role on
+admin endpoints via `require_admin` (`app/core/auth.py`).
+
 ### Customizing theme pages (login, register, forgot password, …)
 
 Out of the box only `login.ftl` carries the EY design. To brand **any other page** — registration, password reset, OTP, verify-email, terms, etc. — follow the same four steps:
@@ -119,8 +134,11 @@ python -m venv .venv
 
 pip install -r requirements.txt
 
-# Create the database tables (drops & recreates)
-python -m app.db.init_db
+# Apply database migrations (creates all tables via Alembic)
+alembic upgrade head
+
+# Seed reference data (dimensions, questions, banks, departments, roles, maturity levels)
+python -m app.db.seed          # idempotent; add --reset to wipe & reseed
 
 # Run the API (http://localhost:8000)
 uvicorn app.main:app --reload

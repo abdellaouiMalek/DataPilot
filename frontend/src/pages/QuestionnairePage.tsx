@@ -1,57 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '@/components/Navbar';
-
-const dimensions = [
-  { id: 'gouvernance', name: 'Gouvernance des données', shortName: 'Gouvernance', code: '01', description: 'Cadre de responsabilités, politiques et conformité réglementaire autour de la donnée.' },
-  { id: 'qualite', name: 'Qualité des données', shortName: 'Qualité', code: '02', description: 'Exactitude, cohérence et disponibilité des données à travers les systèmes.' },
-  { id: 'architecture', name: 'Architecture & Infrastructure', shortName: 'Architecture', code: '03', description: 'Centralisation, intégration et sécurité des plateformes et pipelines data.' },
-  { id: 'usage', name: 'Usage & Analytics', shortName: 'Usage', code: '04', description: 'Exploitation analytique et impact réel de la donnée dans la prise de décision.' },
-  { id: 'culture', name: 'Culture Data & Compétences', shortName: 'Culture', code: '05', description: 'Maturité humaine, adoption des outils et collaboration métiers-IT autour de la data.' },
-  { id: 'strategie', name: 'Stratégie & Vision Data', shortName: 'Stratégie', code: '06', description: 'Alignement de la vision data avec les objectifs business et mesure du ROI.' },
-];
-
-const questions = {
-  gouvernance: [
-    'Les responsabilités data sont-elles clairement définies (CDO, data owners) ?',
-    'Existe-t-il un cadre de gouvernance formalisé avec politiques et standards ?',
-    'La gouvernance des données est-elle alignée avec les réglementations (BCT, BCBS 239) ?',
-    'Avez-vous mis en place des KPIs pour piloter la gouvernance des données ?',
-  ],
-  qualite: [
-    'Les données sont-elles complètes et exactes (fiables, sans erreurs) ?',
-    'Les données sont-elles cohérentes et sans doublons à travers les systèmes ?',
-    'Les données sont-elles à jour et disponibles quand nécessaire ?',
-    "Existe-t-il un processus de contrôle et d'amélioration continue de la qualité ?",
-  ],
-  architecture: [
-    'Avez-vous centralisé vos données (Data Lake, DWH, MDM) ?',
-    'Les systèmes communiquent-ils de manière fluide via APIs et services ?',
-    'Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?',
-    "La sécurité et le contrôle d'accès (RBAC, chiffrement) sont-ils en place ?",
-  ],
-  usage: [
-    'Disposez-vous de tableaux de bord et outils de visualisation (BI) ?',
-    "Utilisez-vous des modèles prédictifs et de l'advanced analytics ?",
-    'Les données influencent-elles réellement la prise de décision ?',
-    "Avez-vous des cas d'usage métiers opérationnels (risque, marketing, finance) ?",
-  ],
-  culture: [
-    "Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?",
-    'Existe-t-il des programmes de formation et montée en compétences data ?',
-    'Les outils data sont-ils adoptés et utilisés par les équipes ?',
-    'Y a-t-il une bonne collaboration entre métiers et IT sur les sujets data ?',
-  ],
-  strategie: [
-    'Avez-vous une vision et roadmap data claire et partagée ?',
-    "La stratégie data est-elle alignée avec les objectifs business de la banque ?",
-    'Les initiatives data sont-elles priorisées de manière structurée ?',
-    "Mesurez-vous le ROI et l'impact business des projets data ?",
-  ],
-};
+import { getDimensions } from '@/lib/config';
+import type { Dimension } from '@/lib/config';
 
 const likertOptions = [
   { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
@@ -66,6 +20,10 @@ export function QuestionnairePage() {
   const location = useLocation();
   const profileData = location.state || {};
 
+  const [dimensions, setDimensions] = useState<Dimension[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
   const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
   const [completing, setCompleting] = useState(false);
@@ -77,34 +35,40 @@ export function QuestionnairePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const currentDimension = dimensions[currentDimensionIndex];
-  const currentQuestions = questions[currentDimension.id as keyof typeof questions];
-  const currentAnswers = answers[currentDimension.id] || {};
-  const dimAnsweredCount = Object.keys(currentAnswers).length;
-  const dimCompleted = dimAnsweredCount === currentQuestions.length;
-  const isLastDimension = currentDimensionIndex === dimensions.length - 1;
+  useEffect(() => {
+    let cancelled = false;
+    getDimensions()
+      .then((data) => !cancelled && setDimensions(data))
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const totalQuestions = Object.values(questions).flat().length;
+  const totalQuestions = dimensions.reduce((acc, d) => acc + d.questions.length, 0);
   const answeredTotal = Object.values(answers).reduce((acc, dim) => acc + Object.keys(dim).length, 0);
-  const globalProgress = (answeredTotal / totalQuestions) * 100;
+  const globalProgress = totalQuestions ? (answeredTotal / totalQuestions) * 100 : 0;
 
-  const getDimProgress = (id: string) => {
-    const dimAnswers = answers[id] || {};
-    const dimQs = questions[id as keyof typeof questions];
-    return (Object.keys(dimAnswers).length / dimQs.length) * 100;
+  const getDimProgress = (dim: Dimension) => {
+    const dimAnswers = answers[dim.key] || {};
+    return dim.questions.length
+      ? (Object.keys(dimAnswers).length / dim.questions.length) * 100
+      : 0;
   };
 
-  const handleAnswer = (questionIndex: number, value: number) => {
+  const handleAnswer = (dimKey: string, questionIndex: number, value: number) => {
     setAnswers((prev) => ({
       ...prev,
-      [currentDimension.id]: { ...(prev[currentDimension.id] || {}), [questionIndex]: value },
+      [dimKey]: { ...(prev[dimKey] || {}), [questionIndex]: value },
     }));
     setJustAnswered(questionIndex);
     setTimeout(() => setJustAnswered(null), 600);
   };
 
   const handleNext = () => {
-    if (isLastDimension) {
+    const isLast = currentDimensionIndex === dimensions.length - 1;
+    if (isLast) {
       setCompleting(true);
       toast.success('Évaluation terminée !', { description: 'Génération de votre profil de maturité en cours...', duration: 3000 });
       setTimeout(() => navigate('/results', { state: { answers, profile: profileData } }), 1000);
@@ -113,6 +77,44 @@ export function QuestionnairePage() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-sm font-medium">Chargement de l'évaluation…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || dimensions.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Impossible de charger le questionnaire. Vérifiez que l'API est démarrée, puis réessayez.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
+          >
+            Retour à l'accueil
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentDimension = dimensions[currentDimensionIndex];
+  const currentQuestions = currentDimension.questions;
+  const currentAnswers = answers[currentDimension.key] || {};
+  const dimAnsweredCount = Object.keys(currentAnswers).length;
+  const dimCompleted = dimAnsweredCount === currentQuestions.length;
+  const isLastDimension = currentDimensionIndex === dimensions.length - 1;
 
   return (
     <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
@@ -166,14 +168,14 @@ export function QuestionnairePage() {
           {/* Dimension tabs */}
           <div className="flex gap-2">
             {dimensions.map((dim, index) => {
-              const progress = getDimProgress(dim.id);
+              const progress = getDimProgress(dim);
               const isActive = index === currentDimensionIndex;
               const isCompleted = progress === 100;
               const isAccessible = index <= currentDimensionIndex || isCompleted;
 
               return (
                 <motion.button
-                  key={dim.id}
+                  key={dim.key}
                   onClick={() => isAccessible && setCurrentDimensionIndex(index)}
                   disabled={!isAccessible}
                   whileHover={isAccessible ? { y: -1 } : {}}
@@ -195,7 +197,7 @@ export function QuestionnairePage() {
                     {isActive && <Flag className="w-3.5 h-3.5 text-[#FFE600]" />}
                   </div>
                   <span className={`text-[10px] font-bold tracking-wide uppercase truncate ${isActive ? 'text-gray-300' : ''}`}>
-                    {dim.shortName}
+                    {dim.short_name}
                   </span>
                   <div className={`h-0.5 w-full rounded-full overflow-hidden ${isActive ? 'bg-white/20' : 'bg-gray-200'}`}>
                     <motion.div
@@ -254,7 +256,7 @@ export function QuestionnairePage() {
 
                 return (
                   <motion.div
-                    key={qIndex}
+                    key={question.id}
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: qIndex * 0.07, duration: 0.32, ease: 'easeOut' }}
@@ -297,7 +299,7 @@ export function QuestionnairePage() {
                           }
                         </motion.div>
                         <p className="text-[15px] text-gray-800 leading-relaxed font-medium flex-1 pt-0.5">
-                          {question}
+                          {question.text}
                         </p>
                       </div>
 
@@ -308,7 +310,7 @@ export function QuestionnairePage() {
                           return (
                             <motion.button
                               key={option.value}
-                              onClick={() => handleAnswer(qIndex, option.value)}
+                              onClick={() => handleAnswer(currentDimension.key, qIndex, option.value)}
                               whileHover={{ y: -3, scale: 1.02 }}
                               whileTap={{ scale: 0.95 }}
                               className="flex-1 flex flex-col items-center gap-2 py-3.5 px-1 rounded-xl border-2 transition-all duration-200 relative overflow-hidden"
@@ -404,7 +406,7 @@ export function QuestionnairePage() {
                         <p className="font-bold text-white text-base leading-snug">
                           {isLastDimension
                             ? 'Évaluation complète !'
-                            : `Dimension « ${currentDimension.shortName} » validée`}
+                            : `Dimension « ${currentDimension.short_name} » validée`}
                         </p>
                         <p className="text-sm text-gray-400 mt-0.5">
                           {isLastDimension

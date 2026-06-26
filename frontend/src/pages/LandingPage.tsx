@@ -1,53 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 import { Navbar } from '../components/Navbar';
+import { getBanks, getDepartments, getRoles } from '../lib/config';
+import { isAdmin } from '../lib/keycloak';
 
-const banks = [
-  'Banque de Tunisie (BT)',
-  'Société Tunisienne de Banque (STB)',
-  'Banque Nationale Agricole (BNA)',
-  "Banque de l'Habitat (BH)",
-  'Amen Bank',
-  'Attijari Bank',
-  'BIAT',
-  'BTE (Banque de Tunisie et des Emirats)',
-  'UIB (Union Internationale de Banques)',
-  'ATB (Arab Tunisian Bank)',
-  'Banque Zitouna',
-  'Banque Tuniso-Koweitienne (BTK)',
-  "UBCI (Union Bancaire pour le Commerce et l'Industrie)",
-  'Banque Tunisienne de Solidarité (BTS)',
-  'Wifak Bank'
-];
-
-const departments = [
-  "Systèmes d'Information",
-  'Gestion des Risques',
-  'Conformité & Audit',
-  'Opérations Bancaires',
-  'Finance & Comptabilité',
-  'Crédit',
-  'Trésorerie',
-  'Ressources Humaines'
-];
-
-const roles = [
-  'Responsable de Département',
-  'Directeur',
-  'Directeur Général / Adjoint',
-  'Analyste',
-  'Chef de Projet',
-  'Consultant',
-  'Cadre Supérieur'
-];
-
-const bankOptions = banks.map(b => ({ value: b, label: b }));
-const deptOptions = departments.map(d => ({ value: d, label: d }));
-const roleOptions = roles.map(r => ({ value: r, label: r }));
+type Option = { value: string; label: string };
 
 const selectStyles: StylesConfig<any, false> = {
   control: (base, state) => ({
@@ -107,6 +68,36 @@ export function LandingPage() {
   const [selectedBank, setSelectedBank] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
+
+  const [bankOptions, setBankOptions] = useState<Option[]>([]);
+  const [deptOptions, setDeptOptions] = useState<Option[]>([]);
+  const [roleOptions, setRoleOptions] = useState<Option[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  // Admins don't take the assessment — send them straight to the back-office.
+  // The landing page ("/") is where Keycloak returns after login.
+  useEffect(() => {
+    if (isAdmin()) navigate('/admin', { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getBanks(), getDepartments(), getRoles()])
+      .then(([banks, departments, roles]) => {
+        if (cancelled) return;
+        const toOptions = (items: { name: string }[]) =>
+          items.map((i) => ({ value: i.name, label: i.name }));
+        setBankOptions(toOptions(banks));
+        setDeptOptions(toOptions(departments));
+        setRoleOptions(toOptions(roles));
+      })
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleStart = () => {
     if (selectedBank && selectedDepartment && selectedRole) {
@@ -220,6 +211,12 @@ export function LandingPage() {
                   </p>
                 </div>
 
+                {loadError && (
+                  <div className="mb-5 border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                    Impossible de charger les données. Vérifiez que l'API est démarrée puis rechargez la page.
+                  </div>
+                )}
+
                 {/* Formulaire contenant les sélections */}
                 <div className="space-y-5">
                   
@@ -235,6 +232,8 @@ export function LandingPage() {
                       placeholder="Sélectionnez"
                       styles={selectStyles}
                       isSearchable
+                      isLoading={loading}
+                      isDisabled={loading || loadError}
                       menuPortalTarget={document.body}
                       menuPosition="fixed"
                       components={{ IndicatorSeparator: () => null }}
@@ -253,6 +252,8 @@ export function LandingPage() {
                       placeholder="Sélectionnez"
                       styles={selectStyles}
                       isSearchable
+                      isLoading={loading}
+                      isDisabled={loading || loadError}
                       menuPortalTarget={document.body}
                       menuPosition="fixed"
                       components={{ IndicatorSeparator: () => null }}
@@ -271,6 +272,8 @@ export function LandingPage() {
                       placeholder="Sélectionnez"
                       styles={selectStyles}
                       isSearchable
+                      isLoading={loading}
+                      isDisabled={loading || loadError}
                       menuPortalTarget={document.body}
                       menuPosition="fixed"
                       components={{ IndicatorSeparator: () => null }}

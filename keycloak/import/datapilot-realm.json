@@ -91,6 +91,17 @@
                                     "attributes":  {
 
                                                    }
+                                },
+                                {
+                                    "id":  "a7f3c9d2-1b4e-4c8a-9e2f-5d6b7a8c9012",
+                                    "name":  "admin",
+                                    "description":  "DataPilot administrator: manage dimensions, questions and lookups",
+                                    "composite":  false,
+                                    "clientRole":  false,
+                                    "containerId":  "7aefe7bb-5f70-41df-9276-7a76768eec07",
+                                    "attributes":  {
+
+                                                   }
                                 }
                             ],
                   "client":  {

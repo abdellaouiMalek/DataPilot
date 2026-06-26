@@ -1,21 +1,62 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, ChevronRight, Target, BarChart3, Settings2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronRight, Target, BarChart3, Settings2, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
-
-const maturityLevels = [
-  { min: 0, max: 1.9, label: 'Initial', color: '#f87171', description: 'Non-conformité BCT probable. Urgence absolue.', bg: 'bg-red-400', text: 'text-red-900' },
-  { min: 2.0, max: 2.9, label: 'Reproductible', color: '#fb923c', description: 'Plan de transformation requis immédiatement.', bg: 'bg-orange-400', text: 'text-orange-900' },
-  { min: 3.0, max: 3.4, label: 'Défini', color: '#fef08a', description: 'Industrialisation à engager.', bg: 'bg-yellow-200', text: 'text-yellow-900' },
-  { min: 3.5, max: 4.4, label: 'Géré', color: '#86efac', description: 'Maturité avancée. Optimisation ciblée.', bg: 'bg-green-300', text: 'text-green-900' },
-  { min: 4.5, max: 5.0, label: 'Optimisé', color: '#7dd3fc', description: 'Excellence data-driven. Référence BCT.', bg: 'bg-sky-300', text: 'text-sky-900' },
-];
+import { getMaturityLevels } from '../lib/config';
+import type { MaturityLevel } from '../lib/config';
 
 export function ResultsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { answers = {} } = location.state || {};
+
+  const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMaturityLevels()
+      .then((data) => !cancelled && setMaturityLevels(data))
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-sm font-medium">Chargement des résultats…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || maturityLevels.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Impossible de charger les niveaux de maturité. Vérifiez que l'API est démarrée, puis réessayez.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
+          >
+            Retour à l'accueil
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const calculateDimensionScore = (dimensionId: string) => {
     const dimAnswers = answers[dimensionId] || {};
@@ -46,7 +87,7 @@ export function ResultsPage() {
   const globalScore = Object.values(displayScores).reduce((sum, val) => sum + val, 0) / 6;
 
   const getMaturityLevel = (score: number) => {
-    return maturityLevels.find((level) => score >= level.min && score <= level.max) || maturityLevels[0];
+    return maturityLevels.find((level) => score >= level.min_score && score <= level.max_score) || maturityLevels[0];
   };
 
   const maturity = getMaturityLevel(globalScore);
