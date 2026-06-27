@@ -10,7 +10,7 @@ Follow these steps to run DataPilot locally for the first time.
 | -------------- | ------------------------------------------------------------------------------- |
 | **Node.js**    | 22.x (Vite 8)                                                                   |
 | **Python**     | 3.11 or 3.12 recommended (some DB driver wheels lag on newer versions)          |
-| **PostgreSQL** | Running locally; a database named **`datapilot`** must exist                    |
+| **PostgreSQL** | Running locally; the **`datapilot`** database is auto-created by `init_db` (step 3) — or create it yourself if seeding manually |
 | **Docker**     | Docker Desktop (or Engine + Compose v2) — used to run Keycloak                   |
 | **JDK + Maven**| JDK 17+ and Maven (only needed to build the custom Keycloak theme)              |
 | **Keycloak**   | Provided via Docker (step 2). Realm `datapilot`, public client `datapilot-frontend` (PKCE `S256`); the bundled realm import handles client + token **audience** config. |
@@ -134,15 +134,25 @@ python -m venv .venv
 
 pip install -r requirements.txt
 
-# Apply database migrations (creates all tables via Alembic)
-alembic upgrade head
-
-# Seed reference data (dimensions, questions, banks, departments, roles, maturity levels)
-python -m app.db.seed          # idempotent; add --reset to wipe & reseed
+# One-command database bootstrap (recommended for first-time setup):
+# creates the "datapilot" database if missing -> runs migrations -> seeds
+# reference data. Fully idempotent, so it's safe to re-run any time.
+python -m app.db.init_db       # add --reset to wipe & reseed reference tables
 
 # Run the API (http://localhost:8000)
 uvicorn app.main:app --reload
 ```
+
+> **Doing it step by step instead?** `init_db` just chains the two commands below,
+> so you can still run them individually:
+>
+> ```bash
+> alembic upgrade head       # apply migrations (creates all tables)
+> python -m app.db.seed      # seed reference data (idempotent; --reset to wipe & reseed)
+> ```
+>
+> The only thing `init_db` adds is auto-creating the database itself, so with the
+> manual route the `datapilot` database must already exist (see Prerequisites).
 
 ## 4. Frontend (React + Vite)
 
