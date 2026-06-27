@@ -79,6 +79,19 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+
+    /* EY custom tokens (used by admin back-office) */
+    --ey-yellow: #FFE600;
+    --ey-black: #1A1A1A;
+    --ey-anthracite: #2D2D2D;
+    --ey-gray-dark: #4A4A4A;
+    --ey-gray-mid: #6B6B6B;
+    --ey-gray-light: #B8B8B8;
+    --ey-gray-bg: #F2F2F2;
+    --ey-white: #ffffff;
+    --ey-success: #2E7D32;
+    --ey-warning: #E65100;
+    --ey-info: #0277BD;
 }
 
 .dark {
@@ -127,5 +140,20 @@
   html {
     font-size: 16px;
     font-family: Arial, sans-serif;
+  }
+
+  input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  }
+
+  input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+  textarea:focus,
+  select:focus {
+    outline: none !important;
+    border-color: #1A1A1A !important;
+    box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08) !important;
+    background-color: #ffffff !important;
   }
 }

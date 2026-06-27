@@ -7,7 +7,15 @@ import { ResultsPage } from './pages/ResultsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
 import { SimulationPage } from './pages/SimulationPage';
-import { AdminPage } from './pages/AdminPage';
+import { AdminLayout } from './pages/admin/AdminLayout';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { UserManagement } from './pages/admin/AdminUsers';
+import { BankManagement } from './pages/admin/AdminBanks';
+import { DimensionsManagement } from './pages/admin/AdminDimensions';
+import { ScoringReferential } from './pages/admin/AdminScoring';
+import { QuestionnaireVersions } from './pages/admin/AdminVersions';
+import { AuditLogs } from './pages/admin/AdminLogs';
+import { Settings } from './pages/admin/AdminSettings';
 
 export const router = createBrowserRouter([
   // Public — accessible sans authentification
@@ -21,7 +29,20 @@ export const router = createBrowserRouter([
   { path: '/simulation', element: <RequireAuth><SimulationPage /></RequireAuth> },
 
   // Admin back-office — requires the `admin` realm role
-  { path: '/admin', element: <RequireAdmin><AdminPage /></RequireAdmin> },
+  {
+    path: '/admin',
+    element: <RequireAdmin><AdminLayout /></RequireAdmin>,
+    children: [
+      { index: true,        Component: AdminDashboard },
+      { path: 'users',      Component: UserManagement },
+      { path: 'banks',      Component: BankManagement },
+      { path: 'dimensions', Component: DimensionsManagement },
+      { path: 'scoring',    Component: ScoringReferential },
+      { path: 'versions',   Component: QuestionnaireVersions },
+      { path: 'logs',       Component: AuditLogs },
+      { path: 'settings',   Component: Settings },
+    ],
+  },
 
 ], {
   basename: import.meta.env.BASE_URL,
