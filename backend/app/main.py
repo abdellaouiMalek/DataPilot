@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.core.cors import setup_cors
-from app.routers import admin, config
+from app.routers import admin, assessments, config
 
 app = FastAPI(
     title="DataPilot API",
@@ -13,6 +13,7 @@ setup_cors(app)
 
 app.include_router(config.router)
 app.include_router(admin.router)
+app.include_router(assessments.router)
 
 
 @app.get("/")

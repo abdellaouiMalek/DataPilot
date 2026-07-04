@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Navbar } from '@/components/Navbar';
 import { getDimensions } from '@/lib/config';
 import type { Dimension } from '@/lib/config';
+import { submitAssessment } from '@/lib/assessment';
+import type { AnswerIn } from '@/lib/assessment';
 
 const likertOptions = [
   { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
@@ -66,15 +68,41 @@ export function QuestionnairePage() {
     setTimeout(() => setJustAnswered(null), 600);
   };
 
-  const handleNext = () => {
+  // Flatten the per-dimension/index answer map into the [{question_id, value}]
+  // payload the API expects, resolving each index back to its real question id.
+  const buildAnswerPayload = (): AnswerIn[] => {
+    const payload: AnswerIn[] = [];
+    for (const dim of dimensions) {
+      const dimAnswers = answers[dim.key] || {};
+      for (const [qIndex, value] of Object.entries(dimAnswers)) {
+        const question = dim.questions[Number(qIndex)];
+        if (question) payload.push({ question_id: question.id, value });
+      }
+    }
+    return payload;
+  };
+
+  const handleNext = async () => {
     const isLast = currentDimensionIndex === dimensions.length - 1;
-    if (isLast) {
-      setCompleting(true);
-      toast.success('Évaluation terminée !', { description: 'Génération de votre profil de maturité en cours...', duration: 3000 });
-      setTimeout(() => navigate('/results', { state: { answers, profile: profileData } }), 1000);
-    } else {
+    if (!isLast) {
       setCurrentDimensionIndex((i) => i + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    setCompleting(true);
+    try {
+      const result = await submitAssessment({
+        bank: profileData.bank,
+        department: profileData.department,
+        evaluator_role: profileData.role,
+        answers: buildAnswerPayload(),
+      });
+      toast.success('Évaluation terminée !', { description: 'Votre profil de maturité est prêt.', duration: 3000 });
+      navigate('/results', { state: { result, answers, profile: profileData } });
+    } catch {
+      setCompleting(false);
+      toast.error('Échec de l\'enregistrement', { description: "Impossible de calculer votre score. Vérifiez que l'API est démarrée, puis réessayez." });
     }
   };
 

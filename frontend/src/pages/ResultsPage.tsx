@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, ChevronRight, Target, BarChart3, Settings2, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronRight, Target, BarChart3, Settings2, Loader2, Building2, Calendar } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { getMaturityLevels } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
+import type { AssessmentResult } from '../lib/assessment';
 
 export function ResultsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { answers = {} } = location.state || {};
+  const { result } = (location.state || {}) as { result?: AssessmentResult };
 
   const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,48 +59,51 @@ export function ResultsPage() {
     );
   }
 
-  const calculateDimensionScore = (dimensionId: string) => {
-    const dimAnswers = answers[dimensionId] || {};
-    const values = Object.values(dimAnswers) as number[];
-    if (values.length === 0) return 0;
-    return values.reduce((sum, val) => sum + val, 0) / values.length;
-  };
+  // Scores come exclusively from the submitted assessment.
+  const displayScores: Record<string, number> = {};
+  const dimensionLabels: Record<string, string> = {};
+  for (const d of result?.dimension_scores ?? []) {
+    displayScores[d.key] = d.score;
+    dimensionLabels[d.key] = d.name;
+  }
 
-  const scores = {
-    gouvernance: calculateDimensionScore('gouvernance'),
-    qualite: calculateDimensionScore('qualite'),
-    architecture: calculateDimensionScore('architecture'),
-    usage: calculateDimensionScore('usage'),
-    culture: calculateDimensionScore('culture'),
-    strategie: calculateDimensionScore('strategie'),
-  };
+  // Opened without a submission in history state — nothing real to show.
+  if (!result || Object.keys(displayScores).length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Aucun résultat à afficher. Complétez une évaluation pour générer votre profil de maturité.
+          </p>
+          <button
+            onClick={() => navigate('/questionnaire')}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
+          >
+            Démarrer une évaluation
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const isMock = Object.values(scores).every(score => score === 0);
-  const displayScores = isMock ? {
-    gouvernance: 1.9,
-    qualite: 2.8,
-    architecture: 3.5,
-    usage: 2.4,
-    culture: 4.5,
-    strategie: 3.1
-  } : scores;
-
-  const globalScore = Object.values(displayScores).reduce((sum, val) => sum + val, 0) / 6;
+  const globalScore = result.score_global ?? 0;
 
   const getMaturityLevel = (score: number) => {
     return maturityLevels.find((level) => score >= level.min_score && score <= level.max_score) || maturityLevels[0];
   };
 
-  const maturity = getMaturityLevel(globalScore);
+  // Use the label the backend computed when present; otherwise map by range.
+  const maturity =
+    (result.maturity_label
+      ? maturityLevels.find((l) => l.label === result.maturity_label)
+      : undefined) || getMaturityLevel(globalScore);
 
-  const radarData = [
-    { dimension: 'Gouvernance', value: displayScores.gouvernance, fullMark: 5 },
-    { dimension: 'Qualité', value: displayScores.qualite, fullMark: 5 },
-    { dimension: 'Architecture', value: displayScores.architecture, fullMark: 5 },
-    { dimension: 'Usage', value: displayScores.usage, fullMark: 5 },
-    { dimension: 'Culture', value: displayScores.culture, fullMark: 5 },
-    { dimension: 'Stratégie', value: displayScores.strategie, fullMark: 5 },
-  ];
+  const radarData = Object.entries(displayScores).map(([dim, value]) => ({
+    dimension: dimensionLabels[dim] ?? dim,
+    value,
+    fullMark: 5,
+  }));
 
   const insights = {
     strengths: Object.entries(displayScores)
@@ -110,14 +114,15 @@ export function ResultsPage() {
       .map(([dim]) => dim),
   };
 
-  const dimensionLabels: Record<string, string> = {
-    gouvernance: 'Gouvernance des données',
-    qualite: 'Qualité des données',
-    architecture: 'Architecture & Infra',
-    usage: 'Usage & Analytics',
-    culture: 'Culture Data & Compétences',
-    strategie: 'Stratégie & Vision Data',
-  };
+  // Shared colour scale so bars, score numbers and chips stay consistent.
+  const scoreColor = (score: number) =>
+    score >= 4.5 ? '#7dd3fc'
+    : score >= 3.5 ? '#86efac'
+    : score >= 3.0 ? '#fef08a'
+    : score >= 2.0 ? '#fb923c'
+    : '#f87171';
+
+  const context = [result.department, result.evaluator_role].filter(Boolean).join(' · ');
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans antialiased overflow-x-hidden">
@@ -138,18 +143,25 @@ export function ResultsPage() {
               <div className="absolute top-0 right-0 w-48 h-48 sm:w-64 h-64 bg-[#FFE600]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
 
               <div className="relative z-10 space-y-6 sm:space-y-10">
-                <div className="inline-flex items-center gap-3 px-3 py-1.5 bg-white/10 backdrop-blur-sm border border-white/20">
-                  <span className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-300">
-                    DATE :
-                  </span>
-                  <span className="text-[10px] sm:text-xs font-bold text-white uppercase">
-                    {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#FFE600] text-black">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wide truncate max-w-[220px]">
+                      {result.bank}
+                    </span>
+                  </div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 backdrop-blur-sm border border-white/20">
+                    <Calendar className="w-3.5 h-3.5 text-gray-300" />
+                    <span className="text-[10px] sm:text-xs font-bold text-white uppercase">
+                      {new Date(result.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-2 sm:space-y-4">
                   <h1 className="text-sm sm:text-xl font-light text-gray-400 tracking-wide">
                     Niveau de maturité global
+                    {context && <span className="text-gray-500"> — {context}</span>}
                   </h1>
                   <div className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight">
                     {maturity.label}
@@ -159,13 +171,35 @@ export function ResultsPage() {
                   </p>
                 </div>
 
-                <div className="pt-6 sm:pt-8 border-t border-gray-800">
-                  <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 mb-1 sm:mb-2">SCORE CONSOLIDÉ</div>
-                  <div className="flex items-baseline gap-2 sm:gap-4">
-                    <div className="text-5xl sm:text-7xl font-light tracking-tighter text-[#FFE600]">
-                      {globalScore.toFixed(1)}
+                <div className="pt-6 sm:pt-8 border-t border-gray-800 space-y-5 sm:space-y-6">
+                  <div>
+                    <div className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-500 mb-1 sm:mb-2">SCORE CONSOLIDÉ</div>
+                    <div className="flex items-baseline gap-2 sm:gap-4">
+                      <div className="text-5xl sm:text-7xl font-light tracking-tighter text-[#FFE600]">
+                        {globalScore.toFixed(1)}
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-600">/ 5.0</div>
                     </div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-600">/ 5.0</div>
+                  </div>
+
+                  {/* Maturity scale — highlights the band the score lands in */}
+                  <div className="flex gap-1.5">
+                    {maturityLevels.map((level) => {
+                      const active = level.label === maturity.label;
+                      return (
+                        <div key={level.id} className="flex-1 min-w-0">
+                          <div
+                            className="h-1.5 rounded-full transition-all"
+                            style={{ background: active ? level.color : 'rgba(255,255,255,0.14)' }}
+                          />
+                          <div
+                            className={`mt-1.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-wide truncate ${active ? 'text-white' : 'text-gray-600'}`}
+                          >
+                            {level.label}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -184,8 +218,8 @@ export function ResultsPage() {
                     <div key={dim} className="space-y-1.5 sm:space-y-2">
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-xs sm:text-sm font-bold text-gray-600 truncate">{dimensionLabels[dim]}</span>
-                        <span className="text-sm sm:text-lg font-bold text-gray-900 flex-shrink-0">
-                          {score.toFixed(1)}
+                        <span className="text-sm sm:text-lg font-bold flex-shrink-0" style={{ color: scoreColor(score) }}>
+                          {score.toFixed(1)}<span className="text-gray-300 font-medium">/5</span>
                         </span>
                       </div>
                       <div className="h-2 bg-gray-100 relative overflow-hidden rounded-full">
@@ -193,10 +227,8 @@ export function ResultsPage() {
                           initial={{ width: 0 }}
                           animate={{ width: `${(score / 5) * 100}%` }}
                           transition={{ duration: 1, delay: 0.2, ease: "easeOut" }}
-                          className="absolute inset-y-0 left-0"
-                          style={{
-                            backgroundColor: score >= 4.5 ? '#7dd3fc' : score >= 3.5 ? '#86efac' : score >= 3.0 ? '#fef08a' : score >= 2.0 ? '#fb923c' : '#f87171',
-                          }}
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{ backgroundColor: scoreColor(score) }}
                         />
                       </div>
                     </div>
@@ -266,7 +298,7 @@ export function ResultsPage() {
                       {insights.strengths.map((dim) => (
                         <div key={dim} className="flex items-center justify-between gap-4 text-xs sm:text-sm">
                           <span className="font-semibold text-gray-800 truncate">{dimensionLabels[dim]}</span>
-                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm flex-shrink-0">
+                          <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-sm flex-shrink-0">
                             {displayScores[dim as keyof typeof displayScores].toFixed(1)}
                           </span>
                         </div>
@@ -285,7 +317,7 @@ export function ResultsPage() {
                       {insights.weaknesses.map((dim) => (
                         <div key={dim} className="flex items-center justify-between gap-4 text-xs sm:text-sm">
                           <span className="font-semibold text-gray-800 truncate">{dimensionLabels[dim]}</span>
-                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-sm flex-shrink-0">
+                          <span className="font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-sm flex-shrink-0">
                             {displayScores[dim as keyof typeof displayScores].toFixed(1)}
                           </span>
                         </div>
