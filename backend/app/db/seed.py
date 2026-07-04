@@ -1,5 +1,6 @@
 """Seed the database with the reference data that used to be hard-coded in the
-frontend (dimensions, questions, banks, departments, roles, maturity levels).
+frontend (dimensions, sub-dimensions, questions, banks, departments, roles,
+maturity levels).
 
 Run after applying migrations:
 
@@ -22,7 +23,9 @@ from app.models import (
     MaturityLevel,
     Question,
     Role,
+    SubDimension,
 )
+from app.models.question import DEFAULT_QUESTION_TYPE
 
 # --- Reference data (mirrors the former frontend constants) -----------------
 
@@ -33,11 +36,18 @@ DIMENSIONS = [
         "name": "Gouvernance des données",
         "short_name": "Gouvernance",
         "description": "Cadre de responsabilités, politiques et conformité réglementaire autour de la donnée.",
-        "questions": [
-            "Les responsabilités data sont-elles clairement définies (CDO, data owners) ?",
-            "Existe-t-il un cadre de gouvernance formalisé avec politiques et standards ?",
-            "La gouvernance des données est-elle alignée avec les réglementations (BCT, BCBS 239) ?",
-            "Avez-vous mis en place des KPIs pour piloter la gouvernance des données ?",
+        "weight": 18,
+        "color": "#0277BD",
+        "sub_dimensions": [
+            {
+                "name": "Cadre & Conformité",
+                "questions": [
+                    "Les responsabilités data sont-elles clairement définies (CDO, data owners) ?",
+                    "Existe-t-il un cadre de gouvernance formalisé avec politiques et standards ?",
+                    "La gouvernance des données est-elle alignée avec les réglementations (BCT, BCBS 239) ?",
+                    "Avez-vous mis en place des KPIs pour piloter la gouvernance des données ?",
+                ],
+            },
         ],
     },
     {
@@ -46,11 +56,18 @@ DIMENSIONS = [
         "name": "Qualité des données",
         "short_name": "Qualité",
         "description": "Exactitude, cohérence et disponibilité des données à travers les systèmes.",
-        "questions": [
-            "Les données sont-elles complètes et exactes (fiables, sans erreurs) ?",
-            "Les données sont-elles cohérentes et sans doublons à travers les systèmes ?",
-            "Les données sont-elles à jour et disponibles quand nécessaire ?",
-            "Existe-t-il un processus de contrôle et d'amélioration continue de la qualité ?",
+        "weight": 17,
+        "color": "#2E7D32",
+        "sub_dimensions": [
+            {
+                "name": "Fiabilité & Contrôle",
+                "questions": [
+                    "Les données sont-elles complètes et exactes (fiables, sans erreurs) ?",
+                    "Les données sont-elles cohérentes et sans doublons à travers les systèmes ?",
+                    "Les données sont-elles à jour et disponibles quand nécessaire ?",
+                    "Existe-t-il un processus de contrôle et d'amélioration continue de la qualité ?",
+                ],
+            },
         ],
     },
     {
@@ -59,11 +76,18 @@ DIMENSIONS = [
         "name": "Architecture & Infrastructure",
         "short_name": "Architecture",
         "description": "Centralisation, intégration et sécurité des plateformes et pipelines data.",
-        "questions": [
-            "Avez-vous centralisé vos données (Data Lake, DWH, MDM) ?",
-            "Les systèmes communiquent-ils de manière fluide via APIs et services ?",
-            "Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?",
-            "La sécurité et le contrôle d'accès (RBAC, chiffrement) sont-ils en place ?",
+        "weight": 16,
+        "color": "#7B2D8B",
+        "sub_dimensions": [
+            {
+                "name": "Plateformes & Sécurité",
+                "questions": [
+                    "Avez-vous centralisé vos données (Data Lake, DWH, MDM) ?",
+                    "Les systèmes communiquent-ils de manière fluide via APIs et services ?",
+                    "Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?",
+                    "La sécurité et le contrôle d'accès (RBAC, chiffrement) sont-ils en place ?",
+                ],
+            },
         ],
     },
     {
@@ -72,11 +96,18 @@ DIMENSIONS = [
         "name": "Usage & Analytics",
         "short_name": "Usage",
         "description": "Exploitation analytique et impact réel de la donnée dans la prise de décision.",
-        "questions": [
-            "Disposez-vous de tableaux de bord et outils de visualisation (BI) ?",
-            "Utilisez-vous des modèles prédictifs et de l'advanced analytics ?",
-            "Les données influencent-elles réellement la prise de décision ?",
-            "Avez-vous des cas d'usage métiers opérationnels (risque, marketing, finance) ?",
+        "weight": 16,
+        "color": "#C4550A",
+        "sub_dimensions": [
+            {
+                "name": "Analytics & Décision",
+                "questions": [
+                    "Disposez-vous de tableaux de bord et outils de visualisation (BI) ?",
+                    "Utilisez-vous des modèles prédictifs et de l'advanced analytics ?",
+                    "Les données influencent-elles réellement la prise de décision ?",
+                    "Avez-vous des cas d'usage métiers opérationnels (risque, marketing, finance) ?",
+                ],
+            },
         ],
     },
     {
@@ -85,11 +116,18 @@ DIMENSIONS = [
         "name": "Culture Data & Compétences",
         "short_name": "Culture",
         "description": "Maturité humaine, adoption des outils et collaboration métiers-IT autour de la data.",
-        "questions": [
-            "Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?",
-            "Existe-t-il des programmes de formation et montée en compétences data ?",
-            "Les outils data sont-ils adoptés et utilisés par les équipes ?",
-            "Y a-t-il une bonne collaboration entre métiers et IT sur les sujets data ?",
+        "weight": 16,
+        "color": "#00838F",
+        "sub_dimensions": [
+            {
+                "name": "Compétences & Adoption",
+                "questions": [
+                    "Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?",
+                    "Existe-t-il des programmes de formation et montée en compétences data ?",
+                    "Les outils data sont-ils adoptés et utilisés par les équipes ?",
+                    "Y a-t-il une bonne collaboration entre métiers et IT sur les sujets data ?",
+                ],
+            },
         ],
     },
     {
@@ -98,14 +136,24 @@ DIMENSIONS = [
         "name": "Stratégie & Vision Data",
         "short_name": "Stratégie",
         "description": "Alignement de la vision data avec les objectifs business et mesure du ROI.",
-        "questions": [
-            "Avez-vous une vision et roadmap data claire et partagée ?",
-            "La stratégie data est-elle alignée avec les objectifs business de la banque ?",
-            "Les initiatives data sont-elles priorisées de manière structurée ?",
-            "Mesurez-vous le ROI et l'impact business des projets data ?",
+        "weight": 17,
+        "color": "#1A1A1A",
+        "sub_dimensions": [
+            {
+                "name": "Vision & ROI",
+                "questions": [
+                    "Avez-vous une vision et roadmap data claire et partagée ?",
+                    "La stratégie data est-elle alignée avec les objectifs business de la banque ?",
+                    "Les initiatives data sont-elles priorisées de manière structurée ?",
+                    "Mesurez-vous le ROI et l'impact business des projets data ?",
+                ],
+            },
         ],
     },
 ]
+
+# Default per-question weight (1–10 scale used by the admin UI).
+DEFAULT_QUESTION_WEIGHT = 5
 
 MATURITY_LEVELS = [
     {"label": "Initial", "min_score": 0.0, "max_score": 1.9, "color": "#f87171", "description": "Non-conformité BCT probable. Urgence absolue."},
@@ -161,8 +209,8 @@ async def _is_empty(session, model) -> bool:
 
 
 async def _reset(session) -> None:
-    # Order matters: questions reference dimensions.
-    for model in (Question, Dimension, Bank, Department, Role, MaturityLevel):
+    # Order matters: children before parents.
+    for model in (Question, SubDimension, Dimension, Bank, Department, Role, MaturityLevel):
         await session.execute(delete(model))
     print("- cleared reference tables")
 
@@ -180,23 +228,43 @@ async def seed(reset: bool = False) -> None:
                     name=d["name"],
                     short_name=d["short_name"],
                     description=d["description"],
+                    weight=d["weight"],
+                    color=d["color"],
                     sort_order=d_order,
                 )
-                dim.questions = [
-                    Question(text=text, sort_order=q_order)
-                    for q_order, text in enumerate(d["questions"])
-                ]
                 session.add(dim)
-            print(f"- inserted {len(DIMENSIONS)} dimensions + their questions")
+                await session.flush()  # populate dim.id
+
+                for s_order, sd in enumerate(d["sub_dimensions"]):
+                    sub = SubDimension(
+                        dimension_id=dim.id,
+                        name=sd["name"],
+                        sort_order=s_order,
+                    )
+                    session.add(sub)
+                    await session.flush()  # populate sub.id
+
+                    for q_order, text in enumerate(sd["questions"]):
+                        session.add(
+                            Question(
+                                dimension_id=dim.id,
+                                sub_dimension_id=sub.id,
+                                text=text,
+                                type=DEFAULT_QUESTION_TYPE,
+                                weight=DEFAULT_QUESTION_WEIGHT,
+                                sort_order=q_order,
+                            )
+                        )
+            print(f"- inserted {len(DIMENSIONS)} dimensions + sub-dimensions + questions")
         else:
-            print("- dimensions already present — skipped")
+            print("- dimensions already present - skipped")
 
         if await _is_empty(session, MaturityLevel):
             for order, m in enumerate(MATURITY_LEVELS):
                 session.add(MaturityLevel(sort_order=order, **m))
             print(f"- inserted {len(MATURITY_LEVELS)} maturity levels")
         else:
-            print("- maturity levels already present — skipped")
+            print("- maturity levels already present - skipped")
 
         for model, names in ((Bank, BANKS), (Department, DEPARTMENTS), (Role, ROLES)):
             if await _is_empty(session, model):
@@ -204,7 +272,7 @@ async def seed(reset: bool = False) -> None:
                     session.add(model(name=name, sort_order=order))
                 print(f"- inserted {len(names)} {model.__tablename__}")
             else:
-                print(f"- {model.__tablename__} already present — skipped")
+                print(f"- {model.__tablename__} already present - skipped")
 
         await session.commit()
     print("[OK] seed complete")

@@ -1,13 +1,21 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Text
+from typing import Optional
+
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
 
+DEFAULT_QUESTION_TYPE = "Échelle de maturité"
+
 
 class Question(Base):
-    """A questionnaire item belonging to a dimension. Admin-managed."""
+    """A questionnaire item belonging to a sub-dimension. Admin-managed.
+
+    ``dimension_id`` is kept denormalized (always = the sub-dimension's dimension)
+    so the public flat questionnaire view stays a simple dimension→questions read.
+    """
 
     __tablename__ = "questions"
 
@@ -15,8 +23,17 @@ class Question(Base):
     dimension_id: Mapped[int] = mapped_column(
         ForeignKey("dimensions.id", ondelete="CASCADE"), index=True
     )
+    sub_dimension_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("sub_dimensions.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     text: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(
+        String(50), default=DEFAULT_QUESTION_TYPE, server_default=DEFAULT_QUESTION_TYPE
+    )
+    weight: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    dimension: Mapped["Dimension"] = relationship(back_populates="questions")
+    subdimension: Mapped[Optional["SubDimension"]] = relationship(
+        back_populates="questions"
+    )

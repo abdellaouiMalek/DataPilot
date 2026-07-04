@@ -1,20 +1,38 @@
 """Schemas for the admin back-office endpoints.
 
-Unlike the public `config` schemas, these expose `is_active` and accept
-create/update payloads.
+Models the 3-level framework: Dimension → Sub-dimension → Question, with the
+extra attributes the admin UI manages (weight, color, question type).
 """
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.models.question import DEFAULT_QUESTION_TYPE
+
+
+# ── Read ──────────────────────────────────────────────────────────────────────
 
 class QuestionAdminRead(BaseModel):
     id: int
     dimension_id: int
+    sub_dimension_id: Optional[int]
     text: str
+    type: str
+    weight: float
     sort_order: int
     is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SubDimensionAdminRead(BaseModel):
+    id: int
+    dimension_id: int
+    name: str
+    sort_order: int
+    is_active: bool
+    questions: list[QuestionAdminRead]
 
     model_config = {"from_attributes": True}
 
@@ -26,30 +44,67 @@ class DimensionAdminRead(BaseModel):
     name: str
     short_name: str
     description: str
+    weight: float
+    color: str
     sort_order: int
     is_active: bool
-    questions: list[QuestionAdminRead]
+    sub_dimensions: list[SubDimensionAdminRead]
 
     model_config = {"from_attributes": True}
 
 
+# ── Dimension write ───────────────────────────────────────────────────────────
+
 class DimensionCreate(BaseModel):
-    key: str = Field(min_length=1, max_length=50)
-    code: str = Field(min_length=1, max_length=10)
+    # key / code / short_name are auto-generated from the name server-side.
     name: str = Field(min_length=1, max_length=200)
-    short_name: str = Field(min_length=1, max_length=100)
     description: str = ""
-    sort_order: int = 0
+    weight: float = 0
+    color: str = Field(default="#1A1A1A", max_length=20)
+    sort_order: Optional[int] = None
     is_active: bool = True
 
 
 class DimensionUpdate(BaseModel):
-    """All fields optional — only provided ones are applied (PATCH semantics)."""
-
-    key: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    code: Optional[str] = Field(default=None, min_length=1, max_length=10)
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
-    short_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     description: Optional[str] = None
+    weight: Optional[float] = None
+    color: Optional[str] = Field(default=None, max_length=20)
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+
+
+# ── Sub-dimension write ───────────────────────────────────────────────────────
+
+class SubDimensionCreate(BaseModel):
+    dimension_id: int
+    name: str = Field(min_length=1, max_length=200)
+    sort_order: Optional[int] = None
+    is_active: bool = True
+
+
+class SubDimensionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    dimension_id: Optional[int] = None  # move to another dimension
+
+
+# ── Question write ────────────────────────────────────────────────────────────
+
+class QuestionCreate(BaseModel):
+    sub_dimension_id: int  # dimension_id is derived from the sub-dimension
+    text: str = Field(min_length=1)
+    type: str = Field(default=DEFAULT_QUESTION_TYPE, max_length=50)
+    weight: float = 0
+    sort_order: Optional[int] = None
+    is_active: bool = True
+
+
+class QuestionUpdate(BaseModel):
+    text: Optional[str] = Field(default=None, min_length=1)
+    type: Optional[str] = Field(default=None, max_length=50)
+    weight: Optional[float] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    sub_dimension_id: Optional[int] = None  # move to another sub-dimension
