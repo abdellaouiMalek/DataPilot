@@ -1,34 +1,57 @@
-# Keycloak for DataPilot — reproduces the previously hand-run `docker run` container,
-# now with: a persistent data volume, the Keycloakify EY login theme mounted as a
-# provider, and automatic realm import on first boot.
+# DataPilot infrastructure: dedicated Postgres (app DB + Keycloak DB) and Keycloak
+# with the Keycloakify EY login theme and automatic realm import on first boot.
 #
 # Build the theme jar before `up` (it's a local build artifact, not committed):
 #   cd keycloakify-starter && npm run build-keycloak-theme
 #
-# First switch-over (replaces the old hand-run container):
-#   docker rm -f keycloak           # remove the old ephemeral container
-#   docker compose up -d            # imports keycloak/import/datapilot-realm.json
+# Postgres holds two databases on the same server:
+#   - datapilot  (FastAPI app: dimensions, questions, assessments, scores)
+#   - keycloak   (Keycloak's internal schema: users, roles, credentials)
+# Host port 5434 (5433 is taken by another project's container).
 #
-# NOTE: the exported realm file does NOT contain users (partial export). Recreate
-# any test users in the admin console after first boot, or replace the import file
-# with a full export that includes users.
+# The realm import file (keycloak/import/) is a FULL export including users;
+# import runs only when the keycloak database is empty.
 services:
+  postgres:
+    image: postgres:18
+    container_name: datapilot-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: datapilot
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - datapilot-pgdata:/var/lib/postgresql
+      # Creates the extra "keycloak" database on first boot (empty volume only)
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d datapilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.1
     container_name: keycloak
     command: ["start-dev", "--import-realm"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
     ports:
       - "8085:8080"
     volumes:
-      # Persist realm/user data across container recreation
-      - keycloak-data:/opt/keycloak/data
       # EY Keycloakify login theme (rebuild the jar, then `docker compose restart keycloak`)
       - ./keycloakify-starter/dist_keycloak/keycloak-theme-for-kc-all-other-versions.jar:/opt/keycloak/providers/datapilot-theme.jar:ro
-      # Realm imported on first boot (skipped if the realm already exists in the volume)
+      # Realm imported on first boot (skipped if the realm already exists in the DB)
       - ./keycloak/import:/opt/keycloak/data/import:ro
 
 volumes:
-  keycloak-data:
+  datapilot-pgdata:

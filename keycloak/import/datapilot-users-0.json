@@ -1,0 +1,65 @@
+{
+  "realm" : "datapilot",
+  "users" : [ {
+    "id" : "9de05d60-dc5a-4bb9-b0c2-5e78d4149e66",
+    "username" : "service-account-datapilot-backend",
+    "emailVerified" : false,
+    "createdTimestamp" : 1783208636015,
+    "enabled" : true,
+    "totp" : false,
+    "serviceAccountClientId" : "datapilot-backend",
+    "credentials" : [ ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "default-roles-datapilot" ],
+    "clientRoles" : {
+      "realm-management" : [ "view-realm", "query-users", "view-users", "manage-users" ]
+    },
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "996f674a-fd6b-4d3c-b4ac-1c542917e50e",
+    "username" : "testadmin",
+    "firstName" : "test",
+    "lastName" : "admin",
+    "email" : "testadmin@ey.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1782156191199,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "bbb307f3-fb2f-41d9-9fb4-40399a79447e",
+      "type" : "password",
+      "createdDate" : 1782161630366,
+      "secretData" : "{\"value\":\"M2VuYpchia8CK2KXe27qcIj5C8rZYE6WOtm/lzOcHn4=\",\"salt\":\"vFEAdspJo/BHxaZsZKU/Ng==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "default-roles-datapilot", "admin" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "8df2c655-32ac-4723-899e-18809506d226",
+    "username" : "testuser",
+    "firstName" : "Test",
+    "lastName" : "User",
+    "email" : "test@datapilot.local",
+    "emailVerified" : true,
+    "createdTimestamp" : 1781100932305,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "abe9d87a-a513-465c-aae7-4cfdba6f45a0",
+      "type" : "password",
+      "createdDate" : 1781100934622,
+      "secretData" : "{\"value\":\"m5pcmELEDDnloh9uuCR+v+XDGldK8laqWd6DTdFX2Tg=\",\"salt\":\"R73F3cU/dBmfr8mHjMsnrA==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "default-roles-datapilot", "repondant" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  } ]
+}

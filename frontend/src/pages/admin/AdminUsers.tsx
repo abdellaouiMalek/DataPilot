@@ -1,19 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search, Plus, Edit2, Trash2, UserCheck, UserX,
   Key, ChevronDown, X, Download, Upload,
   Users, UserCog, ShieldCheck, Clock, MoreHorizontal,
-  TrendingUp, TrendingDown,
+  TrendingUp, TrendingDown, Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  listUsers, countUsers, createUser, updateUser, setUserEnabled, setUserArchived, resetUserPassword,
+} from "@/lib/adminUsers";
+import type { AdminUser, BusinessRole, UserPayload } from "@/lib/adminUsers";
+import { ApiError } from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+const ROLE_LABELS: Record<BusinessRole, string> = {
+  admin:      "Admin EY",
+  consultant: "Consultant EY",
+  repondant:  "Répondant Banque",
+  validateur: "Validateur Banque",
+};
+
+const LABEL_TO_ROLE: Record<string, BusinessRole> = Object.fromEntries(
+  Object.entries(ROLE_LABELS).map(([role, label]) => [label, role as BusinessRole]),
+);
+
 interface User {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   email: string;
   role: string;
+  enabled: boolean;
   organization: string;
   status: string;
   createdAt: string;
@@ -21,64 +39,85 @@ interface User {
   permissions: string[];
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
+// Keycloak → UI row. lastLogin / permissions are not wired yet, so they keep
+// hardcoded placeholder values until their endpoints exist.
+function toUser(u: AdminUser): User {
+  return {
+    id: u.id,
+    firstName: u.first_name || u.username || "—",
+    lastName: u.last_name || "",
+    email: u.email || "—",
+    role: u.role ? ROLE_LABELS[u.role] : "—",
+    enabled: u.enabled,
+    organization: u.organization || "—",
+    status: u.status,
+    createdAt: u.created_at
+      ? new Date(u.created_at).toLocaleDateString("fr-FR")
+      : "—",
+    lastLogin: "—", // TODO: needs Keycloak login events
+    permissions: [],
+  };
+}
 
-const mockUsers: User[] = [
-  { id: 1,  firstName: "Alexandre", lastName: "Dupont",    email: "a.dupont@ey.com",            role: "Admin EY",          organization: "EY France",           status: "Actif",      createdAt: "15/01/2026", lastLogin: "11/06/2026", permissions: ["Lecture", "Écriture", "Administration"] },
-  { id: 2,  firstName: "Marine",    lastName: "Bernard",   email: "m.bernard@ey.com",           role: "Consultant EY",     organization: "EY France",           status: "Actif",      createdAt: "20/02/2026", lastLogin: "10/06/2026", permissions: ["Lecture", "Écriture"] },
-  { id: 3,  firstName: "Sophie",    lastName: "Martin",    email: "s.martin@ey.com",            role: "Consultant EY",     organization: "EY France",           status: "Actif",      createdAt: "05/03/2026", lastLogin: "09/06/2026", permissions: ["Lecture", "Écriture"] },
-  { id: 4,  firstName: "Julien",    lastName: "Rousseau",  email: "j.rousseau@bnpparibas.fr",   role: "Répondant Banque",  organization: "BNP Paribas",         status: "Actif",      createdAt: "11/06/2026", lastLogin: "11/06/2026", permissions: ["Lecture"] },
-  { id: 5,  firstName: "Sarah",     lastName: "Mbeki",     email: "s.mbeki@creditmutuel.fr",    role: "Validateur Banque", organization: "Crédit Mutuel",       status: "En attente", createdAt: "10/06/2026", lastLogin: "—",          permissions: ["Lecture", "Validation"] },
-  { id: 6,  firstName: "Thomas",    lastName: "Girard",    email: "t.girard@ey.com",            role: "Consultant EY",     organization: "EY France",           status: "Actif",      createdAt: "09/06/2026", lastLogin: "09/06/2026", permissions: ["Lecture", "Écriture"] },
-  { id: 7,  firstName: "Amina",     lastName: "Benali",    email: "a.benali@cacf.fr",           role: "Répondant Banque",  organization: "CA Consumer Finance", status: "Actif",      createdAt: "08/06/2026", lastLogin: "10/06/2026", permissions: ["Lecture"] },
-  { id: 8,  firstName: "Kevin",     lastName: "Park",      email: "k.park@societegenerale.fr",  role: "Répondant Banque",  organization: "Société Générale",    status: "En attente", createdAt: "07/06/2026", lastLogin: "—",          permissions: ["Lecture"] },
-  { id: 9,  firstName: "Lucie",     lastName: "Petit",     email: "l.petit@ey.com",             role: "Consultant EY",     organization: "EY France",           status: "Désactivé",  createdAt: "01/03/2026", lastLogin: "20/05/2026", permissions: [] },
-  { id: 10, firstName: "Marc",      lastName: "Chen",      email: "m.chen@caisseepargne.fr",    role: "Validateur Banque", organization: "Caisse d'Épargne",    status: "Actif",      createdAt: "15/04/2026", lastLogin: "08/06/2026", permissions: ["Lecture", "Validation"] },
-  { id: 11, firstName: "Nadia",     lastName: "Lefèvre",   email: "n.lefevre@bnpparibas.fr",    role: "Validateur Banque", organization: "BNP Paribas",         status: "Actif",      createdAt: "20/04/2026", lastLogin: "07/06/2026", permissions: ["Lecture", "Validation"] },
-  { id: 12, firstName: "Romain",    lastName: "Leclerc",   email: "r.leclerc@ey.com",           role: "Admin EY",          organization: "EY France",           status: "Actif",      createdAt: "10/01/2026", lastLogin: "06/06/2026", permissions: ["Lecture", "Écriture", "Administration"] },
-];
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  return "Une erreur est survenue. Vérifiez que l'API est démarrée.";
+}
 
 const roles   = ["Tous les rôles",   "Admin EY", "Consultant EY", "Répondant Banque", "Validateur Banque"];
-const statuses = ["Tous les statuts", "Actif", "En attente", "Désactivé"];
+const statuses = ["Tous les statuts", "Actif", "En attente", "Désactivé", "Archivé"];
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 
-const kpiCards = [
-  {
-    label:   "Total utilisateurs",
-    value:   "48",
-    sub:     "+3 cette semaine",
-    trend:   "up",
-    icon:    Users,
-    detail:  "Sur toutes les organisations",
-  },
-  {
-    label:   "Utilisateurs actifs",
-    value:   "41",
-    sub:     "+5%",
-    trend:   "up",
-    icon:    UserCheck,
-    detail:  "Connectés ces 30 derniers jours",
-  },
-  {
-    label:   "Admins EY",
-    value:   "3",
-    sub:     "Accès complet",
-    trend:   "neutral",
-    icon:    ShieldCheck,
-    detail:  "Admin EY · Permissions totales",
-  },
-  {
-    label:   "En attente d'activation",
-    value:   "2",
-    sub:     "-26%",
-    trend:   "down",
-    detail:  "Comptes créés non encore activés",
-    icon:    Clock,
-  },
-];
+interface KpiCardData {
+  label: string;
+  value: string;
+  sub: string;
+  trend: "up" | "down" | "neutral";
+  icon: typeof Users;
+  detail: string;
+}
 
-function KpiCard({ card }: { card: typeof kpiCards[0] }) {
+// Total / actifs / en attente come from the API; the rest stays hardcoded
+// until wired (role counts, trends).
+function buildKpiCards(total: number, active: number, pending: number): KpiCardData[] {
+  return [
+    {
+      label:   "Total utilisateurs",
+      value:   String(total),
+      sub:     "+3 cette semaine",
+      trend:   "up",
+      icon:    Users,
+      detail:  "Sur toutes les organisations",
+    },
+    {
+      label:   "Utilisateurs actifs",
+      value:   String(active),
+      sub:     "+5%",
+      trend:   "up",
+      icon:    UserCheck,
+      detail:  "Connectés ces 30 derniers jours",
+    },
+    {
+      label:   "Admins EY",
+      value:   "3",
+      sub:     "Accès complet",
+      trend:   "neutral",
+      icon:    ShieldCheck,
+      detail:  "Admin EY · Permissions totales",
+    },
+    {
+      label:   "En attente d'activation",
+      value:   String(pending),
+      sub:     "-26%",
+      trend:   "down",
+      detail:  "Comptes créés non encore activés",
+      icon:    Clock,
+    },
+  ];
+}
+
+function KpiCard({ card }: { card: KpiCardData }) {
   const Icon = card.icon;
   const trendColor = card.trend === "up" ? "#2E7D32" : card.trend === "down" ? "#CC0000" : "#6B6B6B";
   const trendBg    = card.trend === "up" ? "#E8F5E9"  : card.trend === "down" ? "#FFEBEE"  : "#F5F5F5";
@@ -120,6 +159,7 @@ function StatusBadge({ status }: { status: string }) {
     "Actif":      { bg: "#E8F5E9", color: "#2E7D32" },
     "En attente": { bg: "#FFF8E1", color: "#E65100" },
     "Désactivé":  { bg: "#FFEBEE", color: "#CC0000" },
+    "Archivé":    { bg: "#ECEFF1", color: "#455A64" },
   };
   const c = cfg[status] || { bg: "#F5F5F5", color: "#6B6B6B" };
   return (
@@ -160,17 +200,54 @@ function PermissionTag({ label }: { label: string }) {
 interface UserModalProps {
   user?: User | null;
   onClose: () => void;
+  onSaved: () => void;
 }
 
-function UserModal({ user, onClose }: UserModalProps) {
+function UserModal({ user, onClose, onSaved }: UserModalProps) {
   const [formData, setFormData] = useState({
     firstName:    user?.firstName    || "",
     lastName:     user?.lastName     || "",
-    email:        user?.email        || "",
-    role:         user?.role         || "Consultant EY",
-    organization: user?.organization || "",
+    email:        user?.email === "—" ? "" : user?.email || "",
+    role:         user?.role && user.role !== "—" ? user.role : "Consultant EY",
+    organization: user?.organization === "—" ? "" : user?.organization || "",
     status:       user?.status       || "Actif",
   });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
+      toast.error("Champs manquants", { description: "Prénom, nom et email sont obligatoires." });
+      return;
+    }
+    const payload: UserPayload = {
+      first_name: formData.firstName.trim(),
+      last_name: formData.lastName.trim(),
+      email: formData.email.trim(),
+      role: LABEL_TO_ROLE[formData.role] ?? "consultant",
+      organization: formData.organization.trim() || null,
+      status: formData.status as UserPayload["status"],
+    };
+    setSaving(true);
+    try {
+      if (user) {
+        await updateUser(user.id, payload);
+        toast.success("Utilisateur mis à jour", { description: payload.email });
+      } else {
+        await createUser(payload);
+        toast.success("Compte créé", {
+          description: payload.status === "Archivé"
+            ? `${payload.email} a été créé archivé (aucun email envoyé).`
+            : `Un mot de passe temporaire a été envoyé à ${payload.email}.`,
+        });
+      }
+      onSaved();
+    } catch (err) {
+      toast.error(user ? "Échec de la mise à jour" : "Échec de la création", {
+        description: errorMessage(err),
+      });
+      setSaving(false);
+    }
+  };
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "8px 12px", borderRadius: 6,
@@ -199,14 +276,14 @@ function UserModal({ user, onClose }: UserModalProps) {
             ].map(({ label, key, placeholder }) => (
               <div key={key}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>{label}</label>
-                <input value={(formData as any)[key]} onChange={e => setFormData(p => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} style={inp} />
+                <input value={(formData as any)[key]} onChange={e => setFormData(p => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} autoComplete="off" style={inp} />
               </div>
             ))}
           </div>
 
           <div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>Email professionnel *</label>
-            <input value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="prenom.nom@organisation.com" type="email" style={inp} />
+            <input value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="prenom.nom@organisation.com" type="email" name="datapilot-new-user-email" autoComplete="off" style={inp} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -218,14 +295,14 @@ function UserModal({ user, onClose }: UserModalProps) {
             </div>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>Organisation</label>
-              <input value={formData.organization} onChange={e => setFormData(p => ({ ...p, organization: e.target.value }))} placeholder="ex. BNP Paribas" style={inp} />
+              <input value={formData.organization} onChange={e => setFormData(p => ({ ...p, organization: e.target.value }))} placeholder="ex. BNP Paribas" autoComplete="off" style={inp} />
             </div>
           </div>
 
           <div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 7 }}>Statut du compte</label>
             <div style={{ display: "flex", gap: 8 }}>
-              {["Actif", "En attente", "Désactivé"].map(s => (
+              {["Actif", "En attente", "Désactivé", "Archivé"].map(s => (
                 <button key={s} onClick={() => setFormData(p => ({ ...p, status: s }))} style={{
                   padding: "7px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",
                   border: formData.status === s ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)",
@@ -245,8 +322,12 @@ function UserModal({ user, onClose }: UserModalProps) {
           <button onClick={onClose} style={{ padding: "9px 20px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "1px solid rgba(0,0,0,0.13)", backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A" }}>
             Annuler
           </button>
-          <button style={{ padding: "9px 20px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer" }}>
-            {user ? "Enregistrer" : "Créer le compte"}
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{ padding: "9px 20px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? "Enregistrement…" : user ? "Enregistrer" : "Créer le compte"}
           </button>
         </div>
       </div>
@@ -262,19 +343,96 @@ export function UserManagement() {
   const [statusFilter,   setStatusFilter]   = useState("Tous les statuts");
   const [showModal,      setShowModal]      = useState(false);
   const [editingUser,    setEditingUser]    = useState<User | null>(null);
-  const [openMenu,       setOpenMenu]       = useState<number | null>(null);
+  const [openMenu,       setOpenMenu]       = useState<string | null>(null);
   const [focusSearch,    setFocusSearch]    = useState(false);
   const [focusRole,      setFocusRole]      = useState(false);
   const [focusStatus,    setFocusStatus]    = useState(false);
 
-  const filtered = mockUsers.filter(u => {
+  const [users,   setUsers]   = useState<User[]>([]);
+  const [total,   setTotal]   = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = () => {
+    setLoading(true);
+    setLoadError(false);
+    setRefreshKey((k) => k + 1);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listUsers({ max: 100 }), countUsers()])
+      .then(([list, count]) => {
+        if (cancelled) return;
+        setUsers(list.map(toUser));
+        setTotal(count.count);
+      })
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  const handleToggleEnabled = async (user: User) => {
+    setOpenMenu(null);
+    const enable = !user.enabled;
+    try {
+      await setUserEnabled(user.id, enable);
+      toast.success(enable ? "Compte activé" : "Compte désactivé", { description: user.email });
+      reload();
+    } catch (err) {
+      toast.error("Échec de l'opération", { description: errorMessage(err) });
+    }
+  };
+
+  const handleArchive = async (user: User, archived: boolean) => {
+    setOpenMenu(null);
+    try {
+      await setUserArchived(user.id, archived);
+      toast.success(archived ? "Compte archivé" : "Compte restauré", {
+        description: archived
+          ? `${user.email} est masqué de la liste (filtre « Archivé »).`
+          : `${user.email} est de nouveau actif.`,
+      });
+      reload();
+    } catch (err) {
+      toast.error("Échec de l'opération", { description: errorMessage(err) });
+    }
+  };
+
+  const handleResetPassword = async (user: User) => {
+    setOpenMenu(null);
+    try {
+      await resetUserPassword(user.id);
+      toast.success("Mot de passe réinitialisé", {
+        description: `Un nouveau mot de passe temporaire a été envoyé à ${user.email}.`,
+      });
+    } catch (err) {
+      toast.error("Échec de la réinitialisation", { description: errorMessage(err) });
+    }
+  };
+
+  const filtered = users.filter(u => {
     const matchSearch = `${u.firstName} ${u.lastName} ${u.email} ${u.organization}`.toLowerCase().includes(search.toLowerCase());
     const matchRole   = roleFilter   === "Tous les rôles"   || u.role   === roleFilter;
-    const matchStatus = statusFilter === "Tous les statuts" || u.status === statusFilter;
+    // Archived accounts are hidden from the day-to-day view; they only appear
+    // when the admin explicitly selects the "Archivé" filter.
+    const matchStatus = statusFilter === "Tous les statuts"
+      ? u.status !== "Archivé"
+      : u.status === statusFilter;
     return matchSearch && matchRole && matchStatus;
   });
 
-  const initials = (u: User) => `${u.firstName[0]}${u.lastName[0]}`;
+  const kpiCards = buildKpiCards(
+    total,
+    users.filter(u => u.status === "Actif").length,
+    users.filter(u => u.status === "En attente").length,
+  );
+
+  const initials = (u: User) =>
+    `${u.firstName[0] || ""}${u.lastName[0] || ""}`.toUpperCase() || "?";
 
   // avatar bg by role
   const avatarBg = (role: string) => {
@@ -354,6 +512,8 @@ export function UserManagement() {
             onFocus={() => setFocusSearch(true)}
             onBlur={() => setFocusSearch(false)}
             placeholder="Rechercher un utilisateur, email ou organisation..."
+            name="datapilot-user-search"
+            autoComplete="off"
             style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#1A1A1A", width: "100%" }}
           />
         </div>
@@ -537,14 +697,19 @@ export function UserManagement() {
                           borderRadius: 7, boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
                           minWidth: 190, overflow: "hidden",
                         }}>
-                          {[
-                            { label: user.status === "Actif" ? "Désactiver le compte" : "Activer le compte", icon: user.status === "Actif" ? UserX : UserCheck, danger: user.status === "Actif" },
-                            { label: "Réinitialiser le mot de passe", icon: Key, danger: false },
-                            { label: "Archiver le compte", icon: Trash2, danger: true },
-                          ].map(({ label, icon: Icon, danger }, ai) => (
+                          {(user.status === "Archivé"
+                            ? [
+                                { label: "Restaurer le compte", icon: UserCheck, danger: false, action: () => handleArchive(user, false) },
+                              ]
+                            : [
+                                { label: user.enabled ? "Désactiver le compte" : "Activer le compte", icon: user.enabled ? UserX : UserCheck, danger: user.enabled, action: () => handleToggleEnabled(user) },
+                                { label: "Réinitialiser le mot de passe", icon: Key, danger: false, action: () => handleResetPassword(user) },
+                                { label: "Archiver le compte", icon: Trash2, danger: true, action: () => handleArchive(user, true) },
+                              ]
+                          ).map(({ label, icon: Icon, danger, action }, ai) => (
                             <button
                               key={ai}
-                              onClick={() => setOpenMenu(null)}
+                              onClick={action}
                               style={{
                                 width: "100%", display: "flex", alignItems: "center", gap: 9,
                                 padding: "10px 14px", border: "none", background: "none",
@@ -568,8 +733,25 @@ export function UserManagement() {
           </tbody>
         </table>
 
+        {/* Loading state */}
+        {loading && (
+          <div style={{ padding: "48px 20px", textAlign: "center" }}>
+            <Loader2 size={26} className="animate-spin" style={{ color: "#9B9B9B", marginBottom: 10 }} />
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#9B9B9B" }}>Chargement des utilisateurs…</div>
+          </div>
+        )}
+
+        {/* Error state */}
+        {!loading && loadError && (
+          <div style={{ padding: "48px 20px", textAlign: "center" }}>
+            <UserX size={32} style={{ color: "#CC0000", marginBottom: 12 }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A" }}>Impossible de charger les utilisateurs</div>
+            <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 4 }}>Vérifiez que l'API et Keycloak sont démarrés, puis rechargez la page.</div>
+          </div>
+        )}
+
         {/* Empty state */}
-        {filtered.length === 0 && (
+        {!loading && !loadError && filtered.length === 0 && (
           <div style={{ padding: "48px 20px", textAlign: "center" }}>
             <Users size={32} style={{ color: "#D0D0D0", marginBottom: 12 }} />
             <div style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A" }}>Aucun utilisateur trouvé</div>
@@ -584,7 +766,7 @@ export function UserManagement() {
           backgroundColor: "#FAFAFA",
         }}>
           <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-            Affichage de <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> utilisateur{filtered.length !== 1 ? "s" : ""} sur <strong style={{ color: "#1A1A1A" }}>{mockUsers.length}</strong>
+            Affichage de <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> utilisateur{filtered.length !== 1 ? "s" : ""} sur <strong style={{ color: "#1A1A1A" }}>{total}</strong>
           </span>
           <div style={{ display: "flex", gap: 6 }}>
             {["← Précédent", "1", "2", "Suivant →"].map((p, i) => (
@@ -606,7 +788,16 @@ export function UserManagement() {
         <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpenMenu(null)} />
       )}
 
-      {showModal && <UserModal user={editingUser} onClose={() => setShowModal(false)} />}
+      {showModal && (
+        <UserModal
+          user={editingUser}
+          onClose={() => setShowModal(false)}
+          onSaved={() => {
+            setShowModal(false);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
