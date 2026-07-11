@@ -156,4 +156,13 @@
     box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08) !important;
     background-color: #ffffff !important;
   }
+
+  /* Inputs that live inside a styled wrapper (e.g. the admin search bar):
+     the wrapper carries the border/background, so the inner input must stay
+     invisible on focus — no white fill, no ring. */
+  input[data-plain-focus]:focus {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+  }
 }
