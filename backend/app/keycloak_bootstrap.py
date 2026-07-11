@@ -42,6 +42,18 @@ async def ensure_unmanaged_attributes() -> None:
     print("- unmanaged attributes: set to ENABLED")
 
 
+async def ensure_login_events() -> None:
+    """Enable login-event storage (needed for the "Dernière connexion" column)."""
+    realm = await kc_get("")
+    if realm.get("eventsEnabled"):
+        print("- login events: already enabled")
+        return
+    realm["eventsEnabled"] = True
+    realm["eventsExpiration"] = 90 * 24 * 3600  # keep 90 days of events
+    await kc_put("", realm)
+    print("- login events: enabled (90 days retention)")
+
+
 async def ensure_realm_smtp() -> None:
     if not (SMTP_USER and SMTP_PASSWORD):
         print("- realm SMTP: skipped (no SMTP_USER/SMTP_PASSWORD in backend/.env)")
@@ -71,6 +83,7 @@ async def ensure_realm_smtp() -> None:
 async def main() -> None:
     print("Bootstrapping Keycloak realm settings…")
     await ensure_unmanaged_attributes()
+    await ensure_login_events()
     await ensure_realm_smtp()
     print("Done.")
 

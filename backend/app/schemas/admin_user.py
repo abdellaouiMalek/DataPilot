@@ -19,6 +19,7 @@ class UserRead(BaseModel):
     organization: Optional[str] = None
     role: Optional[BusinessRole] = None
     created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
 
 
 class UserCreate(BaseModel):

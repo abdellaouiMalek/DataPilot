@@ -18,6 +18,7 @@ export interface AdminUser {
   organization: string | null;
   role: BusinessRole | null;
   created_at: string | null;
+  last_login: string | null;
 }
 
 export interface UserPayload {

@@ -80,7 +80,11 @@ def _created_at(user: dict[str, Any]) -> Optional[datetime]:
     return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
 
 
-def _map_user(user: dict[str, Any], role: Optional[str] = None) -> UserRead:
+def _map_user(
+    user: dict[str, Any],
+    role: Optional[str] = None,
+    last_login: Optional[datetime] = None,
+) -> UserRead:
     return UserRead(
         id=user["id"],
         username=user.get("username"),
@@ -92,7 +96,29 @@ def _map_user(user: dict[str, Any], role: Optional[str] = None) -> UserRead:
         organization=_organization(user),
         role=role,
         created_at=_created_at(user),
+        last_login=last_login,
     )
+
+
+async def _last_login_by_user() -> dict[str, datetime]:
+    """user_id -> most recent LOGIN event time, in one events query.
+
+    Requires ``eventsEnabled`` on the realm (set by ``app.keycloak_bootstrap``)
+    and the ``view-events`` role on the service account. Degrades to an empty
+    map (column shows "—") instead of breaking the list when either is missing.
+    Events come newest-first, so the first occurrence per user wins.
+    """
+    try:
+        events = await kc_get("/events", {"type": "LOGIN", "max": 1000})
+    except HTTPException:
+        return {}
+    latest: dict[str, datetime] = {}
+    for ev in events:
+        user_id = ev.get("userId")
+        ts = ev.get("time")
+        if user_id and ts and user_id not in latest:
+            latest[user_id] = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+    return latest
 
 
 async def _role_by_user() -> dict[str, str]:
@@ -195,8 +221,10 @@ async def list_users(
     params: dict[str, Any] = {"first": first, "max": max}
     if search:
         params["search"] = search
-    users, roles = await asyncio.gather(kc_get("/users", params), _role_by_user())
-    return [_map_user(u, roles.get(u["id"])) for u in users]
+    users, roles, logins = await asyncio.gather(
+        kc_get("/users", params), _role_by_user(), _last_login_by_user()
+    )
+    return [_map_user(u, roles.get(u["id"]), logins.get(u["id"])) for u in users]
 
 
 @router.get("/users/count")

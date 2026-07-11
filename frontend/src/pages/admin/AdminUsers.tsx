@@ -39,8 +39,8 @@ interface User {
   permissions: string[];
 }
 
-// Keycloak → UI row. lastLogin / permissions are not wired yet, so they keep
-// hardcoded placeholder values until their endpoints exist.
+// Keycloak → UI row. lastLogin is "—" until the user's first login after
+// event storage was enabled (events only accumulate going forward).
 function toUser(u: AdminUser): User {
   return {
     id: u.id,
@@ -54,7 +54,12 @@ function toUser(u: AdminUser): User {
     createdAt: u.created_at
       ? new Date(u.created_at).toLocaleDateString("fr-FR")
       : "—",
-    lastLogin: "—", // TODO: needs Keycloak login events
+    lastLogin: u.last_login
+      ? new Date(u.last_login).toLocaleDateString("fr-FR", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+        })
+      : "—",
     permissions: [],
   };
 }
@@ -78,9 +83,9 @@ interface KpiCardData {
   detail: string;
 }
 
-// Total / actifs / en attente come from the API; the rest stays hardcoded
-// until wired (role counts, trends).
-function buildKpiCards(total: number, active: number, pending: number): KpiCardData[] {
+// Total / actifs / admins / en attente come from the API; the trend chips stay
+// hardcoded until wired (need count history).
+function buildKpiCards(total: number, active: number, admins: number, pending: number): KpiCardData[] {
   return [
     {
       label:   "Total utilisateurs",
@@ -100,7 +105,7 @@ function buildKpiCards(total: number, active: number, pending: number): KpiCardD
     },
     {
       label:   "Admins EY",
-      value:   "3",
+      value:   String(admins),
       sub:     "Accès complet",
       trend:   "neutral",
       icon:    ShieldCheck,
@@ -402,6 +407,83 @@ export function UserManagement() {
     }
   };
 
+  const handleExport = async (rows: User[]) => {
+    if (rows.length === 0) {
+      toast.error("Rien à exporter", { description: "Aucun utilisateur ne correspond aux filtres." });
+      return;
+    }
+    // Lazy-loaded so exceljs (~1 MB) is only fetched when an export happens.
+    const ExcelJS = (await import("exceljs")).default;
+
+    const EY_BLACK = "FF1A1A1A";
+    const EY_YELLOW = "FFFFE600";
+    const statusColor: Record<string, string> = {
+      "Actif": "FF2E7D32", "En attente": "FFE65100", "Désactivé": "FFCC0000", "Archivé": "FF455A64",
+    };
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Utilisateurs", { views: [{ state: "frozen", ySplit: 3 }] });
+
+    ws.columns = [
+      { key: "firstName", width: 16 }, { key: "lastName", width: 16 },
+      { key: "email", width: 34 },     { key: "role", width: 19 },
+      { key: "organization", width: 26 }, { key: "status", width: 13 },
+      { key: "createdAt", width: 13 }, { key: "lastLogin", width: 19 },
+    ];
+
+    // Row 1 — title banner
+    ws.mergeCells("A1:H1");
+    const title = ws.getCell("A1");
+    title.value = "Utilisateurs DataPilot";
+    title.font = { bold: true, size: 15, color: { argb: EY_YELLOW } };
+    title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EY_BLACK } };
+    title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(1).height = 30;
+
+    // Row 2 — export context
+    ws.mergeCells("A2:H2");
+    const sub = ws.getCell("A2");
+    sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — ${rows.length} utilisateur${rows.length > 1 ? "s" : ""}`;
+    sub.font = { size: 10, color: { argb: "FF6B6B6B" } };
+
+    // Row 3 — styled header
+    const header = ws.getRow(3);
+    header.values = ["Prénom", "Nom", "Email", "Rôle", "Organisation", "Statut", "Créé le", "Dernière connexion"];
+    header.eachCell((cell) => {
+      cell.font = { bold: true, size: 11, color: { argb: EY_YELLOW } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EY_BLACK } };
+      cell.border = { bottom: { style: "medium", color: { argb: EY_YELLOW } } };
+      cell.alignment = { vertical: "middle" };
+    });
+    header.height = 22;
+
+    // Data rows
+    for (const u of rows) {
+      const row = ws.addRow([
+        u.firstName, u.lastName, u.email, u.role, u.organization, u.status, u.createdAt, u.lastLogin,
+      ]);
+      const statusCell = row.getCell(6);
+      statusCell.font = { bold: true, color: { argb: statusColor[u.status] ?? "FF1A1A1A" } };
+      row.eachCell((cell) => {
+        cell.border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } } };
+      });
+    }
+
+    ws.autoFilter = { from: "A3", to: `H${3 + rows.length}` };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `datapilot-utilisateurs-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Export Excel", { description: `${rows.length} utilisateur${rows.length > 1 ? "s" : ""} exporté${rows.length > 1 ? "s" : ""}.` });
+  };
+
   const handleResetPassword = async (user: User) => {
     setOpenMenu(null);
     try {
@@ -428,6 +510,7 @@ export function UserManagement() {
   const kpiCards = buildKpiCards(
     total,
     users.filter(u => u.status === "Actif").length,
+    users.filter(u => u.role === ROLE_LABELS.admin).length,
     users.filter(u => u.status === "En attente").length,
   );
 
@@ -561,11 +644,14 @@ export function UserManagement() {
         </div>
 
         {/* Export */}
-        <button style={{
-          display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 6,
-          fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)",
-          backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A",
-        }}>
+        <button
+          onClick={() => handleExport(filtered)}
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 6,
+            fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)",
+            backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A",
+          }}
+        >
           <Download size={13} /> Exporter
         </button>
 
