@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.lookups import Bank
 
 
 class Assessment(Base):
@@ -22,7 +27,10 @@ class Assessment(Base):
     __tablename__ = "assessments"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    bank: Mapped[str] = mapped_column(String(200))
+    # RESTRICT: banks with assessments can't be hard-deleted — archive instead.
+    bank_id: Mapped[int] = mapped_column(
+        ForeignKey("banks.id", ondelete="RESTRICT"), index=True
+    )
     department: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     evaluator_role: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
@@ -33,6 +41,7 @@ class Assessment(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    bank: Mapped["Bank"] = relationship()
     answers: Mapped[List["Answer"]] = relationship(
         back_populates="assessment", cascade="all, delete-orphan"
     )

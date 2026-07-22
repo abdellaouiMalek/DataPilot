@@ -15,7 +15,7 @@ export interface AnswerIn {
 }
 
 export interface AssessmentCreate {
-  bank: string;
+  bank_id: number;
   department?: string | null;
   evaluator_role?: string | null;
   answers: AnswerIn[];
@@ -30,6 +30,7 @@ export interface DimensionScore {
 
 export interface AssessmentResult {
   id: number;
+  bank_id: number;
   bank: string;
   department: string | null;
   evaluator_role: string | null;

@@ -1,16 +1,32 @@
-from sqlalchemy import Boolean, Integer, String
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
 
 from app.db.database import Base
 
 
 class Bank(Base):
-    """Bank establishment offered in the landing-page selector. Admin-managed."""
+    """A client bank: shown in the landing-page selector and managed in the
+    admin back-office. ``is_active`` = enabled/disabled (hidden from the public
+    selector when off); ``archived`` = end-of-life, hidden from the default
+    admin list too. Assessments reference banks by id.
+    """
 
     __tablename__ = "banks"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(200), unique=True)
+    country: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    sector: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
