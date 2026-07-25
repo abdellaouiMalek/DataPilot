@@ -10,3 +10,8 @@ pydantic-settings
 python-jose[cryptography]
 requests
 httpx
+numpy
+pandas
+lightgbm
+shap
+openai

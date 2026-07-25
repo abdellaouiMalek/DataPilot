@@ -31,9 +31,15 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = await getFreshToken();
+  if (!token) {
+    // Token refresh failed — keycloak.login() above is already redirecting
+    // the browser. Don't send the request without a token, since the
+    // backend's 403 ("missing header") isn't handled like a 401 is.
+    throw new ApiError(401, "Non authentifié");
+  }
 
   const headers = new Headers(options.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Authorization", `Bearer ${token}`);
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

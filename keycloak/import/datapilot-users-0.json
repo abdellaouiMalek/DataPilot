@@ -13,7 +13,7 @@
     "requiredActions" : [ ],
     "realmRoles" : [ "default-roles-datapilot" ],
     "clientRoles" : {
-      "realm-management" : [ "view-realm", "query-users", "view-users", "manage-users" ]
+      "realm-management" : [ "view-realm", "query-users", "view-users", "manage-users", "manage-realm" ]
     },
     "notBefore" : 0,
     "groups" : [ ]

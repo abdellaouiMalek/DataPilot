@@ -106,6 +106,30 @@ export function QuestionnairePage() {
     }
   };
 
+  // Reached without a profile (bank/department/role) in history state — e.g.
+  // a direct link or a "Démarrer une évaluation" button that doesn't go
+  // through the landing page's form. Bounce back now rather than let the
+  // user answer all 32 questions only to fail at submission (bank is
+  // required by the backend).
+  if (!profileData.bank) {
+    return (
+      <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Veuillez d'abord renseigner votre profil (établissement, département, rôle) avant de démarrer l'évaluation.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
+          >
+            Renseigner mon profil
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>

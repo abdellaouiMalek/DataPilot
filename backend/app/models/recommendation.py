@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.database import Base
+
+
+class Recommendation(Base):
+    """One atomic recommendation: moves a single question's answer from
+    ``trigger_level`` to ``trigger_level + 1``. Admin-managed catalog consumed
+    by the recommendation engine once an assessment is scored.
+    """
+
+    __tablename__ = "recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # e.g. "D1Q1-1"
+    question_id: Mapped[int] = mapped_column(
+        ForeignKey("questions.id", ondelete="CASCADE"), index=True
+    )
+    trigger_level: Mapped[int] = mapped_column(Integer)
+    target_level: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(200))
+    recommendation_text: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(50))
+    regulatory_flag: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    effort: Mapped[int] = mapped_column(Integer)
+    prerequisite_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("recommendations.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    question: Mapped["Question"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("question_id", "trigger_level", name="uq_question_trigger"),
+        CheckConstraint("trigger_level BETWEEN 1 AND 4", name="chk_trigger_level_range"),
+        CheckConstraint("target_level BETWEEN 2 AND 5", name="chk_target_level_range"),
+        CheckConstraint("target_level = trigger_level + 1", name="chk_one_step"),
+        CheckConstraint("effort BETWEEN 1 AND 3", name="chk_effort_range"),
+    )

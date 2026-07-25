@@ -10,12 +10,14 @@ from app.models.dimension import Dimension
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
 from app.models.question import Question
+from app.models.recommendation import Recommendation
 from app.models.subdimension import SubDimension
 
 __all__ = [
     "Dimension",
     "SubDimension",
     "Question",
+    "Recommendation",
     "Bank",
     "Department",
     "Role",

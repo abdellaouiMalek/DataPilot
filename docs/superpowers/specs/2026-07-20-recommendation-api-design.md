@@ -172,6 +172,29 @@ re-parsed copy of the JSON) as the single source of truth for column order.
   live server and hitting the endpoint with `curl`/an authenticated token,
   same approach used earlier in this session for `/api/assessments`.
 
+**How to try it manually once built** (three options):
+
+1. `curl`, e.g.:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8085/realms/datapilot/protocol/openid-connect/token \
+     -d "grant_type=client_credentials" -d "client_id=datapilot-backend" \
+     -d "client_secret=<from backend/.env>" \
+     | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+   # Scenario 1 (automatic plan) on the real assessment (id=4, STB)
+   curl -s http://localhost:8000/api/assessments/4/recommendations \
+     -H "Authorization: Bearer $TOKEN" | python -m json.tool
+
+   # Scenario 2 (custom target on one dimension)
+   curl -s "http://localhost:8000/api/assessments/4/recommendations?dimension_id=14&target_level=4" \
+     -H "Authorization: Bearer $TOKEN" | python -m json.tool
+   ```
+2. FastAPI's interactive docs at `http://localhost:8000/docs` — the route
+   appears there with an "Authorize" button (same `HTTPBearer` scheme as the
+   rest of the API); paste a token and try requests from the browser.
+3. Through the actual frontend UI — not yet; `RecommendationsPage.tsx`
+   rewiring is an explicit follow-up, not part of this pass.
+
 ## Follow-ups (explicitly not in this pass)
 
 - Rewiring `RecommendationsPage.tsx` to consume this endpoint.

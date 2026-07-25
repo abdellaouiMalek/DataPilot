@@ -1,1 +1,9 @@
 .env
+
+# Generated LTR training data (ml/generate_ltr_dataset.py output)
+ml/*.csv
+ml/*.group
+
+# Generated model artifacts (ml/train_model.py output)
+ml/model.txt
+ml/model_features.json

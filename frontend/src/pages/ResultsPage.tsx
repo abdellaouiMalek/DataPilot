@@ -77,7 +77,7 @@ export function ResultsPage() {
             Aucun résultat à afficher. Complétez une évaluation pour générer votre profil de maturité.
           </p>
           <button
-            onClick={() => navigate('/questionnaire')}
+            onClick={() => navigate('/')}
             className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
           >
             Démarrer une évaluation
@@ -356,7 +356,7 @@ export function ResultsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:grid-cols-1 lg:gap-6">
               {/* Card 1 */}
               <button
-                onClick={() => navigate('/recommendations', { state: { scores: displayScores, maturity } })}
+                onClick={() => navigate('/recommendations', { state: { assessmentId: result.id, scores: displayScores, maturity } })}
                 className="bg-white border border-gray-200 p-6 sm:p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-1 h-0 bg-black group-hover:h-full transition-all duration-300" />
@@ -378,7 +378,7 @@ export function ResultsPage() {
 
               {/* Card 2 */}
               <button
-                onClick={() => navigate('/simulation', { state: { scores: displayScores } })}
+                onClick={() => navigate('/simulation', { state: { assessmentId: result.id, scores: displayScores } })}
                 className="bg-white border border-gray-200 p-6 sm:p-8 hover:border-black hover:shadow-lg transition-all group text-left flex flex-col h-full relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-1 h-0 bg-black group-hover:h-full transition-all duration-300" />

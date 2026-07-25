@@ -1,0 +1,13 @@
+[
+  "current_level",
+  "gap_to_max",
+  "question_global_weight",
+  "dimension_weight",
+  "dimension_score",
+  "global_score",
+  "regulatory_flag",
+  "effort",
+  "dimension_is_weakest",
+  "na_rate_dimension",
+  "category_id"
+]

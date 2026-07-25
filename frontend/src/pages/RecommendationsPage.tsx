@@ -1,349 +1,454 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Navbar } from '../components/Navbar';
 import {
-  Zap,
-  Building,
-  Clock,
-  Shield,
-  TrendingUp,
   ChevronRight,
   CheckCircle2,
-  Circle,
+  Loader2,
+  ShieldCheck,
 } from 'lucide-react';
+import { getRecommendations, getNarrative } from '../lib/recommendations';
+import type { RecommendationOut } from '../lib/recommendations';
+import { getDimensions } from '../lib/config';
 
-// --- INTERFACES & MOCKS ---
-interface Recommendation {
-  id: number;
-  priority: 'quick-win' | 'structurant';
-  dimension: string;
-  title: string;
-  description: string;
-  timeline: string;
-  impact: string;
-  effort: string;
-  businessValue: {
-    risk: string;
-    time: string;
-    compliance: string;
-  };
-}
+const SERIF: CSSProperties = {
+  fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif",
+};
 
-const recommendations: Recommendation[] = [
-  {
-    id: 1,
-    priority: 'quick-win',
-    dimension: 'Sécurité & Infrastructure',
-    title: 'Optimisation de la configuration Redis et Kafka',
-    description: 'Mise en place de politiques de rétention strictes et isolation des clusters de messagerie pour éliminer la latence sur les services transactionnels.',
-    timeline: '2 semaines',
-    impact: 'Élevé',
-    effort: 'Faible',
-    businessValue: {
-      risk: 'Réduction des goulots d\'étranglement de 40%',
-      time: 'Gain immédiat sur les temps de réponse API',
-      compliance: 'Alignement avec les SLAs de production'
-    }
-  },
-  {
-    id: 2,
-    priority: 'structurant',
-    dimension: 'Architecture Cloud',
-    title: 'Déploiement du cluster Kubernetes sur cloud privé OpenStack',
-    description: 'Migration et orchestration complète des microservices vers l\'infrastructure interne pour une résilience accrue et un meilleur contrôle des coûts.',
-    timeline: '2 mois',
-    impact: 'Critique',
-    effort: 'Élevé',
-    businessValue: {
-      risk: 'Souveraineté totale des données sensibles',
-      time: 'CI/CD automatisé et scalabilité horizontale',
-      compliance: 'Conformité renforcée aux standards d\'audit'
-    }
-  }
+const EFFORT_META: Record<number, { label: string; color: string }> = {
+  1: { label: 'Effort faible', color: '#2E7D32' },
+  2: { label: 'Effort moyen', color: '#E65100' },
+  3: { label: 'Effort élevé', color: '#d4183d' },
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  strategie: 'Stratégie',
+  gouvernance: 'Gouvernance',
+  qualite: 'Qualité',
+  architecture: 'Architecture',
+  securite: 'Sécurité',
+  analytique: 'Analytique',
+  competences: 'Compétences',
+  process: 'Process',
+};
+
+type EffortFilter = 'all' | 1 | 2 | 3;
+
+const EFFORT_FILTERS: { value: EffortFilter; label: string }[] = [
+  { value: 'all', label: 'Toutes' },
+  { value: 1, label: 'Effort faible' },
+  { value: 2, label: 'Effort moyen' },
+  { value: 3, label: 'Effort élevé' },
 ];
 
-function generateSimulatedRecommendations(currentScores: any, targetScores: any): Recommendation[] {
-  return recommendations.map(rec => ({
-    ...rec,
-    title: `[Simulé] ${rec.title}`,
-    description: `Ajusté selon l'écart de score ciblé (${currentScores.infra || 0} → ${targetScores.infra || 5}). ${rec.description}`
-  }));
+/**
+ * Five-node rail for the 1–5 maturity scale: solid nodes mark levels the
+ * bank already holds, the amber node/segment marks the step this specific
+ * recommendation delivers, hollow nodes mark levels still ahead.
+ */
+function MaturityRail({ trigger, target }: { trigger: number; target: number }) {
+  const levels = [1, 2, 3, 4, 5];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center">
+        {levels.map((level, i) => {
+          const isAchieved = level < trigger;
+          const isCurrent = level === trigger;
+          const isTarget = level === target;
+          const nodeColor = isTarget
+            ? 'bg-[#FFE600] border-[#1A1A1A]'
+            : isAchieved || isCurrent
+            ? 'bg-[#1A1A1A] border-[#1A1A1A]'
+            : 'bg-white border-black/15';
+          return (
+            <div key={level} className="flex items-center">
+              <div
+                className={`w-2.5 h-2.5 rounded-full border shrink-0 ${nodeColor}`}
+                title={`Niveau ${level}`}
+              />
+              {i < levels.length - 1 && (
+                <div
+                  className={`w-3 sm:w-4 h-[2px] ${
+                    level < trigger
+                      ? 'bg-[#1A1A1A]'
+                      : level === trigger
+                      ? 'bg-[#FFE600]'
+                      : 'bg-black/10'
+                  }`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <span className="text-[9px] tracking-widest text-black/50 uppercase font-mono">
+        Niveau {trigger} → {target}
+      </span>
+    </div>
+  );
 }
 
 // --- MAIN COMPONENT ---
 export function RecommendationsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedPriority, setSelectedPriority] = useState<'all' | 'quick-win' | 'structurant'>('all');
-  const [completedIds, setCompletedIds] = useState<number[]>([]);
+  const assessmentId: number | undefined = location.state?.assessmentId;
 
-  const isSimulation = location.state?.isSimulation;
-  const currentScores = location.state?.scores || {};
-  const targetScores = location.state?.targetScores || {};
+  const [recommendations, setRecommendations] = useState<RecommendationOut[]>([]);
+  const [dimensionNames, setDimensionNames] = useState<Record<number, string>>({});
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const [effortFilter, setEffortFilter] = useState<EffortFilter>('all');
+  const [completedCodes, setCompletedCodes] = useState<string[]>([]);
 
-  const activeRecommendations = useMemo(() => {
-    return isSimulation
-      ? generateSimulatedRecommendations(currentScores, targetScores)
-      : recommendations;
-  }, [isSimulation, currentScores, targetScores]);
+  useEffect(() => {
+    if (!assessmentId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([getRecommendations(assessmentId), getDimensions()])
+      .then(([recs, dims]) => {
+        if (cancelled) return;
+        setRecommendations(recs);
+        const names: Record<number, string> = {};
+        for (const d of dims) names[d.id] = d.name;
+        setDimensionNames(names);
+      })
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoading(false));
 
-  const filteredRecommendations =
-    selectedPriority === 'all'
-      ? activeRecommendations
-      : activeRecommendations.filter((r) => r.priority === selectedPriority);
+    // The executive synthesis is a secondary enhancement — its failure
+    // shouldn't block the (essential) recommendations list from rendering.
+    getNarrative(assessmentId)
+      .then((res) => !cancelled && setNarrative(res.narrative))
+      .catch(() => {});
 
-  const quickWins = activeRecommendations.filter((r) => r.priority === 'quick-win');
-  const structurants = activeRecommendations.filter((r) => r.priority === 'structurant');
+    return () => {
+      cancelled = true;
+    };
+  }, [assessmentId]);
 
-  const pageDescription = isSimulation
-    ? `Ces ${activeRecommendations.length} recommandations sont générées dynamiquement pour vous aider à atteindre la cible que vous venez de simuler.`
-    : `${activeRecommendations.length} recommandations priorisées pour accélérer votre transformation et générer de la valeur business mesurable.`;
+  // The recommendations call can take several minutes (each of the top
+  // items gets a real, local LLM reformulation on CPU) — a bare spinner
+  // reads as broken past ~10s, so this surfaces elapsed time and updates
+  // the message in stages to keep the wait legible.
+  useEffect(() => {
+    if (!loading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [loading]);
 
-  const toggleComplete = (id: number) => {
-    setCompletedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+  const loadingMessage =
+    loadingSeconds < 10
+      ? 'Calcul des recommandations…'
+      : loadingSeconds < 30
+      ? 'Analyse de votre profil de maturité…'
+      : "Génération des reformulations par IA locale — cela peut prendre plusieurs minutes sur ce modèle…";
+
+  const toggleComplete = (code: string) => {
+    setCompletedCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
     );
   };
+
+  const filteredRecommendations = useMemo(
+    () =>
+      effortFilter === 'all'
+        ? recommendations
+        : recommendations.filter((r) => r.effort === effortFilter),
+    [recommendations, effortFilter]
+  );
+
+  const lowEffortCount = recommendations.filter((r) => r.effort === 1).length;
+  const regulatoryCount = recommendations.filter((r) => r.regulatory_flag).length;
+  const maxScore = Math.max(1, ...recommendations.map((r) => r.score));
+
+  if (!assessmentId) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex flex-col items-center justify-center gap-4 px-6 text-center py-32">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Aucune évaluation sélectionnée. Complétez une évaluation pour obtenir vos recommandations.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-2.5 text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors"
+          >
+            Démarrer une évaluation
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex flex-col items-center justify-center gap-3 text-gray-400 py-32 px-6 text-center">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-sm font-medium max-w-sm">{loadingMessage}</span>
+          {loadingSeconds >= 10 && (
+            <span className="text-xs tabular-nums text-gray-300">
+              {Math.floor(loadingSeconds / 60)}:{String(loadingSeconds % 60).padStart(2, '0')}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex flex-col items-center justify-center gap-4 px-6 text-center py-32">
+          <p className="text-sm font-medium text-gray-600 max-w-md">
+            Impossible de charger les recommandations. Vérifiez que l'API est démarrée, puis réessayez.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-2.5 text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors"
+          >
+            Retour à l'accueil
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* Main Content Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-16">
-        {/* Hero Section */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-14">
+        {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="mb-8 sm:mb-16"
+          transition={{ duration: 0.5 }}
+          className="mb-8 sm:mb-10 border-b border-black/10 pb-8 sm:pb-10"
         >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-16">
-            <div className="lg:col-span-7 space-y-3 sm:space-y-4">
-              <h1 className="text-3xl sm:text-6xl font-light leading-tight text-black">
-                Plan d'action
-                <br />
-                <span className="relative inline-block font-normal">
-                  {isSimulation ? 'simulé' : 'stratégique'}
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 0.8, delay: 0.5 }}
-                    className="absolute -bottom-1 left-0 h-1.5 sm:h-2 bg-[#FFE600] -z-10"
-                  />
-                </span>
-              </h1>
-              <p className="text-xs sm:text-base md:text-lg text-black/70 max-w-xl">
-                {pageDescription}
-              </p>
-            </div>
+          <span className="text-[10px] font-bold tracking-[0.25em] text-black/50 uppercase font-mono">
+            Plan d'action — Réf. dossier #{assessmentId}
+          </span>
+          <h1 className="mt-2 text-3xl sm:text-5xl font-light leading-tight text-black">
+            Recommandations priorisées
+          </h1>
 
-            {/* KPI Cards */}
-            <div className="lg:col-span-5 grid grid-cols-2 gap-3">
-              <div className="border border-black/5 bg-[#fafafa] p-4 space-y-2">
-                <Zap className="w-5 h-5 text-[#FFE600]" />
-                <div className="text-xl sm:text-3xl font-light">{quickWins.length}</div>
-                <div className="text-[11px] sm:text-xs text-black/60">Quick Wins</div>
-              </div>
-              <div className="border border-black/5 bg-[#fafafa] p-4 space-y-2">
-                <Building className="w-5 h-5 text-black" />
-                <div className="text-xl sm:text-3xl font-light">{structurants.length}</div>
-                <div className="text-[11px] sm:text-xs text-black/60">Projets Structurants</div>
-              </div>
+          {/* Executive synthesis — the LLM-authored narrative of the bank's
+              results, set in the serif "analysis voice" to read as written
+              counsel rather than interface copy. */}
+          {narrative && (
+            <p
+              style={SERIF}
+              className="mt-5 max-w-3xl text-base sm:text-lg text-black/80 leading-relaxed border-l-2 border-[#FFE600] pl-4"
+            >
+              {narrative}
+            </p>
+          )}
+
+          {/* Stat rule — inline metrics, not a widget grid */}
+          <div className="mt-7 flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-light tabular-nums">{recommendations.length}</span>
+              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
+                Actions identifiées
+              </span>
+            </div>
+            <div className="h-8 w-px bg-black/10 hidden sm:block" />
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-light tabular-nums">{regulatoryCount}</span>
+              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
+                Obligations réglementaires
+              </span>
+            </div>
+            <div className="h-8 w-px bg-black/10 hidden sm:block" />
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-light tabular-nums">{lowEffortCount}</span>
+              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
+                Gains rapides
+              </span>
             </div>
           </div>
         </motion.div>
 
-        {/* Filters - Mobile Scrollable Bar */}
-        <div className="mb-6 sm:mb-10 flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
-          <button
-            onClick={() => setSelectedPriority('all')}
-            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all ${
-              selectedPriority === 'all'
-                ? 'border-black bg-black text-white'
-                : 'border-black/10 bg-white text-black hover:border-black/30'
-            }`}
-          >
-            Toutes ({activeRecommendations.length})
-          </button>
-          <button
-            onClick={() => setSelectedPriority('quick-win')}
-            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all flex items-center gap-2 ${
-              selectedPriority === 'quick-win'
-                ? 'border-[#FFE600] bg-[#FFE600] text-black'
-                : 'border-black/10 bg-white text-black hover:border-black/30'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            Quick Wins ({quickWins.length})
-          </button>
-          <button
-            onClick={() => setSelectedPriority('structurant')}
-            className={`whitespace-nowrap px-4 py-2 border text-xs sm:text-sm transition-all flex items-center gap-2 ${
-              selectedPriority === 'structurant'
-                ? 'border-black bg-black text-white'
-                : 'border-black/10 bg-white text-black hover:border-black/30'
-            }`}
-          >
-            <Building className="w-3.5 h-3.5" />
-            Structurants ({structurants.length})
-          </button>
-        </div>
-
-        {/* Recommendations List */}
-        <div className="space-y-4">
-          {filteredRecommendations.map((rec, index) => {
-            const isCompleted = completedIds.includes(rec.id);
-
+        {/* Filters — underline tabs, report table-of-contents register */}
+        <div className="mb-8 flex gap-1 overflow-x-auto scrollbar-none border-b border-black/10">
+          {EFFORT_FILTERS.map(({ value, label }) => {
+            const count =
+              value === 'all'
+                ? recommendations.length
+                : recommendations.filter((r) => r.effort === value).length;
+            const active = effortFilter === value;
             return (
-              <motion.div
-                key={rec.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.04 }}
-                className={`border transition-all ${
-                  isCompleted
-                    ? 'border-black/10 bg-black/5'
-                    : rec.priority === 'quick-win'
-                    ? 'border-[#FFE600]/30 bg-[#FFE600]/5 hover:border-[#FFE600]'
-                    : 'border-black/10 bg-white hover:border-black/30'
+              <button
+                key={value}
+                onClick={() => setEffortFilter(value)}
+                className={`whitespace-nowrap px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  active
+                    ? 'border-black text-black'
+                    : 'border-transparent text-black/45 hover:text-black/70'
                 }`}
               >
-                <div className="p-4 sm:p-6 md:p-8">
-                  <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
-                    
-                    {/* Checkbox and Content Wrapper */}
-                    <div className="flex gap-3 w-full flex-1">
-                      <button
-                        onClick={() => toggleComplete(rec.id)}
-                        className="flex-shrink-0 w-5 h-5 mt-0.5"
-                        aria-label="Marquer comme complété"
-                      >
-                        {isCompleted ? (
-                          <CheckCircle2 className="w-5 h-5 text-[#2e8b57]" />
-                        ) : (
-                          <Circle className="w-5 h-5 text-black/20 hover:text-black/60 transition-colors" />
-                        )}
-                      </button>
-
-                      <div className="flex-1 space-y-4 min-w-0">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <div className="inline-block border border-black/10 px-2 py-0.5">
-                              <span className="text-[9px] tracking-wider text-black/60 font-medium">
-                                {rec.dimension.toUpperCase()}
-                              </span>
-                            </div>
-                            {rec.priority === 'quick-win' && (
-                              <div className="flex items-center gap-1 bg-[#FFE600] px-2 py-0.5">
-                                <Zap className="w-2.5 h-2.5" />
-                                <span className="text-[9px] tracking-wider font-semibold">QUICK WIN</span>
-                              </div>
-                            )}
-                          </div>
-                          <h3 className={`text-base sm:text-xl md:text-2xl font-light break-words ${isCompleted ? 'line-through text-black/40' : 'text-black'}`}>
-                            {rec.title}
-                          </h3>
-                          <p className={`text-xs sm:text-sm md:text-base text-black/70 leading-relaxed break-words ${isCompleted ? 'opacity-50' : ''}`}>
-                            {rec.description}
-                          </p>
-                        </div>
-
-                        {/* Metadata Grid - Balanced 2 columns on Mobile */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 border-t border-b md:border-b-0 border-black/5 py-3 md:py-0">
-                          <div className="flex items-center gap-2 text-xs">
-                            <Clock className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
-                            <span className="text-black/60">Durée :</span>
-                            <span className="font-medium truncate">{rec.timeline}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs">
-                            <TrendingUp className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
-                            <span className="text-black/60">Impact :</span>
-                            <span className="font-medium truncate">{rec.impact}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs col-span-2 md:col-span-1">
-                            <Building className="w-3.5 h-3.5 text-black/40 flex-shrink-0" />
-                            <span className="text-black/60">Effort :</span>
-                            <span className="font-medium truncate">{rec.effort}</span>
-                          </div>
-                        </div>
-
-                        {/* Business Value Section - Card/List block stacked on mobile */}
-                        <div className="md:border-t md:border-black/5 md:pt-4 space-y-2">
-                          <div className="text-[9px] tracking-wider text-black/60 font-semibold">VALEUR BUSINESS</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded">
-                              <Shield className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
-                              <div className="text-xs text-black/70 break-words">{rec.businessValue.risk}</div>
-                            </div>
-                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded">
-                              <Clock className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
-                              <div className="text-xs text-black/70 break-words">{rec.businessValue.time}</div>
-                            </div>
-                            <div className="flex items-start gap-2 bg-black/[0.02] md:bg-transparent p-2 md:p-0 rounded sm:col-span-2 md:col-span-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-[#FFE600] flex-shrink-0 mt-0.5" />
-                              <div className="text-xs text-black/70 break-words">{rec.businessValue.compliance}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action Button */}
-                    <button className="w-full md:w-auto flex items-center justify-between md:justify-center px-4 py-2.5 border border-black/10 hover:border-black hover:bg-black hover:text-white transition-all text-xs font-medium mt-1 md:mt-0">
-                      <span>Détails</span>
-                      <ChevronRight className="w-4 h-4 ml-2" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                {label}
+                <span className="ml-1.5 text-black/35 tabular-nums">({count})</span>
+              </button>
             );
           })}
         </div>
 
-        {/* Roadmap Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mt-12 sm:mt-20 border-t border-black/5 pt-10"
-        >
-          <div className="space-y-6">
-            <h2 className="text-xl sm:text-3xl font-light">Vue roadmap</h2>
-            <div className="relative">
-              <div className="hidden md:block absolute top-6 left-0 right-0 h-0.5 bg-black/10" />
-              <div className="absolute top-0 bottom-0 left-1.5 w-0.5 bg-black/10 md:hidden" />
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative pl-6 md:pl-0">
-                {['Q2 2026', 'Q3 2026', 'Q4 2026', 'Q1 2027'].map((quarter, index) => (
-                  <div key={quarter} className="space-y-2 relative">
-                    <div className="absolute -left-[22px] top-1.5 md:static w-2.5 h-2.5 bg-[#FFE600] rounded-full z-10" />
-                    <div>
-                      <span className="text-xs font-semibold tracking-wide text-black/60">{quarter}</span>
+        {/* Recommendations List */}
+        {filteredRecommendations.length === 0 ? (
+          <div className="p-10 text-center border border-black/10 bg-[#fafafa] text-sm text-black/60">
+            {recommendations.length === 0
+              ? "Aucune recommandation : votre niveau de maturité est déjà optimal sur l'ensemble des dimensions évaluées."
+              : 'Aucune recommandation ne correspond à ce filtre.'}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRecommendations.map((rec, index) => {
+              const isCompleted = completedCodes.includes(rec.code);
+              const isTopPriority = rec.rank === 1;
+              const dimensionLabel =
+                dimensionNames[rec.dimension_id] ?? CATEGORY_LABELS[rec.category] ?? rec.category;
+              const effortMeta = EFFORT_META[rec.effort];
+              const scoreBarWidth = Math.max(6, (rec.score / maxScore) * 100);
+
+              return (
+                <motion.div
+                  key={rec.code}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: Math.min(index, 8) * 0.03 }}
+                  className={`border transition-colors ${
+                    isCompleted
+                      ? 'border-black/10 bg-black/[0.02]'
+                      : isTopPriority
+                      ? 'border-black/10 border-l-4 border-l-[#FFE600]'
+                      : 'border-black/10 hover:border-black/25'
+                  }`}
+                >
+                  <div className="p-5 sm:p-7">
+                    {/* Top meta row */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold tracking-widest text-black/40 uppercase font-mono">
+                          {rec.code}
+                        </span>
+                        <span className="text-black/15">·</span>
+                        <span className="text-[10px] tracking-widest text-black/60 uppercase font-mono">
+                          {dimensionLabel}
+                        </span>
+                        {isTopPriority && (
+                          <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase bg-[#FFE600] text-black px-2 py-0.5">
+                            Priorité n°1
+                          </span>
+                        )}
+                        {rec.regulatory_flag && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase border border-[#0277BD]/30 text-[#0277BD] px-2 py-0.5">
+                            <ShieldCheck className="w-2.5 h-2.5" />
+                            Obligation réglementaire
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => toggleComplete(rec.code)}
+                        className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 border transition-colors ${
+                          isCompleted
+                            ? 'bg-[#2E7D32] border-[#2E7D32] text-white'
+                            : 'border-black/15 text-black/50 hover:border-black/40 hover:text-black/70'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        {isCompleted ? 'Traité' : 'À traiter'}
+                      </button>
                     </div>
-                    <div className="space-y-1.5 md:pl-2">
-                      {filteredRecommendations
-                        .filter((_, i) => i % 4 === index)
-                        .map((rec) => (
-                          <div key={rec.id} className="text-xs text-black/70 border-l-2 border-black/10 pl-2 py-1 bg-[#fafafa] md:bg-transparent rounded-r truncate">
-                            {rec.title}
-                          </div>
-                        ))}
+
+                    {/* Main content: rail + narrative */}
+                    <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 sm:gap-8">
+                      <div className="sm:pt-1">
+                        <MaturityRail trigger={rec.trigger_level} target={rec.target_level} />
+                      </div>
+
+                      <div
+                        className={`space-y-2.5 min-w-0 ${isCompleted ? 'opacity-50' : ''}`}
+                      >
+                        <h3
+                          className={`text-lg sm:text-xl font-semibold break-words ${
+                            isCompleted ? 'line-through text-black/40' : 'text-black'
+                          }`}
+                        >
+                          {rec.title}
+                        </h3>
+                        <p
+                          style={SERIF}
+                          className="text-sm sm:text-base text-black/75 leading-relaxed break-words"
+                        >
+                          {rec.texte_reformule}
+                        </p>
+
+                        {/* Justification — the model's grounded reasoning,
+                            in the same analysis voice as the narrative above. */}
+                        <div className="pt-2 border-t border-black/5">
+                          <span className="text-[9px] font-bold tracking-widest text-black/40 uppercase font-mono">
+                            Pourquoi cette priorité
+                          </span>
+                          <p style={SERIF} className="mt-1 text-sm italic text-black/65">
+                            {rec.justification}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer: effort + score */}
+                    <div className="mt-5 pt-4 border-t border-black/5 flex flex-wrap items-center justify-between gap-4">
+                      <span
+                        className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase px-2 py-1 border"
+                        style={{ color: effortMeta.color, borderColor: `${effortMeta.color}40` }}
+                      >
+                        {effortMeta.label}
+                      </span>
+
+                      <div className="flex items-center gap-2 min-w-[140px]">
+                        <span className="text-[10px] uppercase tracking-wider text-black/40 font-mono shrink-0">
+                          Score
+                        </span>
+                        <div className="flex-1 h-1 bg-black/5 max-w-[100px]">
+                          <div
+                            className="h-full bg-[#1A1A1A]"
+                            style={{ width: `${scoreBarWidth}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold tabular-nums w-10 text-right">
+                          {rec.score.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                </motion.div>
+              );
+            })}
           </div>
-        </motion.div>
+        )}
 
         {/* Bottom CTA Block */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-12 border border-black/5 bg-[#fafafa] p-5 sm:p-10"
+          className="mt-10 border border-black/10 bg-[#fafafa] p-5 sm:p-10"
         >
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="space-y-1">
@@ -353,7 +458,7 @@ export function RecommendationsPage() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/simulation')}
+              onClick={() => navigate('/simulation', { state: { assessmentId } })}
               className="w-full lg:w-auto px-5 py-3.5 bg-[#FFE600] hover:bg-[#f5dc00] text-black font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
             >
               <span>Lancer une simulation</span>

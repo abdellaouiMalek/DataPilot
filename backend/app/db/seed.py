@@ -1,6 +1,6 @@
 """Seed the database with the reference data that used to be hard-coded in the
 frontend (dimensions, sub-dimensions, questions, banks, departments, roles,
-maturity levels).
+maturity levels, recommendations).
 
 Run after applying migrations:
 
@@ -22,130 +22,530 @@ from app.models import (
     Dimension,
     MaturityLevel,
     Question,
+    Recommendation,
     Role,
     SubDimension,
 )
 from app.models.question import DEFAULT_QUESTION_TYPE
 
-# --- Reference data (mirrors the former frontend constants) -----------------
+# --- Reference data ----------------------------------------------------------
+#
+# Each dimension has one sub-dimension per evaluated topic; each topic carries
+# exactly one questionnaire item plus its ladder of 4 atomic recommendations
+# (level 1->2, 2->3, 3->4, 4->5). Weights are whole-number percentages of the
+# global score and sum to 100 across the 6 dimensions.
 
 DIMENSIONS = [
     {
-        "key": "gouvernance",
-        "code": "01",
-        "name": "Gouvernance des données",
-        "short_name": "Gouvernance",
-        "description": "Cadre de responsabilités, politiques et conformité réglementaire autour de la donnée.",
-        "weight": 18,
-        "color": "#0277BD",
-        "sub_dimensions": [
+        "key": "strategie",
+        "code": "D1",
+        "name": "Alignement stratégique & Business",
+        "short_name": "Stratégie",
+        "description": "Sponsoring exécutif, priorisation et valeur business des initiatives data.",
+        "weight": 15,
+        "color": "#1A1A1A",
+        "topics": [
             {
-                "name": "Cadre & Conformité",
-                "questions": [
-                    "Les responsabilités data sont-elles clairement définies (CDO, data owners) ?",
-                    "Existe-t-il un cadre de gouvernance formalisé avec politiques et standards ?",
-                    "La gouvernance des données est-elle alignée avec les réglementations (BCT, BCBS 239) ?",
-                    "Avez-vous mis en place des KPIs pour piloter la gouvernance des données ?",
+                "name": "Sponsoring exécutif",
+                "question": "Le sponsoring exécutif (Direction Générale) est-il clairement établi sur les sujets data ?",
+                "recommendations": [
+                    (2, "Identifier un relais data à la Direction générale",
+                     "Désigner un interlocuteur à la Direction générale mobilisable sur les sujets data critiques, afin de sortir d'une absence totale d'implication.", "strategie", False, 1),
+                    (3, "Nommer un sponsor exécutif data",
+                     "Désigner formellement un membre de la direction comme sponsor chargé de soutenir et de porter les initiatives data.", "strategie", False, 1),
+                    (4, "Instaurer un suivi régulier par la Direction générale",
+                     "Mettre en place des revues périodiques de la DG sur les projets, les risques et les résultats data.", "strategie", False, 2),
+                    (5, "Intégrer la data aux décisions stratégiques",
+                     "Ancrer la donnée dans les processus de décision stratégique de la banque et instaurer un pilotage continu par la Direction générale.", "strategie", False, 3),
+                ],
+            },
+            {
+                "name": "Roadmap et priorisation",
+                "question": "Disposez-vous d'une roadmap data commune et priorisée à l'échelle de la banque ?",
+                "recommendations": [
+                    (2, "Recenser les initiatives data existantes",
+                     "Inventorier les initiatives data menées par chaque direction pour obtenir une première visibilité d'ensemble.", "strategie", False, 1),
+                    (3, "Construire une roadmap data commune",
+                     "Consolider les initiatives des différentes directions dans une roadmap data partagée à l'échelle de la banque.", "strategie", False, 2),
+                    (4, "Prioriser selon valeur, risque et réglementation",
+                     "Prioriser les initiatives de la roadmap selon leur valeur métier, leur niveau de risque et les exigences réglementaires.", "strategie", True, 2),
+                    (5, "Mettre la roadmap sous revue continue",
+                     "Réviser périodiquement la roadmap en fonction des résultats obtenus et de l'évolution des priorités de la banque.", "strategie", False, 2),
+                ],
+            },
+            {
+                "name": "Valeur et impact business",
+                "question": "Mesurez-vous la valeur et l'impact business des projets data (coûts, gains, risques évités) ?",
+                "recommendations": [
+                    (2, "Estimer les bénéfices attendus des projets data",
+                     "Formaliser une première estimation des bénéfices attendus des principaux projets data, même approximative.", "strategie", False, 1),
+                    (3, "Définir objectifs et indicateurs de valeur",
+                     "Fixer des objectifs et des indicateurs de valeur pour les projets data majeurs afin d'en mesurer les résultats.", "strategie", False, 2),
+                    (4, "Suivre coûts, gains et risques évités",
+                     "Mettre en place un suivi régulier des coûts, des gains et des risques évités pour les projets data.", "strategie", False, 2),
+                    (5, "Piloter les projets par la valeur mesurée",
+                     "Utiliser les résultats mesurés pour décider de poursuivre, d'ajuster ou d'arrêter chaque projet data.", "strategie", False, 2),
+                ],
+            },
+            {
+                "name": "Alignement métier et IT",
+                "question": "Les équipes métier et IT collaborent-elles étroitement sur les projets data (besoins, suivi, pilotage) ?",
+                "recommendations": [
+                    (2, "Rapprocher métier et IT sur les projets prioritaires",
+                     "Organiser des points de collaboration entre les équipes métier et IT sur les projets data prioritaires.", "gouvernance", False, 1),
+                    (3, "Définir ensemble besoins et responsabilités",
+                     "Définir conjointement, entre métier et IT, les besoins data et la répartition des responsabilités.", "gouvernance", False, 2),
+                    (4, "Suivre ensemble projets, incidents et résultats",
+                     "Instaurer un suivi conjoint métier-IT des projets, des incidents et des résultats data.", "gouvernance", False, 2),
+                    (5, "Piloter en continu les initiatives data à deux",
+                     "Mettre en place un pilotage continu et partagé des initiatives data entre métier et IT.", "gouvernance", False, 2),
+                ],
+            },
+        ],
+    },
+    {
+        "key": "gouvernance",
+        "code": "D2",
+        "name": "Gouvernance & Pilotage",
+        "short_name": "Gouvernance",
+        "description": "Rôles, politiques, conformité réglementaire et cartographie des données.",
+        "weight": 20,
+        "color": "#0277BD",
+        "topics": [
+            {
+                "name": "Rôles data (Data Owners / CDO)",
+                "question": "Les rôles et responsabilités data (Data Owners, Data Stewards, CDO) sont-ils formalisés et généralisés ?",
+                "recommendations": [
+                    (2, "Identifier des référents data par métier",
+                     "Identifier, au sein de chaque métier, des référents responsables des données critiques, à titre informel dans un premier temps.", "gouvernance", False, 1),
+                    (3, "Nommer des Data Owners sous l'autorité d'un CDO",
+                     "Désigner officiellement des Data Owners pour les données critiques et rattacher la démarche à un Chief Data Officer (CDO).", "gouvernance", False, 2),
+                    (4, "Formaliser et généraliser les rôles data",
+                     "Documenter les rôles de Data Owner et de Data Steward et appliquer ces responsabilités à l'ensemble de la banque.", "gouvernance", False, 2),
+                    (5, "Réviser périodiquement les responsabilités data",
+                     "Évaluer régulièrement les rôles et responsabilités data et les adapter aux évolutions de l'organisation et des besoins.", "gouvernance", False, 2),
+                ],
+            },
+            {
+                "name": "Comité de gouvernance des données",
+                "question": "Existe-t-il un comité de gouvernance des données actif, réunissant métiers, IT et conformité ?",
+                "recommendations": [
+                    (2, "Traiter les sujets data dans une instance existante",
+                     "Inscrire les principaux sujets data à l'ordre du jour d'une instance existante, faute de comité dédié.", "gouvernance", False, 1),
+                    (3, "Créer un comité de gouvernance des données",
+                     "Mettre en place un comité de gouvernance des données réunissant métiers, IT et conformité pour arbitrer les sujets data.", "gouvernance", False, 2),
+                    (4, "Suivre décisions, risques et actions data en comité",
+                     "Assurer un suivi régulier en comité des décisions, des risques et des plans d'action data.", "gouvernance", False, 2),
+                    (5, "Faire du comité data un organe de pilotage actif",
+                     "Positionner le comité de gouvernance des données comme organe de pilotage actif des priorités, des risques et des améliorations.", "gouvernance", False, 2),
+                ],
+            },
+            {
+                "name": "Politique de gouvernance des données",
+                "question": "Une politique de gouvernance des données (charte, règles, standards) est-elle définie, déployée et contrôlée ?",
+                "recommendations": [
+                    (2, "Formaliser les premières règles de gestion des données",
+                     "Documenter les premières règles de gestion des données au sein des directions les plus concernées.", "gouvernance", False, 1),
+                    (3, "Adopter une politique de gouvernance des données",
+                     "Définir une politique (charte) de gouvernance des données commune fixant rôles, règles et responsabilités.", "gouvernance", False, 2),
+                    (4, "Appliquer et contrôler le cadre de gouvernance",
+                     "Déployer la politique de gouvernance, en contrôler l'application et la mettre à jour régulièrement.", "gouvernance", False, 2),
+                    (5, "Améliorer en continu le dispositif de gouvernance",
+                     "Faire évoluer en continu le cadre de gouvernance selon les risques et les besoins de la banque.", "gouvernance", False, 2),
+                ],
+            },
+            {
+                "name": "Dictionnaire / cartographie des données",
+                "question": "Disposez-vous d'un dictionnaire et d'une cartographie des données critiques, maintenus à jour et rattachés à des Data Owners ?",
+                "recommendations": [
+                    (2, "Recenser les données critiques",
+                     "Établir un premier inventaire des données critiques de la banque, même partiel et dispersé.", "gouvernance", False, 1),
+                    (3, "Constituer un dictionnaire des données",
+                     "Définir et documenter les principales données critiques dans un dictionnaire de données commun.", "gouvernance", False, 2),
+                    (4, "Associer les définitions à des Data Owners",
+                     "Partager le dictionnaire de données, l'utiliser dans les métiers et rattacher chaque donnée à un Data Owner.", "gouvernance", False, 2),
+                    (5, "Maintenir une cartographie des données vivante",
+                     "Enrichir, contrôler et mettre à jour régulièrement le catalogue et la cartographie des données critiques.", "gouvernance", False, 2),
+                ],
+            },
+            {
+                "name": "Conformité réglementaire data",
+                "question": "La conformité aux exigences réglementaires liées aux données (BCT, LCB-FT, secret bancaire) est-elle recensée, contrôlée et anticipée ?",
+                "recommendations": [
+                    (2, "Structurer la prise en charge de la conformité data",
+                     "Prendre en charge les exigences réglementaires liées aux données dès qu'un problème est identifié, en attendant un dispositif structuré.", "gouvernance", True, 1),
+                    (3, "Recenser les exigences réglementaires data",
+                     "Recenser les principales exigences réglementaires (reporting réglementaire BCT, LCB-FT, secret bancaire) et les attribuer à des responsables.", "gouvernance", True, 2),
+                    (4, "Contrôler régulièrement la conformité",
+                     "Mettre en place des contrôles réguliers du respect des exigences réglementaires et corriger les écarts constatés.", "gouvernance", True, 2),
+                    (5, "Anticiper les évolutions réglementaires",
+                     "Assurer une veille réglementaire et intégrer rapidement les évolutions dans les dispositifs data.", "gouvernance", True, 3),
+                ],
+            },
+            {
+                "name": "Classification des données sensibles",
+                "question": "Les données sensibles et à caractère personnel sont-elles classifiées et protégées selon une politique formalisée ?",
+                "recommendations": [
+                    (2, "Identifier les données sensibles et personnelles",
+                     "Repérer, de façon informelle, les données sensibles et à caractère personnel les plus exposées.", "securite", True, 1),
+                    (3, "Adopter une politique de classification des données",
+                     "Définir une politique de classification distinguant données publiques, internes, confidentielles, sensibles et à caractère personnel.", "securite", True, 2),
+                    (4, "Appliquer la classification aux règles de protection",
+                     "Appliquer la classification pour définir les règles de protection (habilitations, chiffrement) selon le niveau de sensibilité.", "securite", True, 2),
+                    (5, "Réviser la classification selon risques et réglementation",
+                     "Réviser régulièrement la classification selon les risques, les usages et les obligations réglementaires (secret bancaire, protection des données à caractère personnel).", "securite", True, 2),
+                ],
+            },
+            {
+                "name": "Rétention / archivage des données",
+                "question": "Une politique de rétention, d'archivage et de purge des données conformes aux obligations réglementaires est-elle définie et appliquée ?",
+                "recommendations": [
+                    (2, "Clarifier les pratiques de conservation",
+                     "Documenter les pratiques de conservation existantes pour réduire l'hétérogénéité entre directions.", "gouvernance", True, 1),
+                    (3, "Définir une politique de rétention des données",
+                     "Établir des règles de conservation, d'archivage légal et de purge des données conformes aux obligations réglementaires.", "gouvernance", True, 2),
+                    (4, "Contrôler l'application des règles de rétention",
+                     "Contrôler l'application des règles de conservation et d'archivage et suivre les écarts.", "gouvernance", True, 2),
+                    (5, "Automatiser conservation, archivage et purge",
+                     "Automatiser la conservation, l'archivage et la suppression des données, avec des contrôles réguliers.", "gouvernance", True, 3),
                 ],
             },
         ],
     },
     {
         "key": "qualite",
-        "code": "02",
-        "name": "Qualité des données",
+        "code": "D3",
+        "name": "Gestion de la qualité des données",
         "short_name": "Qualité",
-        "description": "Exactitude, cohérence et disponibilité des données à travers les systèmes.",
-        "weight": 17,
+        "description": "Exactitude, cohérence, traçabilité et amélioration continue de la donnée.",
+        "weight": 20,
         "color": "#2E7D32",
-        "sub_dimensions": [
+        "topics": [
             {
-                "name": "Fiabilité & Contrôle",
-                "questions": [
-                    "Les données sont-elles complètes et exactes (fiables, sans erreurs) ?",
-                    "Les données sont-elles cohérentes et sans doublons à travers les systèmes ?",
-                    "Les données sont-elles à jour et disponibles quand nécessaire ?",
-                    "Existe-t-il un processus de contrôle et d'amélioration continue de la qualité ?",
+                "name": "Contrôle qualité à la saisie",
+                "question": "Des règles de contrôle qualité (complétude, exactitude, validité) sont-elles définies et automatisées à la saisie des données ?",
+                "recommendations": [
+                    (2, "Corriger les erreurs constatées à la saisie",
+                     "Mettre en place une correction systématique des erreurs de données constatées à la saisie ou à la réception.", "qualite", False, 1),
+                    (3, "Définir des règles de contrôle qualité à la saisie",
+                     "Formaliser des règles de complétude, d'exactitude et de validité pour les données critiques.", "qualite", False, 2),
+                    (4, "Automatiser les contrôles de qualité",
+                     "Automatiser les contrôles à la saisie et signaler automatiquement les données non conformes.", "qualite", False, 2),
+                    (5, "Bloquer les erreurs à la source",
+                     "Bloquer ou corriger les données erronées dès leur création et améliorer régulièrement les règles de contrôle.", "qualite", False, 3),
+                ],
+            },
+            {
+                "name": "Rapprochement inter-systèmes",
+                "question": "Les données critiques sont-elles rapprochées et cohérentes entre les systèmes, la comptabilité et les reportings ?",
+                "recommendations": [
+                    (2, "Corriger les écarts entre systèmes",
+                     "Traiter au cas par cas les écarts de données constatés entre les systèmes, la comptabilité et les reportings.", "qualite", True, 2),
+                    (3, "Définir des règles de rapprochement",
+                     "Établir des règles de rapprochement des données critiques entre systèmes et avec la comptabilité.", "qualite", True, 2),
+                    (4, "Automatiser la détection des écarts",
+                     "Détecter automatiquement les écarts inter-systèmes et les suivre jusqu'à leur correction.", "qualite", True, 2),
+                    (5, "Prévenir les écarts sur le reporting réglementaire",
+                     "Mettre en place des contrôles préventifs garantissant la cohérence entre systèmes, comptabilité et reportings réglementaires.", "qualite", True, 3),
+                ],
+            },
+            {
+                "name": "Dédoublonnage",
+                "question": "Les doublons de données sont-ils détectés et traités, avec un référentiel client unique en place ?",
+                "recommendations": [
+                    (2, "Supprimer les doublons détectés",
+                     "Supprimer les doublons de données dès qu'ils sont identifiés.", "qualite", False, 1),
+                    (3, "Définir des règles de détection des doublons",
+                     "Formaliser des règles de détection des doublons sur les données critiques.", "qualite", False, 2),
+                    (4, "Automatiser le dédoublonnage",
+                     "Détecter et traiter automatiquement les doublons et les versions multiples d'une même donnée.", "qualite", False, 2),
+                    (5, "Instaurer un référentiel client unique",
+                     "Mettre en place des identifiants et des référentiels communs (référentiel client unique) empêchant la création de doublons.", "qualite", False, 3),
+                ],
+            },
+            {
+                "name": "Intégrité référentielle",
+                "question": "L'intégrité des liens entre données associées (client, compte, crédit, garantie, transaction) est-elle contrôlée ?",
+                "recommendations": [
+                    (2, "Corriger les liaisons erronées",
+                     "Corriger, après détection, les liens incorrects entre données associées (client, compte, crédit, garantie, transaction).", "qualite", False, 1),
+                    (3, "Définir des règles d'intégrité référentielle",
+                     "Formaliser des règles contrôlant les principaux liens entre les données.", "qualite", False, 2),
+                    (4, "Automatiser le contrôle des liens",
+                     "Détecter automatiquement les erreurs de liaison entre données et les suivre.", "qualite", False, 2),
+                    (5, "Garantir l'intégrité dès la création",
+                     "Mettre en place des contrôles empêchant les erreurs de liaison dès la création des données.", "qualite", False, 3),
+                ],
+            },
+            {
+                "name": "Fraîcheur des données",
+                "question": "Les données critiques sont-elles mises à jour dans des délais définis, suivis et adaptés à leur criticité ?",
+                "recommendations": [
+                    (2, "Réduire la dépendance aux traitements manuels",
+                     "Diminuer la part de mises à jour manuelles pour limiter les retards de disponibilité des données.", "qualite", False, 1),
+                    (3, "Définir des délais de mise à jour",
+                     "Fixer des délais de mise à jour (fréquence) pour les données critiques selon les besoins.", "qualite", False, 2),
+                    (4, "Suivre les délais et alerter sur les retards",
+                     "Suivre le respect des délais de mise à jour et générer des alertes en cas de retard.", "qualite", False, 2),
+                    (5, "Adapter la fraîcheur à la criticité",
+                     "Ajuster la fréquence de mise à jour aux besoins opérationnels et à la criticité des données.", "qualite", False, 2),
+                ],
+            },
+            {
+                "name": "Traçabilité / lignage",
+                "question": "La traçabilité des données (sources, transformations, lignage) est-elle documentée et automatisée de bout en bout ?",
+                "recommendations": [
+                    (2, "Capitaliser la connaissance sur les flux",
+                     "Documenter la connaissance des équipes sur l'origine et le parcours des données critiques.", "qualite", True, 2),
+                    (3, "Documenter sources et transformations",
+                     "Documenter les sources et les principales transformations des données (dictionnaire des flux).", "qualite", True, 2),
+                    (4, "Assurer une piste d'audit de bout en bout",
+                     "Rendre les données traçables de la source jusqu'aux reportings et usages finaux (piste d'audit).", "qualite", True, 2),
+                    (5, "Automatiser le lignage des données",
+                     "Automatiser le lignage des données (data lineage), le rendre complet et le contrôler régulièrement.", "qualite", True, 3),
+                ],
+            },
+            {
+                "name": "Gestion des anomalies qualité",
+                "question": "Les anomalies de qualité des données sont-elles suivies, mesurées et corrigées à la source ?",
+                "recommendations": [
+                    (2, "Suivre les anomalies au-delà de l'urgence",
+                     "Traiter les problèmes de qualité au-delà des seuls cas bloquants et en conserver une trace.", "qualite", False, 1),
+                    (3, "Centraliser le suivi des anomalies",
+                     "Enregistrer les anomalies, les attribuer à un responsable et en assurer le suivi.", "qualite", False, 2),
+                    (4, "Mesurer les anomalies par des indicateurs",
+                     "Mettre en place des indicateurs sur les anomalies, les délais de correction et leur impact.", "qualite", False, 2),
+                    (5, "Corriger les causes à la source",
+                     "Traiter les causes racines des problèmes de qualité afin d'éviter leur répétition.", "qualite", False, 3),
                 ],
             },
         ],
     },
     {
         "key": "architecture",
-        "code": "03",
-        "name": "Architecture & Infrastructure",
+        "code": "D4",
+        "name": "Architecture & Accès aux données",
         "short_name": "Architecture",
-        "description": "Centralisation, intégration et sécurité des plateformes et pipelines data.",
-        "weight": 16,
+        "description": "Centralisation, interfaces, automatisation, sécurité et continuité des plateformes data.",
+        "weight": 20,
         "color": "#7B2D8B",
-        "sub_dimensions": [
+        "topics": [
             {
-                "name": "Plateformes & Sécurité",
-                "questions": [
-                    "Avez-vous centralisé vos données (Data Lake, DWH, MDM) ?",
-                    "Les systèmes communiquent-ils de manière fluide via APIs et services ?",
-                    "Les pipelines de données (ETL/ELT) sont-ils automatisés et industrialisés ?",
-                    "La sécurité et le contrôle d'accès (RBAC, chiffrement) sont-ils en place ?",
+                "name": "Centralisation des données",
+                "question": "Les données sont-elles centralisées dans une plateforme commune (Data Lake, DWH, MDM) avec des référentiels partagés ?",
+                "recommendations": [
+                    (2, "Regrouper les données par direction",
+                     "Regrouper localement les données au sein de chaque direction pour réduire leur dispersion.", "architecture", False, 2),
+                    (3, "Mettre en place une plateforme de données commune",
+                     "Centraliser les principales données dans une plateforme commune (entrepôt de données / datawarehouse).", "architecture", False, 2),
+                    (4, "Instaurer des référentiels partagés",
+                     "Déployer des référentiels partagés garantissant une version unique et commune des données.", "architecture", False, 3),
+                    (5, "Faire évoluer l'architecture de données",
+                     "Faire évoluer l'architecture (datawarehouse / datalake) pour la rendre intégrée, évolutive et adaptée aux nouveaux besoins.", "architecture", False, 3),
+                ],
+            },
+            {
+                "name": "Interfaces entre systèmes",
+                "question": "Les systèmes échangent-ils les données via des interfaces standardisées (API), sécurisées et supervisées ?",
+                "recommendations": [
+                    (2, "Fiabiliser les échanges au cas par cas",
+                     "Développer des échanges spécifiques entre systèmes pour réduire les transferts manuels.", "architecture", False, 2),
+                    (3, "Standardiser les interfaces entre systèmes",
+                     "Mettre en place des interfaces communes (API) reliant les principaux systèmes.", "architecture", False, 2),
+                    (4, "Sécuriser et superviser les échanges",
+                     "Standardiser, sécuriser et suivre les échanges de données entre systèmes.", "architecture", False, 2),
+                    (5, "Rendre les échanges fluides et évolutifs",
+                     "Assurer des échanges de données fluides et facilement adaptables entre les systèmes.", "architecture", False, 3),
+                ],
+            },
+            {
+                "name": "Automatisation des pipelines",
+                "question": "Les traitements et pipelines de données (ETL/ELT) sont-ils automatisés, documentés et supervisés ?",
+                "recommendations": [
+                    (2, "Automatiser les traitements clés",
+                     "Automatiser une partie des traitements de données aujourd'hui manuels, même de façon perfectible.", "architecture", False, 2),
+                    (3, "Documenter et fiabiliser les pipelines",
+                     "Automatiser et documenter les principaux traitements et flux de données (pipelines).", "architecture", False, 2),
+                    (4, "Superviser les traitements de données",
+                     "Surveiller les traitements et détecter automatiquement les erreurs d'exécution.", "architecture", False, 2),
+                    (5, "Industrialiser les pipelines de données",
+                     "Industrialiser les traitements pour les rendre fiables, réutilisables et facilement adaptables.", "architecture", False, 3),
+                ],
+            },
+            {
+                "name": "Contrôle d'accès aux données sensibles",
+                "question": "Les accès aux données sensibles sont-ils gérés par habilitations, revus périodiquement et tracés ?",
+                "recommendations": [
+                    (2, "Documenter et encadrer les accès",
+                     "Documenter les accès aux données sensibles et les accorder de façon plus maîtrisée.", "securite", True, 1),
+                    (3, "Gérer les accès par les habilitations",
+                     "Attribuer les accès selon les rôles et les responsabilités (matrice des habilitations).", "securite", True, 2),
+                    (4, "Revoir périodiquement et tracer les accès",
+                     "Réviser régulièrement les droits d'accès et tracer les accès aux données sensibles.", "securite", True, 2),
+                    (5, "Détecter les accès anormaux et chiffrer",
+                     "Détecter en temps réel les accès anormaux, automatiser les contrôles et chiffrer les données sensibles.", "securite", True, 3),
+                ],
+            },
+            {
+                "name": "Sauvegarde et plan de reprise (PRA)",
+                "question": "Les sauvegardes des données sont-elles fiables, testées régulièrement et alignées sur un plan de reprise d'activité (PCA/PRA) ?",
+                "recommendations": [
+                    (2, "Fiabiliser les sauvegardes existantes",
+                     "Mettre en place des sauvegardes maîtrisées des données, même sans tests réguliers.", "architecture", True, 1),
+                    (3, "Définir des règles de sauvegarde",
+                     "Sauvegarder les principales données selon des règles définies (fréquence, périmètre).", "architecture", True, 2),
+                    (4, "Tester les restaurations (PRA)",
+                     "Tester régulièrement les restaurations et suivre les incidents dans le cadre du plan de reprise d'activité (PRA).", "architecture", True, 2),
+                    (5, "Automatiser la reprise (PCA/PRA)",
+                     "Automatiser et tester les mécanismes de reprise, alignés sur le plan de continuité et de reprise d'activité (PCA/PRA) et les besoins critiques (RTO/RPO).", "architecture", True, 3),
+                ],
+            },
+            {
+                "name": "Données externalisées",
+                "question": "Les données confiées à des prestataires externes sont-elles recensées, encadrées contractuellement et contrôlées ?",
+                "recommendations": [
+                    (2, "Recenser les données externalisées",
+                     "Identifier les données confiées à des prestataires et à des solutions externes.", "securite", True, 1),
+                    (3, "Encadrer les données confiées aux prestataires",
+                     "Encadrer contractuellement les données externalisées (clauses de sécurité et de confidentialité).", "securite", True, 2),
+                    (4, "Contrôler la sécurité chez les prestataires",
+                     "Contrôler la sécurité, les accès et l'usage des données chez les prestataires de services externalisés.", "securite", True, 2),
+                    (5, "Piloter le risque d'externalisation en continu",
+                     "Suivre en continu les risques liés aux prestataires (externalisation) et les intégrer à la gouvernance data.", "securite", True, 3),
                 ],
             },
         ],
     },
     {
-        "key": "usage",
-        "code": "04",
-        "name": "Usage & Analytics",
-        "short_name": "Usage",
-        "description": "Exploitation analytique et impact réel de la donnée dans la prise de décision.",
-        "weight": 16,
+        "key": "analytics",
+        "code": "D5",
+        "name": "Analytics, Outils & Digitalisation",
+        "short_name": "Analytics",
+        "description": "Reporting, analyse avancée, automatisation des processus et réactivité métier.",
+        "weight": 15,
         "color": "#C4550A",
-        "sub_dimensions": [
+        "topics": [
             {
-                "name": "Analytics & Décision",
-                "questions": [
-                    "Disposez-vous de tableaux de bord et outils de visualisation (BI) ?",
-                    "Utilisez-vous des modèles prédictifs et de l'advanced analytics ?",
-                    "Les données influencent-elles réellement la prise de décision ?",
-                    "Avez-vous des cas d'usage métiers opérationnels (risque, marketing, finance) ?",
+                "name": "Reporting et BI",
+                "question": "Les reportings et tableaux de bord sont-ils fiables, automatisés et disponibles en libre-service ?",
+                "recommendations": [
+                    (2, "Fiabiliser la production des reportings",
+                     "Réduire la production manuelle et améliorer la fiabilité des données des reportings.", "analytique", False, 1),
+                    (3, "Partager outils et indicateurs communs",
+                     "Déployer des outils décisionnels communs et des indicateurs partagés entre les directions.", "analytique", False, 2),
+                    (4, "Automatiser et contrôler les tableaux de bord",
+                     "Automatiser les reportings et tableaux de bord et en contrôler régulièrement la fiabilité.", "analytique", False, 2),
+                    (5, "Offrir des indicateurs en libre-service",
+                     "Mettre à disposition des indicateurs actualisés et adaptés aux besoins des utilisateurs (self-service BI).", "analytique", False, 2),
+                ],
+            },
+            {
+                "name": "Analyse avancée / IA",
+                "question": "Des modèles d'analyse avancée ou d'IA sont-ils déployés, validés et suivis (gouvernance des modèles) ?",
+                "recommendations": [
+                    (2, "Expérimenter des modèles d'analyse avancée",
+                     "Réaliser des premiers tests de modèles d'analyse avancée ou d'IA sur des cas ciblés.", "analytique", True, 2),
+                    (3, "Déployer des modèles sur des cas métier",
+                     "Utiliser des modèles (par exemple de scoring) pour répondre à des besoins métier identifiés.", "analytique", True, 2),
+                    (4, "Valider et suivre les modèles (model risk)",
+                     "Valider, documenter et surveiller les modèles (dérive, biais) et les intégrer aux processus de décision (gouvernance des modèles).", "analytique", True, 3),
+                    (5, "Généraliser et réévaluer les modèles",
+                     "Généraliser l'usage des modèles et les réévaluer régulièrement selon leurs résultats et leur explicabilité.", "analytique", True, 3),
+                ],
+            },
+            {
+                "name": "Automatisation des processus métier",
+                "question": "Les processus métiers liés aux données sont-ils automatisés et suivis pour amélioration continue ?",
+                "recommendations": [
+                    (2, "Automatiser quelques tâches simples",
+                     "Automatiser localement quelques tâches métiers répétitives liées aux données.", "process", False, 1),
+                    (3, "Automatiser les processus principaux",
+                     "Automatiser les principaux processus métiers selon des règles définies.", "process", False, 2),
+                    (4, "Suivre et améliorer les processus automatisés",
+                     "Suivre les processus automatisés et les améliorer régulièrement.", "process", False, 2),
+                    (5, "Étendre l'automatisation aux processus clés",
+                     "Étendre l'automatisation aux processus clés et l'adapter aux nouveaux besoins.", "process", False, 3),
+                ],
+            },
+            {
+                "name": "Réactivité aux demandes urgentes",
+                "question": "Les demandes d'analyses urgentes sont-elles traitées rapidement, avec des données fiables et disponibles ?",
+                "recommendations": [
+                    (2, "Faciliter la production d'analyses urgentes",
+                     "Réduire l'effort manuel nécessaire pour produire les analyses urgentes.", "analytique", False, 1),
+                    (3, "Préparer des modèles de reporting réutilisables",
+                     "Mettre à disposition des données et des modèles de reporting couvrant les principales demandes.", "analytique", False, 2),
+                    (4, "Fiabiliser les analyses urgentes",
+                     "Produire rapidement les analyses urgentes avec des contrôles de fiabilité.", "analytique", False, 2),
+                    (5, "Répondre aux demandes critiques en temps voulu",
+                     "Répondre rapidement aux demandes critiques grâce à des données fiables et disponibles.", "analytique", False, 2),
                 ],
             },
         ],
     },
     {
-        "key": "culture",
-        "code": "05",
-        "name": "Culture Data & Compétences",
-        "short_name": "Culture",
-        "description": "Maturité humaine, adoption des outils et collaboration métiers-IT autour de la data.",
-        "weight": 16,
+        "key": "competences",
+        "code": "D6",
+        "name": "Compétences & Culture Data",
+        "short_name": "Compétences",
+        "description": "Expertise data, adoption des outils, formation et conduite du changement.",
+        "weight": 10,
         "color": "#00838F",
-        "sub_dimensions": [
+        "topics": [
             {
-                "name": "Compétences & Adoption",
-                "questions": [
-                    "Les collaborateurs comprennent-ils les données et leur importance (data literacy) ?",
-                    "Existe-t-il des programmes de formation et montée en compétences data ?",
-                    "Les outils data sont-ils adoptés et utilisés par les équipes ?",
-                    "Y a-t-il une bonne collaboration entre métiers et IT sur les sujets data ?",
+                "name": "Compétences data clés",
+                "question": "Les compétences data critiques (data analysts, data engineers, data scientists) sont-elles identifiées, structurées et renforcées ?",
+                "recommendations": [
+                    (2, "Sécuriser les compétences data clés",
+                     "Réduire la dépendance à quelques personnes ou prestataires en identifiant les compétences data essentielles.", "competences", False, 2),
+                    (3, "Constituer des équipes data identifiées",
+                     "Réunir les principales compétences data (data analysts, data engineers) dans des équipes identifiées.", "competences", False, 2),
+                    (4, "Évaluer et renforcer les compétences data",
+                     "Évaluer régulièrement les compétences data et les renforcer par la formation et le recrutement.", "competences", False, 2),
+                    (5, "Anticiper les besoins en expertise data",
+                     "Anticiper les besoins futurs et développer en continu les experts data (data scientists, CDO).", "competences", False, 3),
                 ],
             },
-        ],
-    },
-    {
-        "key": "strategie",
-        "code": "06",
-        "name": "Stratégie & Vision Data",
-        "short_name": "Stratégie",
-        "description": "Alignement de la vision data avec les objectifs business et mesure du ROI.",
-        "weight": 17,
-        "color": "#1A1A1A",
-        "sub_dimensions": [
             {
-                "name": "Vision & ROI",
-                "questions": [
-                    "Avez-vous une vision et roadmap data claire et partagée ?",
-                    "La stratégie data est-elle alignée avec les objectifs business de la banque ?",
-                    "Les initiatives data sont-elles priorisées de manière structurée ?",
-                    "Mesurez-vous le ROI et l'impact business des projets data ?",
+                "name": "Usage quotidien des données",
+                "question": "Les collaborateurs utilisent-ils les données au quotidien de manière responsable (data culture) ?",
+                "recommendations": [
+                    (2, "Encourager l'usage des données au travail",
+                     "Sensibiliser les collaborateurs à l'utilisation des données dans leur activité quotidienne.", "competences", False, 1),
+                    (3, "Diffuser la connaissance des données utiles",
+                     "Faire connaître aux collaborateurs les principales données utiles à leur métier.", "competences", False, 2),
+                    (4, "Développer la lecture des indicateurs",
+                     "Permettre aux collaborateurs d'interpréter les indicateurs et d'identifier les problèmes de qualité.", "competences", False, 2),
+                    (5, "Ancrer une utilisation responsable des données",
+                     "Faire de l'utilisation responsable des données une pratique quotidienne (data culture).", "competences", False, 2),
+                ],
+            },
+            {
+                "name": "Formation data",
+                "question": "Un plan de formation data continu et adapté aux rôles est-il déployé et évalué ?",
+                "recommendations": [
+                    (2, "Organiser des formations data ponctuelles",
+                     "Proposer des formations data ponctuelles selon les besoins des équipes.", "competences", False, 1),
+                    (3, "Définir un plan de formation data",
+                     "Établir un programme de formation data pour les principaux profils.", "competences", False, 2),
+                    (4, "Évaluer et adapter les formations",
+                     "Évaluer les compétences acquises et adapter les formations en conséquence.", "competences", False, 2),
+                    (5, "Personnaliser la formation data par rôle",
+                     "Mettre en place une formation data continue et personnalisée selon les rôles.", "competences", False, 2),
+                ],
+            },
+            {
+                "name": "Conduite du changement / adoption des outils",
+                "question": "L'adoption des nouveaux outils data est-elle accompagnée par un plan de conduite du changement et mesurée ?",
+                "recommendations": [
+                    (2, "Communiquer sur les nouveaux outils data",
+                     "Accompagner l'arrivée des nouveaux outils data par une communication et une formation initiale.", "competences", False, 1),
+                    (3, "Définir un plan de conduite du changement",
+                     "Élaborer un plan d'accompagnement du changement pour les principaux projets data.", "competences", False, 2),
+                    (4, "Mesurer l'adoption et corriger",
+                     "Mesurer l'adoption des nouvelles pratiques et mener des actions correctives face aux difficultés.", "competences", False, 2),
+                    (5, "Améliorer les outils via le retour utilisateurs",
+                     "Exploiter les retours des utilisateurs pour améliorer en continu les outils et pratiques data.", "competences", False, 2),
                 ],
             },
         ],
@@ -210,7 +610,7 @@ async def _is_empty(session, model) -> bool:
 
 async def _reset(session) -> None:
     # Order matters: children before parents.
-    for model in (Question, SubDimension, Dimension, Bank, Department, Role, MaturityLevel):
+    for model in (Recommendation, Question, SubDimension, Dimension, Bank, Department, Role, MaturityLevel):
         await session.execute(delete(model))
     print("- cleared reference tables")
 
@@ -221,6 +621,7 @@ async def seed(reset: bool = False) -> None:
             await _reset(session)
 
         if await _is_empty(session, Dimension):
+            n_recos = 0
             for d_order, d in enumerate(DIMENSIONS):
                 dim = Dimension(
                     key=d["key"],
@@ -235,27 +636,43 @@ async def seed(reset: bool = False) -> None:
                 session.add(dim)
                 await session.flush()  # populate dim.id
 
-                for s_order, sd in enumerate(d["sub_dimensions"]):
+                for t_order, topic in enumerate(d["topics"]):
                     sub = SubDimension(
                         dimension_id=dim.id,
-                        name=sd["name"],
-                        sort_order=s_order,
+                        name=topic["name"],
+                        sort_order=t_order,
                     )
                     session.add(sub)
                     await session.flush()  # populate sub.id
 
-                    for q_order, text in enumerate(sd["questions"]):
+                    question = Question(
+                        dimension_id=dim.id,
+                        sub_dimension_id=sub.id,
+                        text=topic["question"],
+                        type=DEFAULT_QUESTION_TYPE,
+                        weight=DEFAULT_QUESTION_WEIGHT,
+                        sort_order=0,
+                    )
+                    session.add(question)
+                    await session.flush()  # populate question.id
+
+                    code_prefix = f"{d['code']}Q{t_order + 1}"
+                    for trigger_level, title, text, category, reg_flag, effort in topic["recommendations"]:
                         session.add(
-                            Question(
-                                dimension_id=dim.id,
-                                sub_dimension_id=sub.id,
-                                text=text,
-                                type=DEFAULT_QUESTION_TYPE,
-                                weight=DEFAULT_QUESTION_WEIGHT,
-                                sort_order=q_order,
+                            Recommendation(
+                                code=f"{code_prefix}-{trigger_level - 1}",
+                                question_id=question.id,
+                                trigger_level=trigger_level - 1,
+                                target_level=trigger_level,
+                                title=title,
+                                recommendation_text=text,
+                                category=category,
+                                regulatory_flag=reg_flag,
+                                effort=effort,
                             )
                         )
-            print(f"- inserted {len(DIMENSIONS)} dimensions + sub-dimensions + questions")
+                        n_recos += 1
+            print(f"- inserted {len(DIMENSIONS)} dimensions + sub-dimensions + questions + {n_recos} recommendations")
         else:
             print("- dimensions already present - skipped")
 

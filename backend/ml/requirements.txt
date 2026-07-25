@@ -1,0 +1,16 @@
+# Offline ML tooling for the recommendation ranking model (dataset
+# generation, model comparison notebook, production training script).
+# Not needed to run the FastAPI backend itself -- see backend/requirements.txt
+# for that. Install with: pip install -r ml/requirements.txt
+numpy
+pandas
+scikit-learn
+lightgbm
+xgboost
+matplotlib
+shap
+jupyter
+nbconvert
+ipykernel
+python-dotenv
+psycopg2-binary

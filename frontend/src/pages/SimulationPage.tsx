@@ -46,7 +46,8 @@ const DIMENSION_SHORT_LABELS: Record<keyof Scores, string> = {
 export function SimulationPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+  const assessmentId: number | undefined = location.state?.assessmentId;
+
   const initialScores: Scores = location.state?.scores || {
     gouvernance: 2.5,
     qualite: 2.8,
@@ -346,9 +347,7 @@ export function SimulationPage() {
               <p className="text-xs sm:text-sm text-black/70">Consultez le plan d'action détaillé pour atteindre ces objectifs.</p>
             </div>
             <button
-              onClick={() => navigate('/recommendations', {
-                state: { scores: currentScores, targetScores: targetScores, isSimulation: true }
-              })}
+              onClick={() => navigate('/recommendations', { state: { assessmentId } })}
               className="w-full sm:w-auto text-center px-6 py-3.5 bg-[#FFE600] hover:bg-[#f5dc00] text-black font-medium text-xs sm:text-sm transition-colors"
             >
               Voir les recommandations
