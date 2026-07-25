@@ -93,7 +93,7 @@ export function QuestionnairePage() {
     setCompleting(true);
     try {
       const result = await submitAssessment({
-        bank: profileData.bank,
+        bank_id: profileData.bankId,
         department: profileData.department,
         evaluator_role: profileData.role,
         answers: buildAnswerPayload(),

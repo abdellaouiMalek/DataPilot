@@ -36,7 +36,6 @@ interface User {
   status: string;
   createdAt: string;
   lastLogin: string;
-  permissions: string[];
 }
 
 // Keycloak → UI row. lastLogin is "—" until the user's first login after
@@ -60,7 +59,6 @@ function toUser(u: AdminUser): User {
           hour: "2-digit", minute: "2-digit",
         })
       : "—",
-    permissions: [],
   };
 }
 
@@ -83,29 +81,39 @@ interface KpiCardData {
   detail: string;
 }
 
-// Total / actifs / admins / en attente come from the API; the trend chips stay
-// hardcoded until wired (need count history).
-function buildKpiCards(total: number, active: number, admins: number, pending: number): KpiCardData[] {
+interface KpiStats {
+  total: number;
+  active: number;
+  admins: number;
+  pending: number;
+  createdThisWeek: number;   // accounts created in the last 7 days
+  connected30: number;       // users with a login event in the last 30 days
+  oldestPendingDays: number; // age (days) of the oldest "En attente" account, -1 if none
+}
+
+// All values and chips are computed from live data (created_at + login events);
+// only "% vs period" style trends are impossible without stored count history.
+function buildKpiCards(s: KpiStats): KpiCardData[] {
   return [
     {
       label:   "Total utilisateurs",
-      value:   String(total),
-      sub:     "+3 cette semaine",
-      trend:   "up",
+      value:   String(s.total),
+      sub:     `+${s.createdThisWeek} cette semaine`,
+      trend:   s.createdThisWeek > 0 ? "up" : "neutral",
       icon:    Users,
       detail:  "Sur toutes les organisations",
     },
     {
       label:   "Utilisateurs actifs",
-      value:   String(active),
-      sub:     "+5%",
-      trend:   "up",
+      value:   String(s.active),
+      sub:     `${s.connected30} connecté${s.connected30 !== 1 ? "s" : ""} (30 j)`,
+      trend:   s.connected30 > 0 ? "up" : "neutral",
       icon:    UserCheck,
-      detail:  "Connectés ces 30 derniers jours",
+      detail:  "Comptes au statut Actif",
     },
     {
       label:   "Admins EY",
-      value:   String(admins),
+      value:   String(s.admins),
       sub:     "Accès complet",
       trend:   "neutral",
       icon:    ShieldCheck,
@@ -113,9 +121,13 @@ function buildKpiCards(total: number, active: number, admins: number, pending: n
     },
     {
       label:   "En attente d'activation",
-      value:   String(pending),
-      sub:     "-26%",
-      trend:   "down",
+      value:   String(s.pending),
+      sub:     s.pending === 0
+        ? "Aucun en attente"
+        : s.oldestPendingDays <= 0
+        ? "depuis aujourd'hui"
+        : `le plus ancien : ${s.oldestPendingDays} j`,
+      trend:   s.pending > 0 && s.oldestPendingDays > 7 ? "down" : "neutral",
       detail:  "Comptes créés non encore activés",
       icon:    Clock,
     },
@@ -183,19 +195,6 @@ function RoleBadge({ role }: { role: string }) {
   return (
     <span style={{ fontSize: 13, color: "#4A4A4A", fontWeight: 400 }}>
       {role}
-    </span>
-  );
-}
-
-function PermissionTag({ label }: { label: string }) {
-  return (
-    <span style={{
-      display: "inline-block",
-      backgroundColor: "#F5F5F5", color: "#4A4A4A",
-      borderRadius: 4, padding: "2px 7px", fontSize: 10, fontWeight: 500,
-      border: "1px solid rgba(0,0,0,0.07)",
-    }}>
-      {label}
     </span>
   );
 }
@@ -349,15 +348,22 @@ export function UserManagement() {
   const [showModal,      setShowModal]      = useState(false);
   const [editingUser,    setEditingUser]    = useState<User | null>(null);
   const [openMenu,       setOpenMenu]       = useState<string | null>(null);
-  const [focusSearch,    setFocusSearch]    = useState(false);
+  const [menuPos,        setMenuPos]        = useState<{ top: number; right: number } | null>(null);
   const [focusRole,      setFocusRole]      = useState(false);
   const [focusStatus,    setFocusStatus]    = useState(false);
 
   const [users,   setUsers]   = useState<User[]>([]);
-  const [total,   setTotal]   = useState(0);
+  // KPI stats are computed at load time (not during render — needs Date.now())
+  // from the raw API rows, which carry real timestamps.
+  const [kpiStats, setKpiStats] = useState<KpiStats>({
+    total: 0, active: 0, admins: 0, pending: 0,
+    createdThisWeek: 0, connected30: 0, oldestPendingDays: -1,
+  });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [page,     setPage]     = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const reload = () => {
     setLoading(true);
@@ -371,7 +377,25 @@ export function UserManagement() {
       .then(([list, count]) => {
         if (cancelled) return;
         setUsers(list.map(toUser));
-        setTotal(count.count);
+
+        const DAY = 24 * 3600 * 1000;
+        const now = Date.now();
+        const pendingAges = list
+          .filter(u => u.status === "En attente" && u.created_at)
+          .map(u => Math.floor((now - Date.parse(u.created_at as string)) / DAY));
+        setKpiStats({
+          total: count.count,
+          active: list.filter(u => u.status === "Actif").length,
+          admins: list.filter(u => u.role === "admin").length,
+          pending: list.filter(u => u.status === "En attente").length,
+          createdThisWeek: list.filter(
+            u => u.created_at && now - Date.parse(u.created_at) < 7 * DAY,
+          ).length,
+          connected30: list.filter(
+            u => u.last_login && now - Date.parse(u.last_login) < 30 * DAY,
+          ).length,
+          oldestPendingDays: pendingAges.length ? Math.max(...pendingAges) : -1,
+        });
       })
       .catch(() => !cancelled && setLoadError(true))
       .finally(() => !cancelled && setLoading(false));
@@ -507,12 +531,19 @@ export function UserManagement() {
     return matchSearch && matchRole && matchStatus;
   });
 
-  const kpiCards = buildKpiCards(
-    total,
-    users.filter(u => u.status === "Actif").length,
-    users.filter(u => u.role === ROLE_LABELS.admin).length,
-    users.filter(u => u.status === "En attente").length,
-  );
+  // Client-side pagination over the filtered rows. `page` is clamped instead
+  // of synced in an effect so filter changes can never leave it out of range.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paged = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const pageNumbers: number[] = [];
+  {
+    const end = Math.min(totalPages, Math.max(1, currentPage - 2) + 4);
+    for (let p = Math.max(1, end - 4); p <= end; p++) pageNumbers.push(p);
+  }
+
+  const kpiCards = buildKpiCards(kpiStats);
 
   const initials = (u: User) =>
     `${u.firstName[0] || ""}${u.lastName[0] || ""}`.toUpperCase() || "?";
@@ -584,19 +615,16 @@ export function UserManagement() {
         <div style={{
           flex: 1, display: "flex", alignItems: "center", gap: 9,
           backgroundColor: "#F7F7F7",
-          border: `1.5px solid ${focusSearch ? "#1A1A1A" : "rgba(0,0,0,0.08)"}`,
+          border: "1.5px solid rgba(0,0,0,0.08)",
           borderRadius: 6, padding: "8px 13px",
-          transition: "border-color 0.2s, box-shadow 0.2s",
-          boxShadow: focusSearch ? "0 0 0 3px rgba(26,26,26,0.08)" : "none",
         }}>
-          <Search size={14} style={{ color: focusSearch ? "#1A1A1A" : "#9B9B9B", flexShrink: 0, transition: "color 0.2s" }} />
+          <Search size={14} style={{ color: "#9B9B9B", flexShrink: 0 }} />
           <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            onFocus={() => setFocusSearch(true)}
-            onBlur={() => setFocusSearch(false)}
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Rechercher un utilisateur, email ou organisation..."
             name="datapilot-user-search"
             autoComplete="off"
+            data-plain-focus=""
             style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#1A1A1A", width: "100%" }}
           />
         </div>
@@ -604,7 +632,7 @@ export function UserManagement() {
         {/* Role filter */}
         <div style={{ position: "relative" }}>
           <select
-            value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
+            value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
             onFocus={() => setFocusRole(true)}
             onBlur={() => setFocusRole(false)}
             style={{
@@ -625,7 +653,7 @@ export function UserManagement() {
         {/* Status filter */}
         <div style={{ position: "relative" }}>
           <select
-            value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
             onFocus={() => setFocusStatus(true)}
             onBlur={() => setFocusStatus(false)}
             style={{
@@ -680,10 +708,10 @@ export function UserManagement() {
           </thead>
 
           <tbody>
-            {filtered.map((user, i) => (
+            {paged.map((user, i) => (
               <tr
                 key={user.id}
-                style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none", transition: "background 0.1s" }}
+                style={{ borderBottom: i < paged.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none", transition: "background 0.1s" }}
                 onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#FAFAFA"}
                 onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
               >
@@ -752,7 +780,23 @@ export function UserManagement() {
                     {/* ··· menu */}
                     <div style={{ position: "relative" }}>
                       <button
-                        onClick={() => setOpenMenu(openMenu === user.id ? null : user.id)}
+                        onClick={(e) => {
+                          if (openMenu === user.id) {
+                            setOpenMenu(null);
+                            return;
+                          }
+                          // Fixed positioning (viewport-relative) so the menu can't be
+                          // clipped by the table's overflow:hidden; flip upward when
+                          // there's not enough room below the button.
+                          const r = e.currentTarget.getBoundingClientRect();
+                          const menuHeight = user.status === "Archivé" ? 44 : 122;
+                          const top =
+                            r.bottom + 4 + menuHeight > window.innerHeight - 8
+                              ? r.top - menuHeight - 4
+                              : r.bottom + 4;
+                          setMenuPos({ top, right: window.innerWidth - r.right });
+                          setOpenMenu(user.id);
+                        }}
                         style={{
                           width: 28, height: 28, borderRadius: 5,
                           border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff",
@@ -776,9 +820,9 @@ export function UserManagement() {
                       >
                         <MoreHorizontal size={14} />
                       </button>
-                      {openMenu === user.id && (
+                      {openMenu === user.id && menuPos && (
                         <div style={{
-                          position: "absolute", right: 0, top: 32, zIndex: 100,
+                          position: "fixed", right: menuPos.right, top: menuPos.top, zIndex: 1000,
                           backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.1)",
                           borderRadius: 7, boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
                           minWidth: 190, overflow: "hidden",
@@ -851,27 +895,76 @@ export function UserManagement() {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           backgroundColor: "#FAFAFA",
         }}>
-          <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-            Affichage de <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> utilisateur{filtered.length !== 1 ? "s" : ""} sur <strong style={{ color: "#1A1A1A" }}>{total}</strong>
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: 12, color: "#9B9B9B" }}>
+              Affichage de{" "}
+              <strong style={{ color: "#1A1A1A" }}>
+                {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{(currentPage - 1) * pageSize + paged.length}
+              </strong>{" "}
+              sur <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> utilisateur{filtered.length !== 1 ? "s" : ""}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                style={{
+                  padding: "4px 8px", borderRadius: 5, fontSize: 12, fontWeight: 500,
+                  border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff",
+                  color: "#4A4A4A", cursor: "pointer", outline: "none",
+                }}
+              >
+                {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span style={{ fontSize: 12, color: "#9B9B9B" }}>par page</span>
+            </div>
+          </div>
+
           <div style={{ display: "flex", gap: 6 }}>
-            {["← Précédent", "1", "2", "Suivant →"].map((p, i) => (
-              <button key={i} style={{
-                padding: "5px 11px", borderRadius: 5, fontSize: 12, fontWeight: i === 1 ? 700 : 500,
-                border: "1px solid rgba(0,0,0,0.10)",
-                backgroundColor: i === 1 ? "#1A1A1A" : "#fff",
-                color: i === 1 ? "#FFE600" : "#4A4A4A", cursor: "pointer",
-              }}>
+            <button
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              style={{
+                padding: "5px 11px", borderRadius: 5, fontSize: 12, fontWeight: 500,
+                border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff",
+                color: "#4A4A4A", cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                opacity: currentPage === 1 ? 0.45 : 1,
+              }}
+            >
+              ← Précédent
+            </button>
+            {pageNumbers.map(p => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                style={{
+                  padding: "5px 11px", borderRadius: 5, fontSize: 12, fontWeight: p === currentPage ? 700 : 500,
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  backgroundColor: p === currentPage ? "#1A1A1A" : "#fff",
+                  color: p === currentPage ? "#FFE600" : "#4A4A4A", cursor: "pointer",
+                }}
+              >
                 {p}
               </button>
             ))}
+            <button
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: "5px 11px", borderRadius: 5, fontSize: 12, fontWeight: 500,
+                border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff",
+                color: "#4A4A4A", cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                opacity: currentPage === totalPages ? 0.45 : 1,
+              }}
+            >
+              Suivant →
+            </button>
           </div>
         </div>
       </div>
 
       {/* Click-outside to close menu */}
       {openMenu !== null && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpenMenu(null)} />
+        <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={() => setOpenMenu(null)} />
       )}
 
       {showModal && (

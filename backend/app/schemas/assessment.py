@@ -18,7 +18,7 @@ class AnswerIn(BaseModel):
 class AssessmentCreate(BaseModel):
     """Payload for ``POST /api/assessments`` — the raw questionnaire submission."""
 
-    bank: str = Field(min_length=1, max_length=200)
+    bank_id: int
     department: Optional[str] = Field(default=None, max_length=200)
     evaluator_role: Optional[str] = Field(default=None, max_length=200)
     answers: list[AnswerIn] = Field(min_length=1)
@@ -37,7 +37,8 @@ class AssessmentResult(BaseModel):
     """The scored assessment returned after submission."""
 
     id: int
-    bank: str
+    bank_id: int
+    bank: str  # resolved bank name, for display
     department: Optional[str]
     evaluator_role: Optional[str]
     score_global: Optional[float]

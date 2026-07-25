@@ -7,6 +7,7 @@ import { ResultsPage } from './pages/ResultsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
 import { SimulationPage } from './pages/SimulationPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { UserManagement } from './pages/admin/AdminUsers';
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
   { path: '/dashboard', element: <RequireAuth><DashboardPage /></RequireAuth> },
   { path: '/recommendations', element: <RequireAuth><RecommendationsPage /></RequireAuth> },
   { path: '/simulation', element: <RequireAuth><SimulationPage /></RequireAuth> },
+  { path: '/profile', element: <RequireAuth><ProfilePage /></RequireAuth> },
 
   // Admin back-office — requires the `admin` realm role
   {

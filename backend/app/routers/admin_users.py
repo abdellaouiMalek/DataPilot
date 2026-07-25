@@ -250,7 +250,13 @@ async def create_user(
         attributes["archived"] = ["true"]
 
     representation: dict[str, Any] = {
-        "username": payload.email,
+        # A stable, opaque username decoupled from email — the realm has
+        # loginWithEmailAllowed, so this doesn't affect login. Deriving it from
+        # email instead created a footgun: usernames can't be edited afterward
+        # (editUsernameAllowed is off), so a changed email left a stale
+        # username behind that permanently blocked that address from ever
+        # being reused by another account.
+        "username": f"user-{secrets.token_hex(8)}",
         "email": payload.email,
         "firstName": payload.first_name,
         "lastName": payload.last_name,
@@ -266,8 +272,22 @@ async def create_user(
     if not user_id:
         raise HTTPException(status_code=502, detail="Keycloak did not return the new user id.")
 
-    await _set_business_role(user_id, payload.role)
-    temp_password = await _set_temp_password(user_id)
+    # Role/password setup isn't transactional with the user-creation call above.
+    # If either step fails (e.g. a transient Keycloak hiccup), the account would
+    # otherwise be left half-configured — invisible to the admin but blocking a
+    # retry with a duplicate-email 409. Roll it back so failure here is all-or-nothing.
+    try:
+        await _set_business_role(user_id, payload.role)
+        temp_password = await _set_temp_password(user_id)
+    except HTTPException as exc:
+        try:
+            await kc_delete(f"/users/{user_id}")
+        except HTTPException:
+            pass  # best-effort cleanup; the account may need manual removal
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=f"{exc.detail} (utilisateur annulé, vous pouvez réessayer).",
+        )
 
     # No credentials email for an account born archived: it can't log in, and a
     # reset can be sent after restoration. Otherwise, the account exists even if
@@ -298,6 +318,10 @@ async def update_user(
     _claims: dict = Depends(require_admin),
 ):
     user = await kc_get(f"/users/{user_id}")
+    # username is intentionally left untouched: the realm has editUsernameAllowed
+    # disabled (admin API edits are rejected too), and login works by email
+    # anyway (loginWithEmailAllowed) — see create_user for why username is no
+    # longer derived from email at all.
     user.update(
         {
             "firstName": payload.first_name,

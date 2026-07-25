@@ -18,6 +18,7 @@ from app.db.database import get_db
 from app.models import (
     Answer,
     Assessment,
+    Bank,
     Dimension,
     DimensionScore,
     MaturityLevel,
@@ -45,6 +46,10 @@ async def submit_assessment(
     _claims: dict = Depends(verify_token),
 ):
     """Score a submitted questionnaire and store it."""
+    bank = await db.get(Bank, payload.bank_id)
+    if bank is None:
+        raise HTTPException(status_code=400, detail="Banque inconnue.")
+
     # ── Load the active reference data the score is computed against ──────────
     questions = (
         await db.execute(select(Question).where(Question.is_active.is_(True)))
@@ -95,7 +100,7 @@ async def submit_assessment(
 
     # ── Persist raw answers + cached scores in one transaction ────────────────
     assessment = Assessment(
-        bank=payload.bank,
+        bank_id=payload.bank_id,
         department=payload.department,
         evaluator_role=payload.evaluator_role,
         score_global=result.global_score,
@@ -126,7 +131,8 @@ async def submit_assessment(
 
     return AssessmentResult(
         id=assessment.id,
-        bank=assessment.bank,
+        bank_id=assessment.bank_id,
+        bank=bank.name,
         department=assessment.department,
         evaluator_role=assessment.evaluator_role,
         score_global=assessment.score_global,

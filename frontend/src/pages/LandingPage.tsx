@@ -88,7 +88,8 @@ export function LandingPage() {
         if (cancelled) return;
         const toOptions = (items: { name: string }[]) =>
           items.map((i) => ({ value: i.name, label: i.name }));
-        setBankOptions(toOptions(banks));
+        // Banks are referenced by id (assessments carry a bank_id FK).
+        setBankOptions(banks.map((b) => ({ value: String(b.id), label: b.name })));
         setDeptOptions(toOptions(departments));
         setRoleOptions(toOptions(roles));
       })
@@ -101,8 +102,14 @@ export function LandingPage() {
 
   const handleStart = () => {
     if (selectedBank && selectedDepartment && selectedRole) {
+      const bankLabel = bankOptions.find((o) => o.value === selectedBank)?.label ?? '';
       navigate('/questionnaire', {
-        state: { bank: selectedBank, department: selectedDepartment, role: selectedRole }
+        state: {
+          bankId: Number(selectedBank),
+          bank: bankLabel,
+          department: selectedDepartment,
+          role: selectedRole,
+        }
       });
     }
   };
