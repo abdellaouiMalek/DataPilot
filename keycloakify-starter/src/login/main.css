@@ -1,1 +1,45 @@
 @import "tailwindcss";
+
+/* Matches the main DataPilot app exactly (frontend/src/index.css) -- no
+   webfont there either, so none here: `font-sans` now resolves to the
+   same stack across both apps instead of Tailwind's default. */
+@theme {
+    --font-sans: Arial, sans-serif;
+}
+
+body,
+html {
+    font-family: Arial, sans-serif;
+}
+
+/* Subtle material grain on the vault background -- pure CSS (SVG
+   feTurbulence data URI), no image asset, no runtime cost. Kept very
+   low-opacity: texture, not a pattern anyone consciously notices. */
+.grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.035;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fade-in 0.35s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fade-in {
+        animation: none;
+    }
+}
