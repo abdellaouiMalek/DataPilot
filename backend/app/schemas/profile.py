@@ -12,6 +12,11 @@ class ProfileRead(BaseModel):
     email: Optional[EmailStr] = None
     organization: Optional[str] = None
     role: Optional[str] = None
+    # Admin-managed only (see app.routers.admin_users) -- deliberately not
+    # in ProfileUpdate, since this is a real permission boundary (which
+    # bank's data the user can see), not a self-editable preference.
+    bank_id: Optional[int] = None
+    bank_name: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):

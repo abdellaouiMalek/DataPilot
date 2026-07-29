@@ -88,3 +88,54 @@ def require_admin(payload: dict = Depends(verify_token)) -> dict:
     if ADMIN_ROLE not in roles:
         raise HTTPException(status_code=403, detail="Admin role required")
     return payload
+
+
+async def get_bank_scope(claims: dict = Depends(verify_token)) -> int | None:
+    """Resolves the caller's bank-access scope for assessment data.
+
+    Returns ``None`` for admins: unrestricted, matching the full access
+    they already have via the ``/admin`` back-office. For everyone else,
+    returns the bank id attached to their account (an admin-managed
+    Keycloak user attribute, ``bank_id`` -- see app.routers.admin_users;
+    intentionally not user-editable, since it's a real permission
+    boundary, not a profile preference).
+
+    Fetched live from the Keycloak Admin API on every call rather than
+    read from the token's own claims: no protocol mapper exposes it there
+    today, and this matches the pattern app.routers.profile already uses
+    for other custom attributes. If this ever needs to avoid the extra
+    round-trip, add a mapper that puts ``bank_id`` in the access token
+    and read it from ``claims`` directly instead.
+
+    Raises 403 if a non-admin has no bank attached -- a real
+    configuration gap, not a "nothing to show yet" case, so it's an
+    explicit error rather than a silently empty result.
+    """
+    # Imported lazily to avoid a module-load-order dependency between the
+    # two app.core modules (auth.py is imported very early, by almost
+    # every router).
+    from app.core.keycloak_admin import kc_get
+
+    roles = claims.get("realm_access", {}).get("roles", [])
+    if ADMIN_ROLE in roles:
+        return None
+
+    sub = claims.get("sub")
+    user = await kc_get(f"/users/{sub}")
+    values = (user.get("attributes") or {}).get("bank_id")
+    raw = values[0] if isinstance(values, list) and values else None
+    if raw is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Aucune banque n'est associee a ce compte. "
+                "Contactez un administrateur."
+            ),
+        )
+    try:
+        return int(raw)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Attribut bank_id invalide pour cet utilisateur.",
+        )

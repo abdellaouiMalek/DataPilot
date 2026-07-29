@@ -18,10 +18,13 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_admin
 from app.core.keycloak_admin import kc_delete, kc_get, kc_post, kc_put
 from app.core.mailer import send_email
+from app.db.database import get_db
+from app.models import Bank
 from app.schemas.admin_user import (
     ActionEmailResult,
     UserArchivedUpdate,
@@ -73,6 +76,27 @@ def _organization(user: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _bank_id(user: dict[str, Any]) -> Optional[int]:
+    values = (user.get("attributes") or {}).get("bank_id")
+    raw = values[0] if isinstance(values, list) and values else None
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+async def _validate_bank_id(db: AsyncSession, bank_id: Optional[int]) -> None:
+    """Admin-set only (app.core.auth.get_bank_scope enforces it as a real
+    permission boundary), so a typo here would silently grant a user
+    access to the wrong bank's data -- worth a clear 400 instead."""
+    if bank_id is None:
+        return
+    if await db.get(Bank, bank_id) is None:
+        raise HTTPException(status_code=400, detail="Banque inconnue.")
+
+
 def _created_at(user: dict[str, Any]) -> Optional[datetime]:
     ts = user.get("createdTimestamp")
     if ts is None:
@@ -94,6 +118,7 @@ def _map_user(
         enabled=user.get("enabled", True),
         status=_status(user),
         organization=_organization(user),
+        bank_id=_bank_id(user),
         role=role,
         created_at=_created_at(user),
         last_login=last_login,
@@ -191,23 +216,37 @@ async def _set_temp_password(user_id: str) -> str:
 async def _email_credentials(
     to: str, first_name: str, password: str, *, created: bool
 ) -> None:
-    subject = (
-        "Votre accès DataPilot" if created else "Réinitialisation de votre mot de passe DataPilot"
-    )
-    intro = (
-        "Votre compte DataPilot vient d'être créé."
-        if created
-        else "Votre mot de passe DataPilot vient d'être réinitialisé."
-    )
-    body = (
-        f"Bonjour {first_name},\n\n"
-        f"{intro}\n\n"
-        f"    Identifiant : {to}\n"
-        f"    Mot de passe temporaire : {password}\n\n"
-        f"Connectez-vous sur {APP_URL} — vous devrez choisir un nouveau mot de passe "
-        f"lors de votre première connexion.\n\n"
-        f"Ce message a été généré automatiquement, merci de ne pas y répondre."
-    )
+    if created:
+        subject = "Création de votre compte DataPilot"
+        body = (
+            f"Bonjour {first_name},\n\n"
+            "Dans le cadre de votre accès à la plateforme DataPilot, nous vous informons "
+            "que votre compte a été créé avec succès.\n\n"
+            "Vos identifiants de connexion sont les suivants :\n\n"
+            f"Identifiant : {to}\n"
+            f"Mot de passe temporaire : {password}\n\n"
+            "Vous pouvez accéder à la plateforme à l'adresse suivante :\n"
+            f"{APP_URL}\n\n"
+            "Lors de votre première connexion, vous serez invité(e) à définir un nouveau "
+            "mot de passe afin de sécuriser votre compte.\n\n"
+            "Nous vous recommandons de ne pas communiquer vos identifiants de connexion "
+            "à un tiers.\n\n"
+            "En cas de difficulté d'accès, veuillez contacter l'administrateur de la "
+            "plateforme.\n\n"
+            "Cordialement,\n\n"
+            "Cet email a été généré automatiquement. Merci de ne pas y répondre."
+        )
+    else:
+        subject = "Réinitialisation de votre mot de passe DataPilot"
+        body = (
+            f"Bonjour {first_name},\n\n"
+            "Votre mot de passe DataPilot vient d'être réinitialisé.\n\n"
+            f"    Identifiant : {to}\n"
+            f"    Mot de passe temporaire : {password}\n\n"
+            f"Connectez-vous sur {APP_URL} — vous devrez choisir un nouveau mot de passe "
+            "lors de votre première connexion.\n\n"
+            "Ce message a été généré automatiquement, merci de ne pas y répondre."
+        )
     await send_email(to, subject, body)
 
 
@@ -242,10 +281,15 @@ async def count_users(
 async def create_user(
     payload: UserCreate,
     _claims: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
+    await _validate_bank_id(db, payload.bank_id)
+
     attributes: dict[str, Any] = {}
     if payload.organization:
         attributes["organization"] = [payload.organization]
+    if payload.bank_id is not None:
+        attributes["bank_id"] = [str(payload.bank_id)]
     if payload.status == "Archivé":
         attributes["archived"] = ["true"]
 
@@ -316,7 +360,10 @@ async def update_user(
     user_id: str,
     payload: UserUpdate,
     _claims: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
+    await _validate_bank_id(db, payload.bank_id)
+
     user = await kc_get(f"/users/{user_id}")
     # username is intentionally left untouched: the realm has editUsernameAllowed
     # disabled (admin API edits are rejected too), and login works by email
@@ -335,6 +382,10 @@ async def update_user(
         attributes["organization"] = [payload.organization]
     else:
         attributes.pop("organization", None)
+    if payload.bank_id is not None:
+        attributes["bank_id"] = [str(payload.bank_id)]
+    else:
+        attributes.pop("bank_id", None)
     # The modal's status is the complete state: picking "Archivé" archives,
     # picking anything else restores.
     if payload.status == "Archivé":

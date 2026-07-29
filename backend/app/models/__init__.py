@@ -5,7 +5,12 @@ needs the full schema (Alembic autogenerate, ``init_db``, seeding) should
 ``import app.models`` first.
 """
 
-from app.models.assessment import Answer, Assessment, DimensionScore
+from app.models.assessment import (
+    Answer,
+    Assessment,
+    AssessmentRecommendationPlan,
+    DimensionScore,
+)
 from app.models.dimension import Dimension
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
@@ -25,4 +30,5 @@ __all__ = [
     "Assessment",
     "Answer",
     "DimensionScore",
+    "AssessmentRecommendationPlan",
 ]

@@ -11,6 +11,7 @@ import {
 } from "@/lib/adminUsers";
 import type { AdminUser, BusinessRole, UserPayload } from "@/lib/adminUsers";
 import { ApiError } from "@/lib/api";
+import { getBanks } from "@/lib/config";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ interface User {
   role: string;
   enabled: boolean;
   organization: string;
+  bankId: number | null;
   status: string;
   createdAt: string;
   lastLogin: string;
@@ -49,6 +51,7 @@ function toUser(u: AdminUser): User {
     role: u.role ? ROLE_LABELS[u.role] : "—",
     enabled: u.enabled,
     organization: u.organization || "—",
+    bankId: u.bank_id,
     status: u.status,
     createdAt: u.created_at
       ? new Date(u.created_at).toLocaleDateString("fr-FR")
@@ -214,9 +217,21 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
     email:        user?.email === "—" ? "" : user?.email || "",
     role:         user?.role && user.role !== "—" ? user.role : "Consultant EY",
     organization: user?.organization === "—" ? "" : user?.organization || "",
+    bankId:       user?.bankId != null ? String(user.bankId) : "",
     status:       user?.status       || "Actif",
   });
   const [saving, setSaving] = useState(false);
+  const [banks, setBanks] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getBanks()
+      .then((data) => !cancelled && setBanks(data))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
@@ -229,6 +244,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
       email: formData.email.trim(),
       role: LABEL_TO_ROLE[formData.role] ?? "consultant",
       organization: formData.organization.trim() || null,
+      bank_id: formData.bankId ? Number(formData.bankId) : null,
       status: formData.status as UserPayload["status"],
     };
     setSaving(true);
@@ -300,6 +316,25 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>Organisation</label>
               <input value={formData.organization} onChange={e => setFormData(p => ({ ...p, organization: e.target.value }))} placeholder="ex. BNP Paribas" autoComplete="off" style={inp} />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>
+              Banque associée
+            </label>
+            <select
+              value={formData.bankId}
+              onChange={e => setFormData(p => ({ ...p, bankId: e.target.value }))}
+              style={{ ...inp, appearance: "none", backgroundColor: "#fff", cursor: "pointer" }}
+            >
+              <option value="">Aucune (ex. staff EY)</option>
+              {banks.map(b => (
+                <option key={b.id} value={String(b.id)}>{b.name}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 4 }}>
+              Détermine les évaluations que cet utilisateur peut consulter.
             </div>
           </div>
 

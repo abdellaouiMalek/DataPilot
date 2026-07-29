@@ -18,9 +18,12 @@ class QuestionAdminRead(BaseModel):
     dimension_id: int
     sub_dimension_id: Optional[int]
     text: str
+    description: Optional[str] = None
     type: str
     weight: float
     sort_order: int
+    is_required: bool
+    level_scores: Optional[list[float]] = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -95,16 +98,33 @@ class SubDimensionUpdate(BaseModel):
 class QuestionCreate(BaseModel):
     sub_dimension_id: int  # dimension_id is derived from the sub-dimension
     text: str = Field(min_length=1)
+    description: Optional[str] = None
     type: str = Field(default=DEFAULT_QUESTION_TYPE, max_length=50)
     weight: float = 0
     sort_order: Optional[int] = None
+    is_required: bool = True
+    level_scores: Optional[list[float]] = None
     is_active: bool = True
+
+
+# ── Delete impact (force-delete confirmation) ────────────────────────────────
+
+class DeleteImpact(BaseModel):
+    """What a force-delete would wipe out, so the admin UI can show a warning
+    before permanently removing historical assessment data."""
+
+    answer_count: int
+    assessment_count: int
+    recommendation_count: int
 
 
 class QuestionUpdate(BaseModel):
     text: Optional[str] = Field(default=None, min_length=1)
+    description: Optional[str] = None
     type: Optional[str] = Field(default=None, max_length=50)
     weight: Optional[float] = None
     sort_order: Optional[int] = None
+    is_required: Optional[bool] = None
+    level_scores: Optional[list[float]] = None
     is_active: Optional[bool] = None
     sub_dimension_id: Optional[int] = None  # move to another sub-dimension

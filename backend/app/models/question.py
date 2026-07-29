@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -27,11 +28,16 @@ class Question(Base):
         ForeignKey("sub_dimensions.id", ondelete="CASCADE"), index=True, nullable=True
     )
     text: Mapped[str] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     type: Mapped[str] = mapped_column(
         String(50), default=DEFAULT_QUESTION_TYPE, server_default=DEFAULT_QUESTION_TYPE
     )
     weight: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Per-level point overrides for "Échelle de maturité" questions, e.g.
+    # [1, 2, 3, 4, 5] — index i = points awarded for level i+1. Null = linear default.
+    level_scores: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     subdimension: Mapped[Optional["SubDimension"]] = relationship(

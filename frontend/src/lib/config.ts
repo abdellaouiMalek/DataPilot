@@ -19,6 +19,7 @@ async function getJson<T>(path: string): Promise<T> {
 export interface Question {
   id: number;
   text: string;
+  description: string | null;
   sort_order: number;
 }
 

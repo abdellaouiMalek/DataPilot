@@ -45,5 +45,9 @@ class AssessmentResult(BaseModel):
     maturity_label: Optional[str]
     created_at: datetime
     dimension_scores: list[DimensionScoreRead]
+    # True if the calling user is the one who submitted this assessment --
+    # relevant now that a bank's history shows every colleague's
+    # submissions, not just the caller's own.
+    submitted_by_me: bool
 
     model_config = {"from_attributes": True}

@@ -1,11 +1,14 @@
 """Read schemas for the public reference-data (config) endpoints."""
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class QuestionRead(BaseModel):
     id: int
     text: str
+    description: Optional[str] = None
     sort_order: int
 
     model_config = {"from_attributes": True}

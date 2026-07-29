@@ -31,14 +31,35 @@ export interface RecommendationOut {
   justification: string;
 }
 
+export interface DimensionNoteOut {
+  dimension_id: number;
+  dimension_name: string;
+  dimension_score: number;
+  message: string;
+}
+
+/** Response shape of `GET /api/assessments/{id}/recommendations`. */
+export interface RecommendationPlanOut {
+  plan_prioritaire: RecommendationOut[];
+  recommandations_completes: RecommendationOut[];
+  notes_dimensions: DimensionNoteOut[];
+}
+
 export interface NarrativeOut {
   narrative: string;
 }
 
 export const getRecommendations = (assessmentId: number) =>
-  api.get<RecommendationOut[]>(
+  api.get<RecommendationPlanOut>(
     `/api/assessments/${assessmentId}/recommendations`
   );
 
 export const getNarrative = (assessmentId: number) =>
   api.get<NarrativeOut>(`/api/assessments/${assessmentId}/narrative`);
+
+/** One LLM-authored analysis of the evolution between two assessments,
+ * rather than two independent per-assessment narratives. */
+export const getComparisonNarrative = (initialId: number, currentId: number) =>
+  api.get<NarrativeOut>(
+    `/api/assessments/comparison/narrative?initial_id=${initialId}&current_id=${currentId}`
+  );

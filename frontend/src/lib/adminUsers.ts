@@ -16,6 +16,8 @@ export interface AdminUser {
   enabled: boolean;
   status: string;
   organization: string | null;
+  // Which bank's assessment data this user can access. Admin-set only.
+  bank_id: number | null;
   role: BusinessRole | null;
   created_at: string | null;
   last_login: string | null;
@@ -27,6 +29,7 @@ export interface UserPayload {
   email: string;
   role: BusinessRole;
   organization?: string | null;
+  bank_id?: number | null;
   status: "Actif" | "En attente" | "Désactivé" | "Archivé";
 }
 

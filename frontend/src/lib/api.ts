@@ -4,10 +4,15 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 
 async function getFreshToken(): Promise<string | undefined> {
+  // No forced keycloak.login() here: public pages (the landing page) call
+  // the API while anonymous, and that's an expected outcome, not a reason
+  // to yank the browser into a login redirect. Protected routes already
+  // force login on mount via RequireAuth; active-session expiry is handled
+  // globally by keycloak.onTokenExpired in main.tsx.
+  if (!keycloak.authenticated) return undefined;
   try {
     await keycloak.updateToken(30);
   } catch {
-    keycloak.login();
     return undefined;
   }
   return keycloak.token;
@@ -32,9 +37,9 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const token = await getFreshToken();
   if (!token) {
-    // Token refresh failed — keycloak.login() above is already redirecting
-    // the browser. Don't send the request without a token, since the
-    // backend's 403 ("missing header") isn't handled like a 401 is.
+    // Not authenticated (or refresh failed) — surface as a 401 rather
+    // than sending the request without a token, since the backend's 403
+    // ("missing header") isn't handled like a 401 is.
     throw new ApiError(401, "Non authentifié");
   }
 
@@ -47,7 +52,6 @@ export async function apiFetch<T = unknown>(
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    keycloak.login();
     throw new ApiError(401, "Non authentifié");
   }
 

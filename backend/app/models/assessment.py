@@ -5,7 +5,8 @@ from typing import List, Optional
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -34,8 +35,21 @@ class Assessment(Base):
     department: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     evaluator_role: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
+    # Keycloak `sub` claim of the submitter, so a user can list their own
+    # past assessments. Nullable: rows from before this column existed
+    # have no known owner.
+    keycloak_sub: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, index=True
+    )
+
     score_global: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     maturity_label: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Cached LLM-authored narrative of this assessment's results (see
+    # app.services.recommendation_engine.get_narrative). Nullable: unset
+    # until the first time it's computed, either by the background
+    # prewarm task right after submission or on first view.
+    narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -84,3 +98,31 @@ class DimensionScore(Base):
     score: Mapped[float] = mapped_column(Float)
 
     assessment: Mapped["Assessment"] = relationship(back_populates="dimension_scores")
+
+
+class AssessmentRecommendationPlan(Base):
+    """Persisted cache of an assessment's default (Scenario 1) recommendation
+    plan -- the LLM-reformulated recommendations shown on the
+    Recommendations page.
+
+    Computed once (by the background prewarm task right after submission,
+    or on first view if that hasn't finished yet), then always served from
+    here afterwards. Without this, revisiting an old assessment's
+    recommendations (e.g. from Historique) would pay for the slow LLM
+    reformulation again every time: the in-memory response cache in
+    ``llm.generation`` only helps within a single running process and is
+    lost on every restart, but this table survives both.
+    """
+
+    __tablename__ = "assessment_recommendation_plans"
+
+    assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Shaped exactly like RecommendationPlanOut (plan_prioritaire /
+    # recommandations_completes / notes_dimensions) so it can be loaded
+    # straight back into that schema with no transformation.
+    plan: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

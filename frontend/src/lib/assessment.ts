@@ -38,7 +38,16 @@ export interface AssessmentResult {
   maturity_label: string | null;
   created_at: string;
   dimension_scores: DimensionScore[];
+  // Whether the caller is the one who submitted this assessment -- the
+  // history list is bank-wide (colleagues' submissions included), not
+  // just the caller's own.
+  submitted_by_me: boolean;
 }
 
 export const submitAssessment = (payload: AssessmentCreate) =>
   api.post<AssessmentResult>("/api/assessments", payload);
+
+/** Every assessment for the caller's bank, newest first (colleagues'
+ * submissions included -- see `submitted_by_me` to tell them apart). */
+export const getMyAssessments = () =>
+  api.get<AssessmentResult[]>("/api/assessments/me");

@@ -4,13 +4,78 @@ import {
   Eye, Trash2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "../../lib/api";
 import {
   adminApi,
-  type Dimension, type SubDimension, type Question, type Status,
+  type Dimension, type SubDimension, type Question, type Status, type DeleteImpact,
 } from "../../lib/admin";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Une erreur est survenue";
+}
+
+// ── Force-delete confirmation ────────────────────────────────────────────────
+// The backend RESTRICTs hard-deletes of anything referenced by real assessment
+// answers (see app/models/assessment.py). A plain delete surfaces that as a 409;
+// this dialog shows the admin what a force-delete would actually wipe out, so
+// they can choose to proceed with full knowledge it's destroying history.
+
+interface PendingForceDelete {
+  label: string;
+  impact: DeleteImpact;
+  onConfirm: () => Promise<void>;
+}
+
+function ForceDeleteDialog({ pending, onClose }: { pending: PendingForceDelete; onClose: () => void }) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirm() {
+    setDeleting(true);
+    try {
+      await pending.onConfirm();
+      onClose();
+    } catch (e) {
+      toast.error(errMsg(e));
+      setDeleting(false);
+    }
+  }
+
+  const { impact } = pending;
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ ...panel, width: 460 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#CC0000" }}>Suppression définitive</div>
+          <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>{pending.label}</div>
+        </div>
+        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ padding: "10px 14px", backgroundColor: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 7, fontSize: 12, color: "#CC0000", lineHeight: 1.5 }}>
+            Cet élément est référencé par des évaluations existantes. Le supprimer définitivement effacera aussi :
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#1A1A1A", display: "flex", flexDirection: "column", gap: 4 }}>
+            <li><strong>{impact.answerCount}</strong> réponse{impact.answerCount !== 1 ? "s" : ""} enregistrée{impact.answerCount !== 1 ? "s" : ""}, sur <strong>{impact.assessmentCount}</strong> évaluation{impact.assessmentCount !== 1 ? "s" : ""}</li>
+            {impact.recommendationCount > 0 && (
+              <li><strong>{impact.recommendationCount}</strong> règle{impact.recommendationCount !== 1 ? "s" : ""} de recommandation associée{impact.recommendationCount !== 1 ? "s" : ""}</li>
+            )}
+          </ul>
+          <div style={{ fontSize: 12, color: "#9B9B9B" }}>
+            Cette action est irréversible : les évaluations concernées perdront ces données de façon permanente et leurs scores ne seront plus cohérents.
+          </div>
+        </div>
+        <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button style={btnGhost} onClick={onClose} disabled={deleting}>Annuler</button>
+          <button
+            onClick={confirm}
+            disabled={deleting}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#CC0000", color: "#fff", cursor: deleting ? "wait" : "pointer", opacity: deleting ? 0.7 : 1 }}
+          >
+            {deleting && <Loader2 size={14} className="animate-spin" />}Supprimer définitivement
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const RESPONSE_TYPES = ["Oui/Non", "Échelle de maturité", "Choix unique", "Choix multiple", "Texte libre"];
@@ -58,18 +123,22 @@ function StatusPicker({ value, onChange }: { value: Status; onChange: (s: Status
   );
 }
 
-function ModalShell({ title, subtitle, onClose, children, footer }: {
+function ModalShell({ title, subtitle, onClose, children, footer, headerExtra, width = 520 }: {
   title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode;
+  headerExtra?: React.ReactNode; width?: number;
 }) {
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={panel} onClick={e => e.stopPropagation()}>
+      <div style={{ ...panel, width }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>{title}</div>
             {subtitle && <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>{subtitle}</div>}
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {headerExtra}
+            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
+          </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
         <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>{footer}</div>
@@ -176,21 +245,48 @@ function SubDimensionModal({ dim, initial, onClose, onSaved }: {
 
 // ── Question modal (create / edit) ──────────────────────────────────────────
 
+const MATURITY_LEVELS = ["Initial (1)", "En développement (2)", "Défini (3)", "Maîtrisé (4)", "Optimisé (5)"];
+
+function TabSwitch({ tab, onChange }: { tab: "edit" | "preview"; onChange: (t: "edit" | "preview") => void }) {
+  return (
+    <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(0,0,0,0.12)" }}>
+      {([["edit", "Édition"], ["preview", "Prévisualisation"]] as const).map(([t, l]) => (
+        <button key={t} type="button" onClick={() => onChange(t)} style={{
+          padding: "5px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+          backgroundColor: tab === t ? "#1A1A1A" : "#fff",
+          color: tab === t ? "#FFE600" : "#6B6B6B",
+        }}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
 function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
   dim: Dimension; sub: SubDimension; initial?: Question; onClose: () => void; onSaved: () => Promise<void>;
 }) {
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [label, setLabel] = useState(initial?.label ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState(initial?.type ?? "Échelle de maturité");
   const [weight, setWeight] = useState(initial?.weight ?? 5);
+  const [order, setOrder] = useState(initial?.order ?? 1);
+  const [required, setRequired] = useState(initial?.isRequired ?? true);
   const [status, setStatus] = useState<Status>(initial?.status ?? "Active");
+  const [levelScores, setLevelScores] = useState<number[]>(
+    initial?.levelScores?.length === 5 ? initial.levelScores : [1, 2, 3, 4, 5]
+  );
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!label.trim()) return;
     setSaving(true);
     try {
-      if (initial) await adminApi.updateQuestion(initial.id, { label, type, weight, status });
-      else await adminApi.createQuestion(sub.id, { label, type, weight, status });
+      const input = {
+        label, description, type, weight, order, isRequired: required, status,
+        levelScores: type === "Échelle de maturité" ? levelScores : null,
+      };
+      if (initial) await adminApi.updateQuestion(initial.id, input);
+      else await adminApi.createQuestion(sub.id, input);
       toast.success(initial ? "Question mise à jour" : "Question créée");
       await onSaved();
       onClose();
@@ -201,6 +297,8 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
     <ModalShell
       title={initial ? "Modifier la question" : "Nouvelle question"}
       subtitle={`${dim.name} › ${sub.name}`}
+      width={620}
+      headerExtra={<TabSwitch tab={tab} onChange={setTab} />}
       onClose={onClose}
       footer={<>
         <button style={btnGhost} onClick={onClose}>Annuler</button>
@@ -209,17 +307,89 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
         </button>
       </>}
     >
-      <div><label style={lbl}>Intitulé de la question *</label>
-        <textarea style={{ ...inp, resize: "vertical" }} rows={3} value={label} onChange={e => setLabel(e.target.value)} placeholder="Saisissez la question…" autoFocus /></div>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14 }}>
-        <div><label style={lbl}>Type de réponse</label>
-          <select style={inp} value={type} onChange={e => setType(e.target.value)}>
-            {RESPONSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select></div>
-        <div><label style={lbl}>Poids (1–10)</label>
-          <input type="number" min={1} max={10} style={inp} value={weight} onChange={e => setWeight(+e.target.value)} /></div>
-      </div>
-      <div><label style={lbl}>Statut</label><StatusPicker value={status} onChange={setStatus} /></div>
+      {tab === "edit" ? (
+        <>
+          <div><label style={lbl}>Intitulé de la question *</label>
+            <textarea style={{ ...inp, resize: "vertical" }} rows={3} value={label} onChange={e => setLabel(e.target.value)} placeholder="Saisissez la question…" autoFocus /></div>
+          <div><label style={lbl}>Description / Aide à la réponse</label>
+            <textarea style={{ ...inp, resize: "vertical" }} rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Informations complémentaires pour guider la réponse…" /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 14 }}>
+            <div><label style={lbl}>Type de réponse</label>
+              <select style={inp} value={type} onChange={e => setType(e.target.value)}>
+                {RESPONSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select></div>
+            <div><label style={lbl}>Poids (1–10)</label>
+              <input type="number" min={1} max={10} style={inp} value={weight} onChange={e => setWeight(+e.target.value)} /></div>
+            <div><label style={lbl}>Ordre d'affichage</label>
+              <input type="number" min={1} style={inp} value={order} onChange={e => setOrder(+e.target.value)} /></div>
+          </div>
+          {type === "Échelle de maturité" && (
+            <div>
+              <label style={lbl}>Score par niveau</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {MATURITY_LEVELS.map((level, i) => (
+                  <div key={level} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", backgroundColor: "#F7F7F7", borderRadius: 6 }}>
+                    <span style={{ fontSize: 12, color: "#1A1A1A", flex: 1 }}>{level}</span>
+                    <input type="number" min={0} max={20} value={levelScores[i]}
+                      onChange={e => setLevelScores(p => p.map((v, vi) => vi === i ? +e.target.value : v))}
+                      style={{ width: 60, padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(0,0,0,0.15)", fontSize: 12, textAlign: "center", outline: "none" }} />
+                    <span style={{ fontSize: 11, color: "#9B9B9B" }}>pts</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#4A4A4A" }}>Question obligatoire</label>
+              <button type="button" onClick={() => setRequired(r => !r)} style={{
+                width: 36, height: 20, borderRadius: 10, border: "none", cursor: "pointer",
+                backgroundColor: required ? "#1A1A1A" : "#D0D0D0", position: "relative", transition: "background 0.15s",
+              }}>
+                <span style={{ position: "absolute", top: 2, left: required ? 18 : 2, width: 16, height: 16, borderRadius: "50%", backgroundColor: "#fff", transition: "left 0.15s" }} />
+              </button>
+            </div>
+            <StatusPicker value={status} onChange={setStatus} />
+          </div>
+        </>
+      ) : (
+        <div style={{ backgroundColor: "#F7F7F7", borderRadius: 8, padding: 22 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
+            {dim.name} · {sub.name}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", marginBottom: 12, lineHeight: 1.5 }}>
+            {label || "Intitulé de la question…"}
+          </div>
+          {description && (
+            <div style={{ fontSize: 12, color: "#4A4A4A", marginBottom: 16, padding: "10px 14px", backgroundColor: "#EFF6FF", borderRadius: 6, borderLeft: "3px solid #3B82F6" }}>
+              {description}
+            </div>
+          )}
+          {type === "Échelle de maturité" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {MATURITY_LEVELS.map((level, i) => (
+                <div key={level} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800 }}>{i + 1}</span>
+                  </div>
+                  <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{level}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{levelScores[i]} pts</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {type === "Oui/Non" && (
+            <div style={{ display: "flex", gap: 10 }}>
+              {["Oui", "Non"].map(opt => (
+                <div key={opt} style={{ flex: 1, padding: "12px 16px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)", textAlign: "center", fontSize: 13, fontWeight: 600, color: "#1A1A1A" }}>{opt}</div>
+              ))}
+            </div>
+          )}
+          {type !== "Échelle de maturité" && type !== "Oui/Non" && (
+            <div style={{ fontSize: 12, color: "#9B9B9B", fontStyle: "italic" }}>Aperçu non disponible pour ce type de réponse.</div>
+          )}
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -230,10 +400,31 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
   dim: Dimension; sub: SubDimension; onChanged: () => Promise<void>;
   onEdit: (q: Question) => void; onAdd: () => void;
 }) {
+  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
+
   async function remove(q: Question) {
     if (!window.confirm("Supprimer cette question ?")) return;
-    try { await adminApi.deleteQuestion(q.id); toast.success("Question supprimée"); await onChanged(); }
-    catch (e) { toast.error(errMsg(e)); }
+    try {
+      await adminApi.deleteQuestion(q.id);
+      toast.success("Question supprimée");
+      await onChanged();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const impact = await adminApi.getQuestionDeleteImpact(q.id);
+        const short = q.label.length > 60 ? `${q.label.slice(0, 60)}…` : q.label;
+        setForceDelete({
+          label: `Question « ${short} »`,
+          impact,
+          onConfirm: async () => {
+            await adminApi.deleteQuestion(q.id, true);
+            toast.success("Question supprimée définitivement");
+            await onChanged();
+          },
+        });
+        return;
+      }
+      toast.error(errMsg(e));
+    }
   }
   async function toggle(q: Question) {
     try { await adminApi.updateQuestion(q.id, { status: q.status === "Active" ? "Inactive" : "Active" }); await onChanged(); }
@@ -277,6 +468,7 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
       <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
         <Plus size={13} /> Ajouter une question
       </button>
+      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
     </div>
   );
 }
@@ -296,6 +488,7 @@ export function DimensionsManagement() {
   const [dimModal, setDimModal] = useState<{ initial?: Dimension } | null>(null);
   const [subModal, setSubModal] = useState<{ dim: Dimension; initial?: SubDimension } | null>(null);
   const [qModal, setQModal] = useState<{ dim: Dimension; sub: SubDimension; initial?: Question } | null>(null);
+  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(false);
@@ -310,13 +503,49 @@ export function DimensionsManagement() {
 
   async function deleteDim(d: Dimension) {
     if (!window.confirm(`Supprimer la dimension « ${d.name} » et tout son contenu ?`)) return;
-    try { await adminApi.deleteDimension(d.id); toast.success("Dimension supprimée"); await load(); }
-    catch (e) { toast.error(errMsg(e)); }
+    try {
+      await adminApi.deleteDimension(d.id);
+      toast.success("Dimension supprimée");
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const impact = await adminApi.getDimensionDeleteImpact(d.id);
+        setForceDelete({
+          label: `Dimension « ${d.name} »`,
+          impact,
+          onConfirm: async () => {
+            await adminApi.deleteDimension(d.id, true);
+            toast.success("Dimension supprimée définitivement");
+            await load();
+          },
+        });
+        return;
+      }
+      toast.error(errMsg(e));
+    }
   }
   async function deleteSub(s: SubDimension) {
     if (!window.confirm(`Supprimer la sous-dimension « ${s.name} » et ses questions ?`)) return;
-    try { await adminApi.deleteSubDimension(s.id); toast.success("Sous-dimension supprimée"); await load(); }
-    catch (e) { toast.error(errMsg(e)); }
+    try {
+      await adminApi.deleteSubDimension(s.id);
+      toast.success("Sous-dimension supprimée");
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const impact = await adminApi.getSubDimensionDeleteImpact(s.id);
+        setForceDelete({
+          label: `Sous-dimension « ${s.name} »`,
+          impact,
+          onConfirm: async () => {
+            await adminApi.deleteSubDimension(s.id, true);
+            toast.success("Sous-dimension supprimée définitivement");
+            await load();
+          },
+        });
+        return;
+      }
+      toast.error(errMsg(e));
+    }
   }
 
   const totalQ = dimensions.reduce((a, d) => a + d.subDimensions.reduce((b, s) => b + s.questions.length, 0), 0);
@@ -472,6 +701,7 @@ export function DimensionsManagement() {
       {dimModal && <DimensionModal initial={dimModal.initial} onClose={() => setDimModal(null)} onSaved={load} />}
       {subModal && <SubDimensionModal dim={subModal.dim} initial={subModal.initial} onClose={() => setSubModal(null)} onSaved={load} />}
       {qModal && <QuestionModal dim={qModal.dim} sub={qModal.sub} initial={qModal.initial} onClose={() => setQModal(null)} onSaved={load} />}
+      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
     </div>
   );
 }

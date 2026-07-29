@@ -8,15 +8,23 @@ import re
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import require_admin
 from app.db.database import get_db
-from app.models import Dimension, Question, SubDimension
+from app.models import (
+    Answer,
+    Dimension,
+    DimensionScore,
+    Question,
+    Recommendation,
+    SubDimension,
+)
 from app.schemas.admin import (
+    DeleteImpact,
     DimensionAdminRead,
     DimensionCreate,
     DimensionUpdate,
@@ -87,6 +95,65 @@ async def _get_question_or_404(db: AsyncSession, question_id: int) -> Question:
     return question
 
 
+# ── Force-delete helpers ─────────────────────────────────────────────────────
+# Answers/dimension-scores are RESTRICT-protected against ordinary deletes (see
+# app/models/assessment.py) so admins don't accidentally corrupt historical
+# evaluations. A force-delete opts into that: it removes the blocking rows
+# itself before the entity, then relies on ORM cascade for the rest
+# (Dimension → SubDimension → Question, and Question → Recommendation, which
+# are all ON DELETE CASCADE already).
+
+async def _question_ids_for_dimension(db: AsyncSession, dimension_id: int) -> list[int]:
+    return list(
+        (await db.execute(select(Question.id).where(Question.dimension_id == dimension_id)))
+        .scalars()
+        .all()
+    )
+
+
+async def _question_ids_for_subdimension(db: AsyncSession, sub_id: int) -> list[int]:
+    return list(
+        (await db.execute(select(Question.id).where(Question.sub_dimension_id == sub_id)))
+        .scalars()
+        .all()
+    )
+
+
+async def _delete_answers_for_questions(db: AsyncSession, question_ids: list[int]) -> None:
+    if question_ids:
+        await db.execute(sa_delete(Answer).where(Answer.question_id.in_(question_ids)))
+
+
+async def _delete_impact(
+    db: AsyncSession, question_ids: list[int], dimension_ids: list[int] | None = None
+) -> DeleteImpact:
+    assessment_ids: set[int] = set()
+    answer_count = 0
+    if question_ids:
+        rows = (
+            await db.execute(select(Answer.assessment_id).where(Answer.question_id.in_(question_ids)))
+        ).scalars().all()
+        answer_count = len(rows)
+        assessment_ids.update(rows)
+    if dimension_ids:
+        rows = (
+            await db.execute(
+                select(DimensionScore.assessment_id).where(DimensionScore.dimension_id.in_(dimension_ids))
+            )
+        ).scalars().all()
+        assessment_ids.update(rows)
+    recommendation_count = 0
+    if question_ids:
+        recommendation_count = await db.scalar(
+            select(func.count()).select_from(Recommendation).where(Recommendation.question_id.in_(question_ids))
+        ) or 0
+    return DeleteImpact(
+        answer_count=answer_count,
+        assessment_count=len(assessment_ids),
+        recommendation_count=recommendation_count,
+    )
+
+
 # ── Dimensions ────────────────────────────────────────────────────────────────
 
 
@@ -138,9 +205,25 @@ async def update_dimension(
     return await _get_dimension_or_404(db, dimension_id)
 
 
+@router.get("/dimensions/{dimension_id}/impact", response_model=DeleteImpact)
+async def dimension_delete_impact(dimension_id: int, db: AsyncSession = Depends(get_db)):
+    """Preview what a force-delete of this dimension would wipe out."""
+    await _get_dimension_or_404(db, dimension_id)
+    question_ids = await _question_ids_for_dimension(db, dimension_id)
+    return await _delete_impact(db, question_ids, dimension_ids=[dimension_id])
+
+
 @router.delete("/dimensions/{dimension_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_dimension(dimension_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_dimension(
+    dimension_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+):
     dim = await _get_dimension_or_404(db, dimension_id)
+    if force:
+        question_ids = await _question_ids_for_dimension(db, dimension_id)
+        await _delete_answers_for_questions(db, question_ids)
+        await db.execute(
+            sa_delete(DimensionScore).where(DimensionScore.dimension_id == dimension_id)
+        )
     await db.delete(dim)
     try:
         await db.commit()
@@ -196,9 +279,22 @@ async def update_subdimension(
     return await _get_subdimension_or_404(db, sub_id)
 
 
+@router.get("/subdimensions/{sub_id}/impact", response_model=DeleteImpact)
+async def subdimension_delete_impact(sub_id: int, db: AsyncSession = Depends(get_db)):
+    """Preview what a force-delete of this sub-dimension would wipe out."""
+    await _get_subdimension_or_404(db, sub_id)
+    question_ids = await _question_ids_for_subdimension(db, sub_id)
+    return await _delete_impact(db, question_ids)
+
+
 @router.delete("/subdimensions/{sub_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_subdimension(sub_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_subdimension(
+    sub_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+):
     sub = await _get_subdimension_or_404(db, sub_id)
+    if force:
+        question_ids = await _question_ids_for_subdimension(db, sub_id)
+        await _delete_answers_for_questions(db, question_ids)
     await db.delete(sub)
     try:
         await db.commit()
@@ -241,9 +337,12 @@ async def create_question(payload: QuestionCreate, db: AsyncSession = Depends(ge
         dimension_id=sub.dimension_id,
         sub_dimension_id=sub.id,
         text=payload.text,
+        description=payload.description,
         type=payload.type,
         weight=payload.weight,
         sort_order=payload.sort_order if payload.sort_order is not None else count,
+        is_required=payload.is_required,
+        level_scores=payload.level_scores,
         is_active=payload.is_active,
     )
     db.add(question)
@@ -270,9 +369,20 @@ async def update_question(
     return question
 
 
+@router.get("/questions/{question_id}/impact", response_model=DeleteImpact)
+async def question_delete_impact(question_id: int, db: AsyncSession = Depends(get_db)):
+    """Preview what a force-delete of this question would wipe out."""
+    await _get_question_or_404(db, question_id)
+    return await _delete_impact(db, [question_id])
+
+
 @router.delete("/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_question(question_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_question(
+    question_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+):
     question = await _get_question_or_404(db, question_id)
+    if force:
+        await _delete_answers_for_questions(db, [question_id])
     await db.delete(question)
     try:
         await db.commit()

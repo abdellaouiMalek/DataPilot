@@ -7,6 +7,10 @@ export interface UserProfile {
   email: string | null;
   organization: string | null;
   role: string | null;
+  // Admin-managed only (see AdminUsers) -- not part of ProfilePayload,
+  // this is a permission boundary, not a self-editable preference.
+  bank_id: number | null;
+  bank_name: string | null;
 }
 
 export interface ProfilePayload {

@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 from typing import Any
 
 from dotenv import load_dotenv
@@ -81,6 +82,17 @@ dans le message.
 Ton : professionnel, clair, oriente banque. Sois CONCIS : 3 phrases
 maximum au total."""
 
+_SYSTEM_PROMPT_COMPARE = """\
+Tu es un assistant qui analyse l'evolution de la maturite data d'une
+banque entre deux evaluations, a partir de scores deja calcules.
+Tu ne dois JAMAIS inventer de chiffre : n'utilise que les scores fournis
+dans le message.
+Ton : professionnel, clair, oriente banque. Analyse les deux periodes
+ENSEMBLE comme une seule evolution (progression, recul ou stagnation
+globale, dimensions qui expliquent le plus ce changement) -- ne decris
+jamais chaque periode separement l'une apres l'autre. Sois CONCIS : 4
+phrases maximum au total."""
+
 _REFORMULATE_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -96,6 +108,24 @@ _REFORMULATE_JSON_SCHEMA: dict[str, Any] = {
 # hash of bank_context + shap_factors) so an identical context never pays
 # for a repeat LLM call.
 _reformulation_cache: dict[str, dict[str, str]] = {}
+
+# Per-key locks so two threads racing on the *same* cache key (e.g. a
+# background prewarm task and a live page request computing the same
+# assessment's plan at once) never both pay for the LLM call -- the
+# second thread just blocks until the first is done, then reads the
+# cache. ``_locks_guard`` only protects creating/looking-up the
+# per-key lock itself, which is cheap and never contended for long.
+_reformulation_locks: dict[str, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _lock_for_key(key: str) -> threading.Lock:
+    with _locks_guard:
+        lock = _reformulation_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _reformulation_locks[key] = lock
+        return lock
 
 
 def _call_llm(
@@ -265,36 +295,44 @@ def reformulate_recommendation(
     if key in _reformulation_cache:
         return _reformulation_cache[key]
 
-    fallback = fallback_reformulation(reco, shap_factors)
+    # Only one thread should ever pay for a given key's LLM call. If a
+    # background prewarm and a live page request race on the same
+    # recommendation, the loser just waits here for the winner's result
+    # instead of firing a second, redundant (and slow) LLM call.
+    with _lock_for_key(key):
+        if key in _reformulation_cache:
+            return _reformulation_cache[key]
 
-    if not LLM_API_KEY:
-        _reformulation_cache[key] = fallback
-        return fallback
+        fallback = fallback_reformulation(reco, shap_factors)
 
-    user_prompt = _build_reformulate_user_prompt(
-        reco, bank_context, shap_factors
-    )
+        if not LLM_API_KEY:
+            _reformulation_cache[key] = fallback
+            return fallback
 
-    try:
-        raw = _call_llm(
-            _SYSTEM_PROMPT_REFORMULATE, user_prompt, _REFORMULATE_JSON_SCHEMA
+        user_prompt = _build_reformulate_user_prompt(
+            reco, bank_context, shap_factors
         )
-        parsed = json.loads(raw)
-        result = {
-            "reco_code": reco.code,
-            "titre": str(parsed["titre"]),
-            "texte_reformule": str(parsed["texte_reformule"]),
-            "justification": str(parsed["justification"]),
-        }
-        if _contains_garbage_token(
-            result["titre"], result["texte_reformule"], result["justification"]
-        ):
-            result = fallback
-    except Exception:
-        result = fallback
 
-    _reformulation_cache[key] = result
-    return result
+        try:
+            raw = _call_llm(
+                _SYSTEM_PROMPT_REFORMULATE, user_prompt, _REFORMULATE_JSON_SCHEMA
+            )
+            parsed = json.loads(raw)
+            result = {
+                "reco_code": reco.code,
+                "titre": str(parsed["titre"]),
+                "texte_reformule": str(parsed["texte_reformule"]),
+                "justification": str(parsed["justification"]),
+            }
+            if _contains_garbage_token(
+                result["titre"], result["texte_reformule"], result["justification"]
+            ):
+                result = fallback
+        except Exception:
+            result = fallback
+
+        _reformulation_cache[key] = result
+        return result
 
 
 def _fallback_narrative(score_result: dict[str, Any]) -> str:
@@ -347,6 +385,66 @@ def explain_results(score_result: dict[str, Any]) -> str:
     user_prompt = _build_explain_user_prompt(score_result)
     try:
         narrative = _call_llm(_SYSTEM_PROMPT_EXPLAIN, user_prompt).strip()
+        if _contains_garbage_token(narrative):
+            return fallback
+        return narrative
+    except Exception:
+        return fallback
+
+
+def _fallback_comparison_narrative(comparison_result: dict[str, Any]) -> str:
+    """Templated narrative used when the LLM call fails or is unconfigured."""
+    initial = comparison_result.get("score_global_initial") or 0.0
+    current = comparison_result.get("score_global_current") or 0.0
+    delta = current - initial
+    trend = "progresse" if delta > 0 else "recule" if delta < 0 else "stagne"
+    return (
+        f"Le score global {trend} de {initial:.1f}/5 a {current:.1f}/5 "
+        f"({delta:+.1f} pt), passant du niveau de maturite "
+        f'"{comparison_result.get("maturity_label_initial")}" a '
+        f'"{comparison_result.get("maturity_label_current")}".'
+    )
+
+
+def _build_compare_user_prompt(comparison_result: dict[str, Any]) -> str:
+    dims_text = "\n".join(
+        f"- {name} : {scores['initial']:.2f}/5 -> {scores['current']:.2f}/5"
+        for name, scores in comparison_result.get("dimension_scores", {}).items()
+    )
+    return f"""Periode initiale : score global {comparison_result.get("score_global_initial"):.2f}/5, niveau de maturite "{comparison_result.get("maturity_label_initial")}"
+Periode actuelle : score global {comparison_result.get("score_global_current"):.2f}/5, niveau de maturite "{comparison_result.get("maturity_label_current")}"
+
+Evolution par dimension (initial -> actuel) :
+{dims_text}
+
+Redige une courte analyse comparative (4 phrases maximum) de l'evolution
+GLOBALE entre ces deux periodes : progression ou recul d'ensemble, quelles
+dimensions expliquent le plus ce changement, quelles dimensions restent en
+retard. N'utilise QUE les chiffres ci-dessus, n'en invente aucun autre."""
+
+
+def explain_comparison(comparison_result: dict[str, Any]) -> str:
+    """Produces a single (3-4 sentence) narrative analyzing the evolution
+    between two assessments together, rather than one independent
+    narrative per period.
+
+    ``comparison_result`` carries ``score_global_initial``,
+    ``score_global_current``, ``maturity_label_initial``,
+    ``maturity_label_current``, and ``dimension_scores`` (a
+    ``{name: {"initial": score, "current": score}}`` mapping) -- all
+    already computed elsewhere; this function only narrates them.
+
+    Falls back to a templated sentence built from the same numbers if the
+    LLM call fails or ``LLM_API_KEY`` is unset.
+    """
+    fallback = _fallback_comparison_narrative(comparison_result)
+
+    if not LLM_API_KEY:
+        return fallback
+
+    user_prompt = _build_compare_user_prompt(comparison_result)
+    try:
+        narrative = _call_llm(_SYSTEM_PROMPT_COMPARE, user_prompt).strip()
         if _contains_garbage_token(narrative):
             return fallback
         return narrative

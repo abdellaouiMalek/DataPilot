@@ -17,6 +17,10 @@ class UserRead(BaseModel):
     enabled: bool = True
     status: str
     organization: Optional[str] = None
+    # Which bank's assessment data this user can access (app.core.auth's
+    # get_bank_scope) -- admin-set only, unrelated to `organization`
+    # (which stays a free-text display note).
+    bank_id: Optional[int] = None
     role: Optional[BusinessRole] = None
     created_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -28,6 +32,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     role: BusinessRole = "consultant"
     organization: Optional[str] = Field(default=None, max_length=200)
+    bank_id: Optional[int] = None
     status: Literal["Actif", "En attente", "Désactivé", "Archivé"] = "Actif"
 
 
@@ -42,6 +47,7 @@ class UserUpdate(BaseModel):
     email: EmailStr
     role: BusinessRole
     organization: Optional[str] = Field(default=None, max_length=200)
+    bank_id: Optional[int] = None
     status: Literal["Actif", "En attente", "Désactivé", "Archivé"]
 
 

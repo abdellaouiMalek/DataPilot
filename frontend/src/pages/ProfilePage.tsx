@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Building2, Check, ChevronRight, Loader2, Mail, ShieldCheck, UserRound } from 'lucide-react';
+import { Building2, Check, ChevronRight, Landmark, Loader2, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
 import keycloak from '../lib/keycloak';
@@ -138,9 +138,16 @@ export function ProfilePage() {
                   <Field label="Nom *" icon={<UserRound className="w-4 h-4" />}><input value={lastName} onChange={(e) => setLastName(e.target.value)} required className={inputClass} /></Field>
                   <Field label="Adresse email *" icon={<Mail className="w-4 h-4" />}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={inputClass} /></Field>
                   <Field label="Organisation" icon={<Building2 className="w-4 h-4" />}><input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Votre établissement" className={inputClass} /></Field>
+                  <Field label="Banque" icon={<Landmark className="w-4 h-4" />}>
+                    <input
+                      value={profile?.bank_name ?? 'Aucune banque associée'}
+                      disabled
+                      className={`${inputClass} bg-gray-50 text-gray-500 cursor-not-allowed`}
+                    />
+                  </Field>
                 </div>
                 <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <p className="text-[11px] text-gray-400">Votre rôle et vos droits d’accès sont gérés par un administrateur.</p>
+                  <p className="text-[11px] text-gray-400">Votre rôle et votre banque associée sont gérés par un administrateur.</p>
                   <button type="submit" disabled={!hasChanges || saving || !profile}
                     className="inline-flex items-center justify-center gap-2 bg-black text-white px-6 py-3 text-xs font-bold tracking-wider uppercase hover:bg-[#FFE600] hover:text-black disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Enregistrer

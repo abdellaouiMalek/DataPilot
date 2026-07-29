@@ -1,4 +1,4 @@
-import { LogOut, LogIn, Shield, User, UserRound } from 'lucide-react';
+import { LogOut, LogIn, Shield, User, UserRound, History } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DropdownMenu } from 'radix-ui';
 import eyLogo from '../assets/EY_logo2.png';
@@ -99,6 +99,16 @@ export function Navbar() {
                   >
                     <UserRound className="w-4 h-4" />
                     Mon profil
+                  </Link>
+                </DropdownMenu.Item>
+
+                <DropdownMenu.Item asChild>
+                  <Link
+                    to="/historique"
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-700 rounded-sm cursor-pointer outline-none transition-colors hover:bg-gray-100 hover:text-black"
+                  >
+                    <History className="w-4 h-4" />
+                    Mes évaluations
                   </Link>
                 </DropdownMenu.Item>
 

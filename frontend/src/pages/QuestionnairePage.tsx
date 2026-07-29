@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,6 +8,8 @@ import { getDimensions } from '@/lib/config';
 import type { Dimension } from '@/lib/config';
 import { submitAssessment } from '@/lib/assessment';
 import type { AnswerIn } from '@/lib/assessment';
+import { getProfile } from '@/lib/profile';
+import { ApiError } from '@/lib/api';
 
 const likertOptions = [
   { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
@@ -19,12 +21,30 @@ const likertOptions = [
 
 export function QuestionnairePage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const profileData = location.state || {};
+  // Read from the URL, not router state: a not-yet-authenticated user
+  // gets bounced through Keycloak's login (RequireAuth) before this page
+  // ever renders, which is a real page redirect, not client-side
+  // navigation -- router state doesn't survive that round-trip, but the
+  // URL (and its query string) does, since it's literally the
+  // `redirectUri` Keycloak sends the browser back to.
+  const [searchParams] = useSearchParams();
+  const profileData = {
+    bank: searchParams.get('bank') || '',
+    bankId: searchParams.get('bankId') ? Number(searchParams.get('bankId')) : undefined,
+    department: searchParams.get('department') || '',
+    role: searchParams.get('role') || '',
+  };
 
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // The bank in the URL was picked while the user might still have been
+  // anonymous (see LandingPage). Now that RequireAuth has forced a login,
+  // confirm it actually matches the bank Keycloak has them attached to
+  // before letting them spend time on the questionnaire -- the backend
+  // enforces this at submission anyway (get_bank_scope), but catching it
+  // here avoids a wasted 32-question run ending in a generic error.
+  const [checkingBank, setCheckingBank] = useState(true);
 
   const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
@@ -47,6 +67,27 @@ export function QuestionnairePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (profileData.bankId == null) {
+      setCheckingBank(false);
+      return;
+    }
+    let cancelled = false;
+    getProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        if (profile.bank_id != null && profile.bank_id !== profileData.bankId) {
+          navigate('/', { state: { bankMismatch: true } });
+        }
+      })
+      .catch(() => {})
+      .finally(() => !cancelled && setCheckingBank(false));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileData.bankId]);
 
   const totalQuestions = dimensions.reduce((acc, d) => acc + d.questions.length, 0);
   const answeredTotal = Object.values(answers).reduce((acc, dim) => acc + Object.keys(dim).length, 0);
@@ -93,25 +134,31 @@ export function QuestionnairePage() {
     setCompleting(true);
     try {
       const result = await submitAssessment({
-        bank_id: profileData.bankId,
+        // Guaranteed non-null by the guard below (this handler is only
+        // reachable once the form past it has rendered).
+        bank_id: profileData.bankId!,
         department: profileData.department,
         evaluator_role: profileData.role,
         answers: buildAnswerPayload(),
       });
       toast.success('Évaluation terminée !', { description: 'Votre profil de maturité est prêt.', duration: 3000 });
       navigate('/results', { state: { result, answers, profile: profileData } });
-    } catch {
+    } catch (error) {
       setCompleting(false);
-      toast.error('Échec de l\'enregistrement', { description: "Impossible de calculer votre score. Vérifiez que l'API est démarrée, puis réessayez." });
+      if (error instanceof ApiError && error.status === 403) {
+        navigate('/', { state: { bankMismatch: true } });
+      } else {
+        toast.error('Échec de l\'enregistrement', { description: "Impossible de calculer votre score. Vérifiez que l'API est démarrée, puis réessayez." });
+      }
     }
   };
 
-  // Reached without a profile (bank/department/role) in history state — e.g.
+  // Reached without a profile (bank/department/role) in the URL — e.g.
   // a direct link or a "Démarrer une évaluation" button that doesn't go
   // through the landing page's form. Bounce back now rather than let the
   // user answer all 32 questions only to fail at submission (bank is
   // required by the backend).
-  if (!profileData.bank) {
+  if (!profileData.bank || profileData.bankId == null) {
     return (
       <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
         <Navbar />
@@ -130,7 +177,7 @@ export function QuestionnairePage() {
     );
   }
 
-  if (loading) {
+  if (loading || checkingBank) {
     return (
       <div className="min-h-screen flex flex-col font-sans" style={{ background: '#FAFAF8' }}>
         <Navbar />
@@ -350,9 +397,16 @@ export function QuestionnairePage() {
                             : <span className="text-xs font-black">{qIndex + 1}</span>
                           }
                         </motion.div>
-                        <p className="text-[15px] text-gray-800 leading-relaxed font-medium flex-1 pt-0.5">
-                          {question.text}
-                        </p>
+                        <div className="flex-1 pt-0.5">
+                          <p className="text-[15px] text-gray-800 leading-relaxed font-medium">
+                            {question.text}
+                          </p>
+                          {question.description && (
+                            <p className="text-xs text-gray-400 leading-relaxed mt-1.5">
+                              {question.description}
+                            </p>
+                          )}
+                        </div>
                       </div>
 
                       {/* Likert scale — horizontal pill row */}

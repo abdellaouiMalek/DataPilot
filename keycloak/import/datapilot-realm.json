@@ -607,7 +607,8 @@
     "protocol" : "openid-connect",
     "attributes" : {
       "realm_client" : "false",
-      "pkce.code.challenge.method" : "S256"
+      "pkce.code.challenge.method" : "S256",
+      "post.logout.redirect.uris" : "+"
     },
     "authenticationFlowBindingOverrides" : { },
     "fullScopeAllowed" : true,

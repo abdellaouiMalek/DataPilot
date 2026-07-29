@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Navbar } from '../components/Navbar';
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import {
-  ChevronRight,
-  CheckCircle2,
-  Loader2,
-  ShieldCheck,
+  Zap, Building2, Clock, ShieldCheck, TrendingUp, ArrowUpRight,
+  ChevronDown, CheckCircle2, Loader2, ArrowLeft, Download, BarChart2,
 } from 'lucide-react';
+import { Navbar } from '../components/Navbar';
 import { getRecommendations, getNarrative } from '../lib/recommendations';
 import type { RecommendationOut } from '../lib/recommendations';
 import { getDimensions } from '../lib/config';
@@ -41,6 +40,9 @@ const EFFORT_FILTERS: { value: EffortFilter; label: string }[] = [
   { value: 2, label: 'Effort moyen' },
   { value: 3, label: 'Effort élevé' },
 ];
+
+/** A recommendation with effort 1 (low) is treated as a "quick win"; 2–3 as a structural initiative. */
+const isQuickWin = (effort: number) => effort === 1;
 
 /**
  * Five-node rail for the 1–5 maturity scale: solid nodes mark levels the
@@ -103,6 +105,7 @@ export function RecommendationsPage() {
   const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [effortFilter, setEffortFilter] = useState<EffortFilter>('all');
   const [completedCodes, setCompletedCodes] = useState<string[]>([]);
+  const [expandedCode, setExpandedCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!assessmentId) {
@@ -111,9 +114,9 @@ export function RecommendationsPage() {
     }
     let cancelled = false;
     Promise.all([getRecommendations(assessmentId), getDimensions()])
-      .then(([recs, dims]) => {
+      .then(([plan, dims]) => {
         if (cancelled) return;
-        setRecommendations(recs);
+        setRecommendations(plan.plan_prioritaire);
         const names: Record<number, string> = {};
         for (const d of dims) names[d.id] = d.name;
         setDimensionNames(names);
@@ -169,12 +172,13 @@ export function RecommendationsPage() {
   );
 
   const lowEffortCount = recommendations.filter((r) => r.effort === 1).length;
+  const structurantCount = recommendations.length - lowEffortCount;
   const regulatoryCount = recommendations.filter((r) => r.regulatory_flag).length;
   const maxScore = Math.max(1, ...recommendations.map((r) => r.score));
 
   if (!assessmentId) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-gray-50">
         <Navbar />
         <div className="flex flex-col items-center justify-center gap-4 px-6 text-center py-32">
           <p className="text-sm font-medium text-gray-600 max-w-md">
@@ -182,7 +186,7 @@ export function RecommendationsPage() {
           </p>
           <button
             onClick={() => navigate('/')}
-            className="px-5 py-2.5 text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors"
+            className="px-5 py-2.5 text-sm font-bold rounded-lg bg-gray-900 text-white hover:bg-black transition-colors"
           >
             Démarrer une évaluation
           </button>
@@ -193,7 +197,7 @@ export function RecommendationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-gray-50">
         <Navbar />
         <div className="flex flex-col items-center justify-center gap-3 text-gray-400 py-32 px-6 text-center">
           <Loader2 className="w-6 h-6 animate-spin" />
@@ -210,7 +214,7 @@ export function RecommendationsPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-gray-50">
         <Navbar />
         <div className="flex flex-col items-center justify-center gap-4 px-6 text-center py-32">
           <p className="text-sm font-medium text-gray-600 max-w-md">
@@ -218,7 +222,7 @@ export function RecommendationsPage() {
           </p>
           <button
             onClick={() => navigate('/')}
-            className="px-5 py-2.5 text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors"
+            className="px-5 py-2.5 text-sm font-bold rounded-lg bg-gray-900 text-white hover:bg-black transition-colors"
           >
             Retour à l'accueil
           </button>
@@ -228,96 +232,115 @@ export function RecommendationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-14">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8 sm:mb-10 border-b border-black/10 pb-8 sm:pb-10"
+      {/* ── Page actions ── */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 flex items-center justify-between">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors px-3 py-2"
         >
-          <span className="text-[10px] font-bold tracking-[0.25em] text-black/50 uppercase font-mono">
-            Plan d'action — Réf. dossier #{assessmentId}
-          </span>
-          <h1 className="mt-2 text-3xl sm:text-5xl font-light leading-tight text-black">
-            Recommandations priorisées
-          </h1>
+          <ArrowLeft className="w-3.5 h-3.5" /> Retour
+        </button>
+        <button
+          onClick={() => toast.success('Génération du rapport PDF...')}
+          className="flex items-center gap-1.5 text-xs font-semibold border border-gray-200 text-gray-600 hover:border-gray-400 transition-colors px-3 py-2 rounded-lg"
+        >
+          <Download className="w-3.5 h-3.5" /> Exporter PDF
+        </button>
+      </div>
 
-          {/* Executive synthesis — the LLM-authored narrative of the bank's
-              results, set in the serif "analysis voice" to read as written
-              counsel rather than interface copy. */}
-          {narrative && (
-            <p
-              style={SERIF}
-              className="mt-5 max-w-3xl text-base sm:text-lg text-black/80 leading-relaxed border-l-2 border-[#FFE600] pl-4"
-            >
-              {narrative}
-            </p>
-          )}
+      {/* ── Hero ── */}
+      <div className="bg-white border-b border-gray-200 mt-2">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+            <div>
+              <p className="text-[10px] font-bold tracking-[0.25em] text-gray-400 mb-3">
+                PLAN D'ACTION — RÉF. DOSSIER #{assessmentId}
+              </p>
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight leading-tight mb-3">
+                Recommandations <span className="text-gray-400 font-light">priorisées</span>
+              </h1>
+              <p className="text-sm text-gray-500 leading-relaxed max-w-lg">
+                {recommendations.length} initiative{recommendations.length > 1 ? 's' : ''} priorisée{recommendations.length > 1 ? 's' : ''} pour
+                accélérer votre transformation data et atteindre la conformité BCT.
+              </p>
 
-          {/* Stat rule — inline metrics, not a widget grid */}
-          <div className="mt-7 flex flex-wrap items-center gap-x-8 gap-y-3">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-light tabular-nums">{recommendations.length}</span>
-              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
-                Actions identifiées
-              </span>
+              {/* Executive synthesis — the LLM-authored narrative of the bank's
+                  results, set in the serif "analysis voice" to read as written
+                  counsel rather than interface copy. */}
+              {narrative && (
+                <p
+                  style={SERIF}
+                  className="mt-5 max-w-xl text-sm sm:text-base text-gray-700 leading-relaxed border-l-2 border-[#FFE600] pl-4"
+                >
+                  {narrative}
+                </p>
+              )}
+
+              {regulatoryCount > 0 && (
+                <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-gray-500">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#0277BD]" />
+                  {regulatoryCount} obligation{regulatoryCount > 1 ? 's' : ''} réglementaire{regulatoryCount > 1 ? 's' : ''} identifiée{regulatoryCount > 1 ? 's' : ''}
+                </div>
+              )}
             </div>
-            <div className="h-8 w-px bg-black/10 hidden sm:block" />
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-light tabular-nums">{regulatoryCount}</span>
-              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
-                Obligations réglementaires
-              </span>
-            </div>
-            <div className="h-8 w-px bg-black/10 hidden sm:block" />
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-light tabular-nums">{lowEffortCount}</span>
-              <span className="text-[11px] uppercase tracking-wider text-black/50 font-mono">
-                Gains rapides
-              </span>
+
+            {/* KPI strip */}
+            <div className="flex items-stretch gap-px bg-gray-200 border border-gray-200 rounded-xl overflow-hidden shrink-0">
+              {[
+                { val: recommendations.length, label: 'Initiatives', sub: 'au total' },
+                { val: lowEffortCount, label: 'Quick Wins', sub: 'effort faible', accent: true },
+                { val: structurantCount, label: 'Structurants', sub: 'effort moyen/élevé' },
+              ].map((k) => (
+                <div
+                  key={k.label}
+                  className={`px-7 py-5 flex flex-col items-center gap-0.5 ${k.accent ? 'bg-[#FFE600]' : 'bg-white'}`}
+                >
+                  <span className={`text-3xl font-bold leading-none ${k.accent ? 'text-black' : 'text-gray-900'}`}>{k.val}</span>
+                  <span className={`text-[11px] font-semibold ${k.accent ? 'text-black/70' : 'text-gray-700'}`}>{k.label}</span>
+                  <span className={`text-[10px] ${k.accent ? 'text-black/50' : 'text-gray-400'}`}>{k.sub}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </motion.div>
+        </div>
+      </div>
 
-        {/* Filters — underline tabs, report table-of-contents register */}
-        <div className="mb-8 flex gap-1 overflow-x-auto scrollbar-none border-b border-black/10">
-          {EFFORT_FILTERS.map(({ value, label }) => {
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
+
+        {/* ── Toolbar ── */}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 mb-6 w-fit overflow-x-auto">
+          {EFFORT_FILTERS.map((f) => {
             const count =
-              value === 'all'
-                ? recommendations.length
-                : recommendations.filter((r) => r.effort === value).length;
-            const active = effortFilter === value;
+              f.value === 'all' ? recommendations.length : recommendations.filter((r) => r.effort === f.value).length;
             return (
               <button
-                key={value}
-                onClick={() => setEffortFilter(value)}
-                className={`whitespace-nowrap px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  active
-                    ? 'border-black text-black'
-                    : 'border-transparent text-black/45 hover:text-black/70'
+                key={f.value}
+                onClick={() => setEffortFilter(f.value)}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap transition-all duration-150 ${
+                  effortFilter === f.value ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                {label}
-                <span className="ml-1.5 text-black/35 tabular-nums">({count})</span>
+                {f.label} <span className="opacity-60">({count})</span>
               </button>
             );
           })}
         </div>
 
-        {/* Recommendations List */}
+        {/* ── List ── */}
         {filteredRecommendations.length === 0 ? (
-          <div className="p-10 text-center border border-black/10 bg-[#fafafa] text-sm text-black/60">
+          <div className="p-10 text-center border border-gray-200 rounded-xl bg-white text-sm text-gray-500">
             {recommendations.length === 0
               ? "Aucune recommandation : votre niveau de maturité est déjà optimal sur l'ensemble des dimensions évaluées."
               : 'Aucune recommandation ne correspond à ce filtre.'}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filteredRecommendations.map((rec, index) => {
+              const isQW = isQuickWin(rec.effort);
+              const isOpen = expandedCode === rec.code;
               const isCompleted = completedCodes.includes(rec.code);
               const isTopPriority = rec.rank === 1;
               const dimensionLabel =
@@ -328,144 +351,207 @@ export function RecommendationsPage() {
               return (
                 <motion.div
                   key={rec.code}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: Math.min(index, 8) * 0.03 }}
-                  className={`border transition-colors ${
-                    isCompleted
-                      ? 'border-black/10 bg-black/[0.02]'
-                      : isTopPriority
-                      ? 'border-black/10 border-l-4 border-l-[#FFE600]'
-                      : 'border-black/10 hover:border-black/25'
+                  transition={{ duration: 0.3, delay: Math.min(index, 8) * 0.04 }}
+                  className={`bg-white border rounded-xl overflow-hidden ${
+                    isTopPriority ? 'border-gray-200 border-l-4 border-l-[#FFE600]' : 'border-gray-200'
                   }`}
                 >
-                  <div className="p-5 sm:p-7">
-                    {/* Top meta row */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-bold tracking-widest text-black/40 uppercase font-mono">
-                          {rec.code}
-                        </span>
-                        <span className="text-black/15">·</span>
-                        <span className="text-[10px] tracking-widest text-black/60 uppercase font-mono">
-                          {dimensionLabel}
-                        </span>
-                        {isTopPriority && (
-                          <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase bg-[#FFE600] text-black px-2 py-0.5">
-                            Priorité n°1
-                          </span>
-                        )}
-                        {rec.regulatory_flag && (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase border border-[#0277BD]/30 text-[#0277BD] px-2 py-0.5">
-                            <ShieldCheck className="w-2.5 h-2.5" />
-                            Obligation réglementaire
-                          </span>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={() => toggleComplete(rec.code)}
-                        className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 border transition-colors ${
-                          isCompleted
-                            ? 'bg-[#2E7D32] border-[#2E7D32] text-white'
-                            : 'border-black/15 text-black/50 hover:border-black/40 hover:text-black/70'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-3 h-3" />
-                        {isCompleted ? 'Traité' : 'À traiter'}
-                      </button>
-                    </div>
-
-                    {/* Main content: rail + narrative */}
-                    <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 sm:gap-8">
-                      <div className="sm:pt-1">
-                        <MaturityRail trigger={rec.trigger_level} target={rec.target_level} />
-                      </div>
-
+                  {/* Collapsed row */}
+                  <button onClick={() => setExpandedCode(isOpen ? null : rec.code)} className="w-full text-left">
+                    <div className="flex items-center gap-5 px-6 py-5 hover:bg-gray-50/70 transition-colors">
                       <div
-                        className={`space-y-2.5 min-w-0 ${isCompleted ? 'opacity-50' : ''}`}
-                      >
-                        <h3
-                          className={`text-lg sm:text-xl font-semibold break-words ${
-                            isCompleted ? 'line-through text-black/40' : 'text-black'
-                          }`}
-                        >
-                          {rec.title}
-                        </h3>
-                        <p
-                          style={SERIF}
-                          className="text-sm sm:text-base text-black/75 leading-relaxed break-words"
-                        >
-                          {rec.texte_reformule}
-                        </p>
+                        className="w-0.5 h-10 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: isQW ? '#FFE600' : '#cbd5e1' }}
+                      />
 
-                        {/* Justification — the model's grounded reasoning,
-                            in the same analysis voice as the narrative above. */}
-                        <div className="pt-2 border-t border-black/5">
-                          <span className="text-[9px] font-bold tracking-widest text-black/40 uppercase font-mono">
-                            Pourquoi cette priorité
-                          </span>
-                          <p style={SERIF} className="mt-1 text-sm italic text-black/65">
-                            {rec.justification}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer: effort + score */}
-                    <div className="mt-5 pt-4 border-t border-black/5 flex flex-wrap items-center justify-between gap-4">
-                      <span
-                        className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase px-2 py-1 border"
-                        style={{ color: effortMeta.color, borderColor: `${effortMeta.color}40` }}
-                      >
-                        {effortMeta.label}
+                      <span className="text-xl font-bold font-mono text-gray-200 w-8 shrink-0 select-none leading-none">
+                        {String(index + 1).padStart(2, '0')}
                       </span>
 
-                      <div className="flex items-center gap-2 min-w-[140px]">
-                        <span className="text-[10px] uppercase tracking-wider text-black/40 font-mono shrink-0">
-                          Score
-                        </span>
-                        <div className="flex-1 h-1 bg-black/5 max-w-[100px]">
-                          <div
-                            className="h-full bg-[#1A1A1A]"
-                            style={{ width: `${scoreBarWidth}%` }}
-                          />
+                      <span className="hidden md:block text-[10px] font-semibold tracking-[0.14em] text-gray-400 border border-gray-200 px-2 py-0.5 rounded whitespace-nowrap shrink-0 w-28 text-center truncate">
+                        {dimensionLabel.split(' ')[0].toUpperCase()}
+                      </span>
+
+                      <div className="flex-1 min-w-0">
+                        <div className={`flex items-center gap-2 ${isCompleted ? 'opacity-50' : ''}`}>
+                          <p className={`text-sm font-semibold truncate ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                            {rec.title}
+                          </p>
+                          {isTopPriority && (
+                            <span className="shrink-0 inline-flex items-center text-[9px] font-bold tracking-widest uppercase bg-[#FFE600] text-black px-1.5 py-0.5 rounded">
+                              #1
+                            </span>
+                          )}
+                          {rec.regulatory_flag && (
+                            <ShieldCheck className="w-3.5 h-3.5 text-[#0277BD] shrink-0" />
+                          )}
                         </div>
-                        <span className="text-xs font-semibold tabular-nums w-10 text-right">
-                          {rec.score.toFixed(2)}
-                        </span>
+                        <p className="text-xs text-gray-400 truncate mt-1 hidden sm:block leading-relaxed">
+                          {rec.texte_reformule}
+                        </p>
                       </div>
+
+                      <div className="hidden lg:flex items-center gap-3 shrink-0">
+                        <span
+                          className="text-[11px] font-bold whitespace-nowrap w-24 text-right"
+                          style={{ color: effortMeta.color }}
+                        >
+                          {effortMeta.label}
+                        </span>
+                        {isQW ? (
+                          <span className="flex items-center gap-1 text-[10px] font-bold bg-[#FFE600] text-black px-2.5 py-1 rounded-md w-24 justify-center">
+                            <Zap className="w-3 h-3" />Quick Win
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-md w-24 justify-center">
+                            <Building2 className="w-3 h-3" />Structurant
+                          </span>
+                        )}
+                      </div>
+
+                      <ChevronDown className={`w-4 h-4 text-gray-300 shrink-0 transition-transform duration-200 ml-1 ${isOpen ? 'rotate-180' : ''}`} />
                     </div>
-                  </div>
+                  </button>
+
+                  {/* Expanded detail */}
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-6 pb-6 pt-2 border-t border-gray-100">
+                          {/* Meta row: code · dimension · traité toggle */}
+                          <div className="flex flex-wrap items-center justify-between gap-3 my-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase font-mono">
+                                {rec.code}
+                              </span>
+                              <span className="text-gray-300">·</span>
+                              <span className="text-[10px] tracking-widest text-gray-500 uppercase font-mono">
+                                {dimensionLabel}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => toggleComplete(rec.code)}
+                              className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md border transition-colors ${
+                                isCompleted
+                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              {isCompleted ? 'Traité' : 'À traiter'}
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-6">
+                            {/* Description + reasoning */}
+                            <div className="sm:pt-1 space-y-5">
+                              <MaturityRail trigger={rec.trigger_level} target={rec.target_level} />
+
+                              <div>
+                                <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400 mb-2">DESCRIPTION</p>
+                                <p style={SERIF} className="text-sm text-gray-700 leading-relaxed">
+                                  {rec.texte_reformule}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400 mb-2">POURQUOI CETTE PRIORITÉ</p>
+                                <p style={SERIF} className="text-sm italic text-gray-600 leading-relaxed">
+                                  {rec.justification}
+                                </p>
+                              </div>
+
+                              {rec.explanation_factors.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400 mb-3">FACTEURS EXPLICATIFS</p>
+                                  <div className="space-y-2.5">
+                                    {rec.explanation_factors.map((f) => (
+                                      <div key={f.feature} className="flex items-start gap-3">
+                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                          f.direction === 'positif' ? 'bg-emerald-50' : 'bg-red-50'
+                                        }`}>
+                                          {f.direction === 'positif' ? (
+                                            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                                          ) : (
+                                            <ArrowUpRight className="w-3.5 h-3.5 text-red-500 rotate-90" />
+                                          )}
+                                        </div>
+                                        <span className="text-xs text-gray-700 leading-relaxed">{f.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Metrics panel */}
+                            <div className="bg-gray-50 rounded-xl p-5 space-y-4 border border-gray-100 h-fit">
+                              <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400">MÉTRIQUES</p>
+                              {[
+                                { label: 'Dimension', val: dimensionLabel, icon: Building2 },
+                                { label: 'Effort', val: effortMeta.label, icon: BarChart2 },
+                                { label: 'Score', val: rec.score.toFixed(2), icon: TrendingUp },
+                                { label: 'Priorité', val: isQW ? 'Quick Win' : 'Structurant', icon: Zap },
+                                { label: 'Rang', val: `#${rec.rank}`, icon: Clock },
+                              ].map((m) => (
+                                <div key={m.label} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <m.icon className="w-3.5 h-3.5" />
+                                    {m.label}
+                                  </div>
+                                  <span className="text-xs font-semibold text-gray-800">{m.val}</span>
+                                </div>
+                              ))}
+                              <div className="pt-1">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-mono">Score relatif</span>
+                                </div>
+                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gray-900 rounded-full" style={{ width: `${scoreBarWidth}%` }} />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               );
             })}
           </div>
         )}
 
-        {/* Bottom CTA Block */}
+        {/* ── CTA ── */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-10 border border-black/10 bg-[#fafafa] p-5 sm:p-10"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="mt-8 bg-gray-900 rounded-2xl p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5"
         >
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-1">
-              <h3 className="text-lg sm:text-2xl font-light">Prêt à modéliser l'impact ?</h3>
-              <p className="text-xs sm:text-base text-black/70">
-                Simulez les gains potentiels de ces recommandations sur vos métriques business.
-              </p>
-            </div>
-            <button
-              onClick={() => navigate('/simulation', { state: { assessmentId } })}
-              className="w-full lg:w-auto px-5 py-3.5 bg-[#FFE600] hover:bg-[#f5dc00] text-black font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
-            >
-              <span>Lancer une simulation</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          <div>
+            <p className="text-base font-bold text-white mb-1">Prêt à modéliser l'impact ?</p>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Simulez les gains potentiels de ces recommandations sur vos métriques business.
+            </p>
           </div>
+          <button
+            onClick={() => navigate('/simulation', { state: { assessmentId } })}
+            className="flex items-center gap-2.5 bg-[#FFE600] hover:bg-[#f5d800] text-black px-6 py-3 text-sm font-bold rounded-xl transition-colors shrink-0"
+          >
+            Lancer une simulation
+            <ArrowUpRight className="w-4 h-4" />
+          </button>
         </motion.div>
+
       </div>
     </div>
   );
