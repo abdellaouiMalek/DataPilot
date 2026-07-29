@@ -35,9 +35,12 @@ class Question(Base):
     weight: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    # Per-level point overrides for "Échelle de maturité" questions, e.g.
-    # [1, 2, 3, 4, 5] — index i = points awarded for level i+1. Null = linear default.
-    level_scores: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    # Per-level label + point overrides for "Échelle de maturité" questions, e.g.
+    # [{"label": "...", "score": 1}, ...] — index i = level i+1. Null = defaults.
+    level_responses: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    # Options for "Choix unique" / "Choix multiple" questions, e.g.
+    # [{"label": "...", "score": 3}, ...]. Null/empty for other question types.
+    choice_options: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     subdimension: Mapped[Optional["SubDimension"]] = relationship(

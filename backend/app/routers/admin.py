@@ -342,7 +342,14 @@ async def create_question(payload: QuestionCreate, db: AsyncSession = Depends(ge
         weight=payload.weight,
         sort_order=payload.sort_order if payload.sort_order is not None else count,
         is_required=payload.is_required,
-        level_scores=payload.level_scores,
+        level_responses=(
+            [r.model_dump() for r in payload.level_responses]
+            if payload.level_responses else None
+        ),
+        choice_options=(
+            [o.model_dump() for o in payload.choice_options]
+            if payload.choice_options else None
+        ),
         is_active=payload.is_active,
     )
     db.add(question)

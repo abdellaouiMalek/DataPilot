@@ -11,6 +11,22 @@ from pydantic import BaseModel, Field
 from app.models.question import DEFAULT_QUESTION_TYPE
 
 
+# ── Shared value types ───────────────────────────────────────────────────────
+
+class LevelResponse(BaseModel):
+    """One maturity-scale rung: its label and the points it awards."""
+
+    label: str = ""
+    score: float = 0
+
+
+class ChoiceOption(BaseModel):
+    """One selectable option for a Choix unique/Choix multiple question."""
+
+    label: str = ""
+    score: float = 0
+
+
 # ── Read ──────────────────────────────────────────────────────────────────────
 
 class QuestionAdminRead(BaseModel):
@@ -23,7 +39,8 @@ class QuestionAdminRead(BaseModel):
     weight: float
     sort_order: int
     is_required: bool
-    level_scores: Optional[list[float]] = None
+    level_responses: Optional[list[LevelResponse]] = None
+    choice_options: Optional[list[ChoiceOption]] = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -103,7 +120,8 @@ class QuestionCreate(BaseModel):
     weight: float = 0
     sort_order: Optional[int] = None
     is_required: bool = True
-    level_scores: Optional[list[float]] = None
+    level_responses: Optional[list[LevelResponse]] = None
+    choice_options: Optional[list[ChoiceOption]] = None
     is_active: bool = True
 
 
@@ -125,6 +143,7 @@ class QuestionUpdate(BaseModel):
     weight: Optional[float] = None
     sort_order: Optional[int] = None
     is_required: Optional[bool] = None
-    level_scores: Optional[list[float]] = None
+    level_responses: Optional[list[LevelResponse]] = None
+    choice_options: Optional[list[ChoiceOption]] = None
     is_active: Optional[bool] = None
     sub_dimension_id: Optional[int] = None  # move to another sub-dimension

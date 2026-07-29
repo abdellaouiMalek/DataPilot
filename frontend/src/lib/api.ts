@@ -55,8 +55,12 @@ export async function apiFetch<T = unknown>(
     throw new ApiError(401, "Non authentifié");
   }
 
+  // Read as text first: a 204 (or any empty body) can still carry a
+  // `content-type: application/json` header, and res.json() throws on an
+  // empty body ("Unexpected end of JSON input") instead of returning null.
   const isJson = res.headers.get("content-type")?.includes("application/json");
-  const data = isJson ? await res.json() : await res.text();
+  const text = await res.text();
+  const data = isJson && text ? JSON.parse(text) : text;
 
   if (!res.ok) {
     const detail =

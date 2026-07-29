@@ -10,17 +10,33 @@ import { api } from "./api";
 
 export type Status = "Active" | "Inactive";
 
+// One maturity-scale rung: its label and the points it awards.
+export interface LevelResponse {
+  label: string;
+  score: number;
+}
+
+// One selectable option for a Choix unique/Choix multiple question.
+export interface ChoiceOption {
+  label: string;
+  score: number;
+}
+
 // ── UI-facing shapes (consumed by AdminDimensions.tsx) ──────────────────────
 export interface Question {
   id: string;
+  dimensionId: string;
+  subDimensionId: string;
   label: string;
   description: string;
   type: string;
   weight: number;
   order: number;
   isRequired: boolean;
-  // Per-level point overrides for "Échelle de maturité" questions (index 0 = level 1).
-  levelScores: number[] | null;
+  // Per-level label/point overrides, only meaningful for "Échelle de maturité".
+  levelResponses: LevelResponse[] | null;
+  // Options list, only meaningful for "Choix unique" / "Choix multiple".
+  choiceOptions: ChoiceOption[] | null;
   status: Status;
 }
 
@@ -59,7 +75,8 @@ interface ApiQuestion {
   weight: number;
   sort_order: number;
   is_required: boolean;
-  level_scores: number[] | null;
+  level_responses: LevelResponse[] | null;
+  choice_options: ChoiceOption[] | null;
   is_active: boolean;
 }
 interface ApiSubDimension {
@@ -101,13 +118,16 @@ const mapImpact = (i: ApiDeleteImpact): DeleteImpact => ({
 function mapQuestion(q: ApiQuestion): Question {
   return {
     id: String(q.id),
+    dimensionId: String(q.dimension_id),
+    subDimensionId: q.sub_dimension_id != null ? String(q.sub_dimension_id) : "",
     label: q.text,
     description: q.description ?? "",
     type: q.type,
     weight: q.weight,
     order: q.sort_order,
     isRequired: q.is_required,
-    levelScores: q.level_scores,
+    levelResponses: q.level_responses,
+    choiceOptions: q.choice_options,
     status: toStatus(q.is_active),
   };
 }
@@ -145,8 +165,13 @@ export interface QuestionInput {
   weight?: number;
   order?: number;
   isRequired?: boolean;
-  levelScores?: number[] | null;
+  levelResponses?: LevelResponse[] | null;
+  choiceOptions?: ChoiceOption[] | null;
   status?: Status;
+  // Only meaningful on update — reassigns the question to another sub-dimension
+  // (and, transitively, dimension). Ignored by createQuestion, which already
+  // takes the target sub-dimension as its own argument.
+  subDimensionId?: string;
 }
 
 export const adminApi = {
@@ -155,7 +180,7 @@ export const adminApi = {
 
   // Dimensions
   createDimension: (input: DimensionInput) =>
-    api.post("/api/admin/dimensions", {
+    api.post<{ id: number }>("/api/admin/dimensions", {
       name: input.name,
       description: input.description ?? "",
       weight: input.weight ?? 0,
@@ -202,7 +227,8 @@ export const adminApi = {
       weight: input.weight ?? 0,
       sort_order: input.order,
       is_required: input.isRequired ?? true,
-      level_scores: input.levelScores ?? null,
+      level_responses: input.levelResponses ?? null,
+      choice_options: input.choiceOptions ?? null,
       is_active: toActive(input.status),
     }),
   updateQuestion: (id: string, input: Partial<QuestionInput>) =>
@@ -213,8 +239,10 @@ export const adminApi = {
       ...(input.weight !== undefined && { weight: input.weight }),
       ...(input.order !== undefined && { sort_order: input.order }),
       ...(input.isRequired !== undefined && { is_required: input.isRequired }),
-      ...(input.levelScores !== undefined && { level_scores: input.levelScores }),
+      ...(input.levelResponses !== undefined && { level_responses: input.levelResponses }),
+      ...(input.choiceOptions !== undefined && { choice_options: input.choiceOptions }),
       ...(input.status !== undefined && { is_active: toActive(input.status) }),
+      ...(input.subDimensionId !== undefined && { sub_dimension_id: Number(input.subDimensionId) }),
     }),
   deleteQuestion: (id: string, force = false) =>
     api.del(`/api/admin/questions/${id}${force ? "?force=true" : ""}`),

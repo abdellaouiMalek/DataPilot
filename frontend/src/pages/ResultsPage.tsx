@@ -398,8 +398,8 @@ export function ResultsPage() {
                 <Sparkles className="w-5 h-5 text-[#1C1C1E]" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-white tracking-tight truncate">Analyse EY — Intelligence Artificielle</p>
-                <p className="text-[11px] text-gray-400 mt-0.5 truncate">Synthèse personnalisée · Référentiel BCT · Secteur bancaire tunisien</p>
+                <p className="text-sm font-bold text-white tracking-tight truncate">Synthèse intelligente des résultats</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 truncate">Synthèse de l’évaluation</p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
@@ -473,7 +473,7 @@ export function ResultsPage() {
             {narrativeStatus === 'done' && (
               <div className="px-6 sm:px-8 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                 <p className="text-[10px] text-gray-400">
-                  Générée par EY AI Engine · Cette analyse ne se substitue pas à un audit conduit par les équipes EY Advisory.
+                  Générée par EY AI Engine · Cette analyse ne se substitue pas à un audit conduit par les équipes EY.
                 </p>
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 shrink-0">
                   <Check className="w-3 h-3" /> Analyse finalisée

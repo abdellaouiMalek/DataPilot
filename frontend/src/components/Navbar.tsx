@@ -20,11 +20,11 @@ export function Navbar() {
 
   return (
     <header className="h-16 border-b border-gray-200 px-6 md:px-8 flex items-center justify-between shrink-0 bg-white sticky top-0 z-50">
-      <div className="flex items-center gap-4">
+      <Link to="/" className="flex items-center gap-4 outline-none" aria-label="Retour à l'accueil">
         <img
           src={eyLogo}
           alt="EY Logo"
-          className="h-7 w-auto object-contain select-none pointer-events-none"
+          className="h-7 w-auto object-contain select-none"
         />
         <div className="flex flex-col border-l border-gray-300 pl-4">
           <span className="text-xs font-bold tracking-[0.2em] text-gray-900 leading-none">
@@ -34,7 +34,7 @@ export function Navbar() {
             ASSESSMENT PLATFORM
           </span>
         </div>
-      </div>
+      </Link>
 
       {user ? (
         <div className="flex items-center gap-4">

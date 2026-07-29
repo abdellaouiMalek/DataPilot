@@ -499,7 +499,7 @@ export function EvolutionPage() {
                 <Sparkles className="w-4 h-4 text-[#FFE600]" />
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900">Analyse EY — Intelligence Artificielle</p>
+                <p className="text-sm font-bold text-gray-900">Synthèse intelligente des résultats</p>
                 <p className="text-xs text-gray-400">Analyse comparative de l'évolution, générée par le moteur EY AI</p>
               </div>
             </div>

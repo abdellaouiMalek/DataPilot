@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Edit2, ChevronDown, ChevronRight, GripVertical, X,
-  Eye, Trash2, Loader2,
+  Eye, Trash2, Loader2, Search, Copy, ListTree, Table2, Check, ArrowLeft, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "../../lib/api";
 import {
   adminApi,
   type Dimension, type SubDimension, type Question, type Status, type DeleteImpact,
+  type LevelResponse, type ChoiceOption,
 } from "../../lib/admin";
 
 function errMsg(e: unknown): string {
@@ -245,7 +246,90 @@ function SubDimensionModal({ dim, initial, onClose, onSaved }: {
 
 // ── Question modal (create / edit) ──────────────────────────────────────────
 
-const MATURITY_LEVELS = ["Initial (1)", "En développement (2)", "Défini (3)", "Maîtrisé (4)", "Optimisé (5)"];
+const LEVEL_NAMES = ["Initial", "En développement", "Défini", "Maîtrisé", "Optimisé"];
+const DEFAULT_LEVEL_RESPONSES: LevelResponse[] = [
+  { label: "Aucune pratique formalisée, approche ad-hoc.", score: 1 },
+  { label: "Des initiatives émergent mais restent isolées.", score: 2 },
+  { label: "Des politiques et standards sont documentés.", score: 3 },
+  { label: "Les pratiques sont mesurées et contrôlées.", score: 4 },
+  { label: "Amélioration continue, culture data ancrée.", score: 5 },
+];
+const DEFAULT_CHOICE_OPTIONS: ChoiceOption[] = [{ label: "", score: 1 }, { label: "", score: 2 }];
+
+// ── Maturity responses editor (per-level label + score) ──────────────────────
+
+function MaturityEditor({ responses, onChange }: {
+  responses: LevelResponse[]; onChange: (r: LevelResponse[]) => void;
+}) {
+  return (
+    <div>
+      <label style={lbl}>Réponses par niveau</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {LEVEL_NAMES.map((name, i) => (
+          <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", backgroundColor: "#F7F7F7", borderRadius: 6, border: "1px solid rgba(0,0,0,0.06)" }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: "#1A1A1A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#FFE600" }}>{i + 1}</span>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#4A4A4A", width: 105, flexShrink: 0 }}>{name}</span>
+            <input
+              value={responses[i]?.label ?? ""}
+              onChange={e => onChange(responses.map((r, ri) => ri === i ? { ...r, label: e.target.value } : r))}
+              placeholder="Libellé de la réponse…"
+              style={{ ...inp, flex: 1, fontSize: 12, padding: "6px 10px" }}
+            />
+            <input
+              type="number" min={0} max={20} value={responses[i]?.score ?? i + 1}
+              onChange={e => onChange(responses.map((r, ri) => ri === i ? { ...r, score: +e.target.value } : r))}
+              style={{ width: 56, padding: "5px 8px", borderRadius: 5, border: "1px solid rgba(0,0,0,0.13)", fontSize: 12, textAlign: "center", outline: "none" }}
+            />
+            <span style={{ fontSize: 11, color: "#9B9B9B", flexShrink: 0 }}>pts</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Choice options editor (Choix unique / Choix multiple) ────────────────────
+
+function ChoiceEditor({ options, onChange }: {
+  options: ChoiceOption[]; onChange: (o: ChoiceOption[]) => void;
+}) {
+  return (
+    <div>
+      <label style={lbl}>Options de réponse</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {options.map((opt, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", backgroundColor: "#F7F7F7", borderRadius: 6, border: "1px solid rgba(0,0,0,0.06)" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B", width: 18, flexShrink: 0 }}>{String.fromCharCode(65 + i)}</span>
+            <input
+              value={opt.label}
+              onChange={e => onChange(options.map((o, oi) => oi === i ? { ...o, label: e.target.value } : o))}
+              placeholder={`Option ${String.fromCharCode(65 + i)}…`}
+              style={{ ...inp, flex: 1, fontSize: 12, padding: "6px 10px" }}
+            />
+            <input
+              type="number" min={0} max={20} value={opt.score}
+              onChange={e => onChange(options.map((o, oi) => oi === i ? { ...o, score: +e.target.value } : o))}
+              style={{ width: 56, padding: "5px 8px", borderRadius: 5, border: "1px solid rgba(0,0,0,0.13)", fontSize: 12, textAlign: "center", outline: "none" }}
+            />
+            <span style={{ fontSize: 11, color: "#9B9B9B", flexShrink: 0 }}>pts</span>
+            {options.length > 2 && (
+              <button type="button" onClick={() => onChange(options.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#CC0000", padding: 2, flexShrink: 0 }}><X size={12} /></button>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...options, { label: "", score: options.length + 1 }])}
+        style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 7, fontSize: 11, fontWeight: 600, color: "#6B6B6B", background: "none", border: "1px dashed rgba(0,0,0,0.18)", borderRadius: 5, padding: "5px 10px", cursor: "pointer" }}
+      >
+        <Plus size={11} /> Ajouter une option
+      </button>
+    </div>
+  );
+}
 
 function TabSwitch({ tab, onChange }: { tab: "edit" | "preview"; onChange: (t: "edit" | "preview") => void }) {
   return (
@@ -261,10 +345,31 @@ function TabSwitch({ tab, onChange }: { tab: "edit" | "preview"; onChange: (t: "
   );
 }
 
-function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
-  dim: Dimension; sub: SubDimension; initial?: Question; onClose: () => void; onSaved: () => Promise<void>;
+function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onClose, onSaved }: {
+  dimensions: Dimension[];
+  dim?: Dimension; sub?: SubDimension;
+  initial?: Question;
+  initialTab?: "edit" | "preview";
+  onClose: () => void; onSaved: () => Promise<void>;
 }) {
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [tab, setTab] = useState<"edit" | "preview">(initialTab);
+
+  // Dimension/sub-dimension are editable here too (unlike before) so the modal
+  // works both scoped (opened from a sub-dimension's "+ Ajouter" button) and
+  // unscoped (opened from the flat "Toutes les questions" table, or to move a
+  // question to a different sub-dimension entirely).
+  const [dimensionId, setDimensionId] = useState(initial?.dimensionId ?? dim?.id ?? dimensions[0]?.id ?? "");
+  const selectedDim = dimensions.find(d => d.id === dimensionId) ?? dimensions[0];
+  const [subDimensionId, setSubDimensionId] = useState(
+    initial?.subDimensionId ?? sub?.id ?? selectedDim?.subDimensions[0]?.id ?? ""
+  );
+  const selectedSub = selectedDim?.subDimensions.find(s => s.id === subDimensionId);
+
+  function changeDimension(id: string) {
+    setDimensionId(id);
+    setSubDimensionId(dimensions.find(d => d.id === id)?.subDimensions[0]?.id ?? "");
+  }
+
   const [label, setLabel] = useState(initial?.label ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState(initial?.type ?? "Échelle de maturité");
@@ -272,21 +377,28 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
   const [order, setOrder] = useState(initial?.order ?? 1);
   const [required, setRequired] = useState(initial?.isRequired ?? true);
   const [status, setStatus] = useState<Status>(initial?.status ?? "Active");
-  const [levelScores, setLevelScores] = useState<number[]>(
-    initial?.levelScores?.length === 5 ? initial.levelScores : [1, 2, 3, 4, 5]
+  const [levelResponses, setLevelResponses] = useState<LevelResponse[]>(
+    initial?.levelResponses?.length === 5 ? initial.levelResponses : DEFAULT_LEVEL_RESPONSES
+  );
+  const [choiceOptions, setChoiceOptions] = useState<ChoiceOption[]>(
+    initial?.choiceOptions?.length ? initial.choiceOptions : DEFAULT_CHOICE_OPTIONS
   );
   const [saving, setSaving] = useState(false);
 
+  const canSave = label.trim() && subDimensionId;
+  const isChoiceType = type === "Choix unique" || type === "Choix multiple";
+
   async function save() {
-    if (!label.trim()) return;
+    if (!canSave) return;
     setSaving(true);
     try {
       const input = {
         label, description, type, weight, order, isRequired: required, status,
-        levelScores: type === "Échelle de maturité" ? levelScores : null,
+        levelResponses: type === "Échelle de maturité" ? levelResponses : null,
+        choiceOptions: isChoiceType ? choiceOptions : null,
       };
-      if (initial) await adminApi.updateQuestion(initial.id, input);
-      else await adminApi.createQuestion(sub.id, input);
+      if (initial) await adminApi.updateQuestion(initial.id, { ...input, subDimensionId });
+      else await adminApi.createQuestion(subDimensionId, input);
       toast.success(initial ? "Question mise à jour" : "Question créée");
       await onSaved();
       onClose();
@@ -296,19 +408,30 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
   return (
     <ModalShell
       title={initial ? "Modifier la question" : "Nouvelle question"}
-      subtitle={`${dim.name} › ${sub.name}`}
+      subtitle={selectedDim && selectedSub ? `${selectedDim.name} › ${selectedSub.name}` : "Sélectionnez une sous-dimension"}
       width={620}
       headerExtra={<TabSwitch tab={tab} onChange={setTab} />}
       onClose={onClose}
       footer={<>
         <button style={btnGhost} onClick={onClose}>Annuler</button>
-        <button style={{ ...btnPrimary, opacity: !label.trim() || saving ? 0.5 : 1 }} disabled={!label.trim() || saving} onClick={save}>
+        <button style={{ ...btnPrimary, opacity: !canSave || saving ? 0.5 : 1 }} disabled={!canSave || saving} onClick={save}>
           {saving && <Loader2 size={14} className="animate-spin" />}{initial ? "Enregistrer" : "Créer"}
         </button>
       </>}
     >
       {tab === "edit" ? (
         <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div><label style={lbl}>Dimension *</label>
+              <select style={inp} value={dimensionId} onChange={e => changeDimension(e.target.value)}>
+                {dimensions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select></div>
+            <div><label style={lbl}>Sous-dimension *</label>
+              <select style={inp} value={subDimensionId} onChange={e => setSubDimensionId(e.target.value)} disabled={!selectedDim?.subDimensions.length}>
+                {!selectedDim?.subDimensions.length && <option value="">Aucune sous-dimension</option>}
+                {(selectedDim?.subDimensions ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select></div>
+          </div>
           <div><label style={lbl}>Intitulé de la question *</label>
             <textarea style={{ ...inp, resize: "vertical" }} rows={3} value={label} onChange={e => setLabel(e.target.value)} placeholder="Saisissez la question…" autoFocus /></div>
           <div><label style={lbl}>Description / Aide à la réponse</label>
@@ -324,20 +447,10 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
               <input type="number" min={1} style={inp} value={order} onChange={e => setOrder(+e.target.value)} /></div>
           </div>
           {type === "Échelle de maturité" && (
-            <div>
-              <label style={lbl}>Score par niveau</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {MATURITY_LEVELS.map((level, i) => (
-                  <div key={level} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", backgroundColor: "#F7F7F7", borderRadius: 6 }}>
-                    <span style={{ fontSize: 12, color: "#1A1A1A", flex: 1 }}>{level}</span>
-                    <input type="number" min={0} max={20} value={levelScores[i]}
-                      onChange={e => setLevelScores(p => p.map((v, vi) => vi === i ? +e.target.value : v))}
-                      style={{ width: 60, padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(0,0,0,0.15)", fontSize: 12, textAlign: "center", outline: "none" }} />
-                    <span style={{ fontSize: 11, color: "#9B9B9B" }}>pts</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <MaturityEditor responses={levelResponses} onChange={setLevelResponses} />
+          )}
+          {isChoiceType && (
+            <ChoiceEditor options={choiceOptions} onChange={setChoiceOptions} />
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -355,7 +468,7 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
       ) : (
         <div style={{ backgroundColor: "#F7F7F7", borderRadius: 8, padding: 22 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
-            {dim.name} · {sub.name}
+            {selectedDim?.name} · {selectedSub?.name}
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", marginBottom: 12, lineHeight: 1.5 }}>
             {label || "Intitulé de la question…"}
@@ -367,13 +480,13 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
           )}
           {type === "Échelle de maturité" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {MATURITY_LEVELS.map((level, i) => (
-                <div key={level} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+              {LEVEL_NAMES.map((name, i) => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
                   <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <span style={{ fontSize: 10, fontWeight: 800 }}>{i + 1}</span>
                   </div>
-                  <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{level}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{levelScores[i]} pts</span>
+                  <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{levelResponses[i]?.label || name}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{levelResponses[i]?.score ?? i + 1} pts</span>
                 </div>
               ))}
             </div>
@@ -385,12 +498,326 @@ function QuestionModal({ dim, sub, initial, onClose, onSaved }: {
               ))}
             </div>
           )}
-          {type !== "Échelle de maturité" && type !== "Oui/Non" && (
-            <div style={{ fontSize: 12, color: "#9B9B9B", fontStyle: "italic" }}>Aperçu non disponible pour ce type de réponse.</div>
+          {isChoiceType && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {choiceOptions.map((opt, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+                  <div style={{ width: 18, height: 18, flexShrink: 0, borderRadius: type === "Choix unique" ? "50%" : 4, border: "2px solid rgba(0,0,0,0.2)" }} />
+                  <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{opt.label || `Option ${String.fromCharCode(65 + i)}`}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{opt.score} pts</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {type === "Texte libre" && (
+            <div style={{ padding: "12px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px dashed rgba(0,0,0,0.15)", fontSize: 12, color: "#B0B0B0", fontStyle: "italic" }}>
+              Zone de texte libre pour la réponse…
+            </div>
           )}
         </div>
       )}
     </ModalShell>
+  );
+}
+
+// ── Step bar (guided wizards) ─────────────────────────────────────────────────
+
+function StepBar({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
+      {steps.map((s, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <div key={s} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%",
+                backgroundColor: done || active ? "#1A1A1A" : "#F0F0F0",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                outline: active ? "3px solid #FFE600" : "none", outlineOffset: 1,
+              }}>
+                {done
+                  ? <Check size={12} style={{ color: "#FFE600" }} />
+                  : <span style={{ fontSize: 11, fontWeight: 700, color: active ? "#FFE600" : "#9B9B9B" }}>{i + 1}</span>}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? "#1A1A1A" : "#9B9B9B", whiteSpace: "nowrap" }}>{s}</span>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{ flex: 1, height: 1, backgroundColor: done ? "#1A1A1A" : "#E0E0E0", margin: "0 10px", marginBottom: 14 }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Wizard question step (add one or more questions to a known sub-dimension) ─
+// Shared final step of both "New dimension" and "New sub-dimension" wizards.
+// Each "+ Autre question" / "Terminer" click saves for real via adminApi — the
+// wizard never batches unsaved state, so closing partway through still keeps
+// whatever was already created.
+
+function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
+  subDimensionId: string; breadcrumb: string; onBack: () => void; onFinish: () => void;
+}) {
+  const blank = () => ({ label: "", description: "", type: "Échelle de maturité", weight: 5, required: true, status: "Active" as Status });
+  const [form, setForm] = useState(blank());
+  const [levelResponses, setLevelResponses] = useState<LevelResponse[]>(DEFAULT_LEVEL_RESPONSES);
+  const [choiceOptions, setChoiceOptions] = useState<ChoiceOption[]>(DEFAULT_CHOICE_OPTIONS);
+  const [saving, setSaving] = useState(false);
+  const [addedCount, setAddedCount] = useState(0);
+  const isChoiceType = form.type === "Choix unique" || form.type === "Choix multiple";
+
+  async function save(andContinue: boolean) {
+    if (!form.label.trim()) { if (!andContinue) onFinish(); return; }
+    setSaving(true);
+    try {
+      await adminApi.createQuestion(subDimensionId, {
+        label: form.label, description: form.description, type: form.type, weight: form.weight,
+        isRequired: form.required, status: form.status,
+        levelResponses: form.type === "Échelle de maturité" ? levelResponses : null,
+        choiceOptions: isChoiceType ? choiceOptions : null,
+      });
+      setAddedCount(c => c + 1);
+      if (andContinue) {
+        setForm(blank());
+        setLevelResponses(DEFAULT_LEVEL_RESPONSES);
+        setChoiceOptions(DEFAULT_CHOICE_OPTIONS);
+        toast.success("Question ajoutée");
+      } else {
+        onFinish();
+      }
+    } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 11, color: "#9B9B9B" }}>
+        {breadcrumb}
+        {addedCount > 0 && <span style={{ color: "#2E7D32", fontWeight: 600 }}> · {addedCount} question{addedCount > 1 ? "s" : ""} ajoutée{addedCount > 1 ? "s" : ""}</span>}
+      </div>
+
+      <div><label style={lbl}>Libellé de la question *</label>
+        <textarea style={{ ...inp, resize: "vertical" }} rows={3} value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="Entrez le libellé de la question…" autoFocus /></div>
+
+      <div><label style={lbl}>Aide à la réponse</label>
+        <textarea style={{ ...inp, resize: "vertical" }} rows={2} value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Informations complémentaires pour guider la réponse…" /></div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div><label style={lbl}>Type de réponse</label>
+          <select style={inp} value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+            {RESPONSE_TYPES.map(t => <option key={t}>{t}</option>)}
+          </select></div>
+        <div><label style={lbl}>Poids (1–10)</label>
+          <input type="number" min={1} max={10} style={inp} value={form.weight} onChange={e => setForm(p => ({ ...p, weight: +e.target.value }))} /></div>
+      </div>
+
+      {form.type === "Échelle de maturité" && <MaturityEditor responses={levelResponses} onChange={setLevelResponses} />}
+      {isChoiceType && <ChoiceEditor options={choiceOptions} onChange={setChoiceOptions} />}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 500, color: "#4A4A4A" }}>Obligatoire</label>
+          <button type="button" onClick={() => setForm(p => ({ ...p, required: !p.required }))} style={{ width: 34, height: 18, borderRadius: 9, border: "none", cursor: "pointer", backgroundColor: form.required ? "#1A1A1A" : "#D0D0D0", position: "relative", flexShrink: 0 }}>
+            <span style={{ position: "absolute", top: 2, left: form.required ? 16 : 2, width: 14, height: 14, borderRadius: "50%", backgroundColor: "white", transition: "left 0.2s" }} />
+          </button>
+        </div>
+        <StatusPicker value={form.status} onChange={s => setForm(p => ({ ...p, status: s }))} />
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid rgba(0,0,0,0.06)", marginTop: 4 }}>
+        <button onClick={onBack} style={{ ...btnGhost, display: "flex", alignItems: "center", gap: 6 }}><ArrowLeft size={13} /> Retour</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => save(true)} disabled={saving || !form.label.trim()} style={{ padding: "8px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "1px dashed rgba(0,0,0,0.2)", backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A", opacity: saving || !form.label.trim() ? 0.5 : 1 }}>
+            + Autre question
+          </button>
+          <button onClick={() => save(false)} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.7 : 1 }}>
+            {saving && <Loader2 size={14} className="animate-spin" />}Terminer <Check size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── New dimension wizard (Dimension → Sous-dimensions → Questions) ───────────
+
+function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+  const [step, setStep] = useState(0);
+  const [dimForm, setDimForm] = useState({ name: "", description: "", weight: 10, color: "#1A1A1A" });
+  const [subNames, setSubNames] = useState([""]);
+  const [creating, setCreating] = useState(false);
+  const [createdDimId, setCreatedDimId] = useState<string | null>(null);
+  const [createdSubId, setCreatedSubId] = useState<string | null>(null);
+  const [firstSubName, setFirstSubName] = useState("");
+
+  async function createDimensionAndAdvance() {
+    if (!dimForm.name.trim()) return;
+    setCreating(true);
+    try {
+      const res = await adminApi.createDimension(dimForm);
+      setCreatedDimId(String(res.id));
+      setStep(1);
+    } catch (e) { toast.error(errMsg(e)); } finally { setCreating(false); }
+  }
+
+  async function createSubDimensionsAndAdvance() {
+    const names = subNames.map(n => n.trim()).filter(Boolean);
+    if (!names.length || !createdDimId) return;
+    setCreating(true);
+    try {
+      let firstId: string | null = null;
+      for (const name of names) {
+        const res = await adminApi.createSubDimension(createdDimId, { name });
+        if (firstId === null) { firstId = String(res.id); setFirstSubName(name); }
+      }
+      setCreatedSubId(firstId);
+      setStep(2);
+    } catch (e) { toast.error(errMsg(e)); } finally { setCreating(false); }
+  }
+
+  async function finish() {
+    toast.success("Dimension créée");
+    await onSaved();
+    onClose();
+  }
+
+  const step1Disabled = creating || !subNames.some(n => n.trim());
+  const step0Disabled = creating || !dimForm.name.trim();
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ ...panel, width: 600 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>Nouvelle dimension</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
+          <StepBar steps={["Dimension", "Sous-dimensions", "Questions"]} current={step} />
+
+          {step === 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div><label style={lbl}>Nom *</label>
+                <input style={inp} value={dimForm.name} onChange={e => setDimForm(p => ({ ...p, name: e.target.value }))} placeholder="ex. Gouvernance des données" autoFocus /></div>
+              <div><label style={lbl}>Description</label>
+                <textarea style={{ ...inp, resize: "vertical" }} rows={2} value={dimForm.description} onChange={e => setDimForm(p => ({ ...p, description: e.target.value }))} placeholder="Description courte…" /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div><label style={lbl}>Poids (%)</label>
+                  <input type="number" min={0} max={100} style={inp} value={dimForm.weight} onChange={e => setDimForm(p => ({ ...p, weight: +e.target.value }))} /></div>
+                <div><label style={lbl}>Couleur</label>
+                  <input type="color" style={{ ...inp, height: 38, padding: 4, cursor: "pointer" }} value={dimForm.color} onChange={e => setDimForm(p => ({ ...p, color: e.target.value }))} /></div>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div>
+              <div style={{ fontSize: 12, color: "#9B9B9B", marginBottom: 14 }}>Sous-dimensions pour <strong style={{ color: "#1A1A1A" }}>{dimForm.name}</strong></div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {subNames.map((n, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B", width: 20, flexShrink: 0, textAlign: "center" }}>{i + 1}</span>
+                    <input style={inp} value={n} onChange={e => setSubNames(s => s.map((x, xi) => xi === i ? e.target.value : x))} placeholder={`Nom de la sous-dimension ${i + 1}`} />
+                    {subNames.length > 1 && (
+                      <button onClick={() => setSubNames(s => s.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#CC0000", flexShrink: 0 }}><X size={14} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setSubNames(s => [...s, ""])} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 10, fontSize: 12, fontWeight: 600, color: dimForm.color, background: "none", border: `1px dashed ${dimForm.color}`, borderRadius: 5, padding: "6px 12px", cursor: "pointer" }}>
+                <Plus size={12} /> Ajouter
+              </button>
+            </div>
+          )}
+
+          {step === 2 && createdSubId && (
+            <WizardQuestionStep
+              subDimensionId={createdSubId}
+              breadcrumb={`${dimForm.name} › ${firstSubName}`}
+              onBack={() => setStep(1)}
+              onFinish={finish}
+            />
+          )}
+        </div>
+
+        {step < 2 && (
+          <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "space-between", flexShrink: 0 }}>
+            {step > 0
+              ? <button onClick={() => setStep(s => s - 1)} style={{ ...btnGhost, display: "flex", alignItems: "center", gap: 6 }}><ArrowLeft size={13} /> Retour</button>
+              : <button onClick={onClose} style={btnGhost}>Annuler</button>}
+            <button
+              onClick={step === 0 ? createDimensionAndAdvance : createSubDimensionsAndAdvance}
+              disabled={step === 0 ? step0Disabled : step1Disabled}
+              style={{ ...btnPrimary, opacity: (step === 0 ? step0Disabled : step1Disabled) ? 0.5 : 1 }}
+            >
+              {creating && <Loader2 size={14} className="animate-spin" />}Suivant <ArrowRight size={13} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── New sub-dimension wizard (Sous-dimension → Questions) ────────────────────
+
+function NewSubDimensionWizard({ dim, onClose, onSaved }: { dim: Dimension; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createdSubId, setCreatedSubId] = useState<string | null>(null);
+
+  async function createAndAdvance() {
+    if (!name.trim()) return;
+    setCreating(true);
+    try {
+      const res = await adminApi.createSubDimension(dim.id, { name });
+      setCreatedSubId(String(res.id));
+      setStep(1);
+    } catch (e) { toast.error(errMsg(e)); } finally { setCreating(false); }
+  }
+
+  async function finish() {
+    toast.success("Sous-dimension créée");
+    await onSaved();
+    onClose();
+  }
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ ...panel, width: 600 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>Nouvelle sous-dimension</div>
+            <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 2 }}>{dim.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
+          <StepBar steps={["Sous-dimension", "Questions"]} current={step} />
+          {step === 0 && (
+            <div><label style={lbl}>Nom *</label>
+              <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="ex. Politiques & Standards" autoFocus /></div>
+          )}
+          {step === 1 && createdSubId && (
+            <WizardQuestionStep subDimensionId={createdSubId} breadcrumb={`${dim.name} › ${name}`} onBack={() => setStep(0)} onFinish={finish} />
+          )}
+        </div>
+
+        {step === 0 && (
+          <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "space-between", flexShrink: 0 }}>
+            <button onClick={onClose} style={btnGhost}>Annuler</button>
+            <button onClick={createAndAdvance} disabled={creating || !name.trim()} style={{ ...btnPrimary, opacity: creating || !name.trim() ? 0.5 : 1 }}>
+              {creating && <Loader2 size={14} className="animate-spin" />}Suivant <ArrowRight size={13} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -476,6 +903,190 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
 const iconBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 7, border: "1px solid rgba(0,0,0,0.09)", backgroundColor: "#F7F7F7", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4A4A4A" };
 const smallIconBtn: React.CSSProperties = { width: 28, height: 28, borderRadius: 5, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6B6B6B" };
 
+// ── Flat questions table (all questions across every dimension, filterable) ─
+
+interface FlatQuestion extends Question {
+  dimensionName: string;
+  dimensionColor: string;
+  subDimensionName: string;
+}
+
+function flattenQuestions(dimensions: Dimension[]): FlatQuestion[] {
+  const rows: FlatQuestion[] = [];
+  for (const d of dimensions) {
+    for (const s of d.subDimensions) {
+      for (const q of s.questions) {
+        rows.push({ ...q, dimensionName: d.name, dimensionColor: d.color, subDimensionName: s.name });
+      }
+    }
+  }
+  return rows;
+}
+
+function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
+  dimensions: Dimension[];
+  onEdit: (q: FlatQuestion) => void;
+  onPreview: (q: FlatQuestion) => void;
+  onAdd: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [dimFilter, setDimFilter] = useState("Toutes les dimensions");
+  const [typeFilter, setTypeFilter] = useState("Tous les types");
+  const [statusFilter, setStatusFilter] = useState("Tous les statuts");
+  const [duplicating, setDuplicating] = useState<string | null>(null);
+  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
+
+  const dimNames = ["Toutes les dimensions", ...dimensions.map(d => d.name)];
+  const typeNames = ["Tous les types", ...RESPONSE_TYPES];
+  const statusNames = ["Tous les statuts", "Active", "Inactive"];
+
+  const all = flattenQuestions(dimensions);
+  const filtered = all.filter(q => {
+    const needle = search.trim().toLowerCase();
+    const matchSearch = !needle || q.label.toLowerCase().includes(needle) || q.id.includes(needle);
+    const matchDim = dimFilter === "Toutes les dimensions" || q.dimensionName === dimFilter;
+    const matchType = typeFilter === "Tous les types" || q.type === typeFilter;
+    const matchStatus = statusFilter === "Tous les statuts" || q.status === statusFilter;
+    return matchSearch && matchDim && matchType && matchStatus;
+  });
+
+  async function duplicate(q: FlatQuestion) {
+    setDuplicating(q.id);
+    try {
+      await adminApi.createQuestion(q.subDimensionId, {
+        label: `${q.label} (copie)`,
+        description: q.description,
+        type: q.type,
+        weight: q.weight,
+        isRequired: q.isRequired,
+        levelResponses: q.levelResponses,
+        choiceOptions: q.choiceOptions,
+        status: q.status,
+      });
+      toast.success("Question dupliquée");
+      await onChanged();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setDuplicating(null);
+    }
+  }
+
+  async function remove(q: FlatQuestion) {
+    if (!window.confirm("Supprimer cette question ?")) return;
+    try {
+      await adminApi.deleteQuestion(q.id);
+      toast.success("Question supprimée");
+      await onChanged();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const impact = await adminApi.getQuestionDeleteImpact(q.id);
+        const short = q.label.length > 60 ? `${q.label.slice(0, 60)}…` : q.label;
+        setForceDelete({
+          label: `Question « ${short} »`,
+          impact,
+          onConfirm: async () => {
+            await adminApi.deleteQuestion(q.id, true);
+            toast.success("Question supprimée définitivement");
+            await onChanged();
+          },
+        });
+        return;
+      }
+      toast.error(errMsg(e));
+    }
+  }
+
+  return (
+    <>
+      {/* Filters */}
+      <div style={{ backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, padding: "12px 16px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+        <div style={{ flex: "1 1 220px", display: "flex", alignItems: "center", gap: 9, backgroundColor: "#F7F7F7", border: "1.5px solid rgba(0,0,0,0.08)", borderRadius: 6, padding: "8px 13px" }}>
+          <Search size={14} style={{ color: "#9B9B9B", flexShrink: 0 }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher par libellé, ID…" style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, width: "100%", color: "#1A1A1A" }} />
+        </div>
+        {[
+          { options: dimNames, value: dimFilter, setter: setDimFilter },
+          { options: typeNames, value: typeFilter, setter: setTypeFilter },
+          { options: statusNames, value: statusFilter, setter: setStatusFilter },
+        ].map(({ options, value, setter }, i) => (
+          <div key={i} style={{ position: "relative" }}>
+            <select value={value} onChange={e => setter(e.target.value)} style={{ padding: "8px 30px 8px 12px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "1.5px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: "pointer", appearance: "none", outline: "none", maxWidth: 210, color: value.startsWith("Tou") ? "#9B9B9B" : "#1A1A1A" }}>
+              {options.map(o => <option key={o}>{o}</option>)}
+            </select>
+            <ChevronDown size={12} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "#9B9B9B", pointerEvents: "none" }} />
+          </div>
+        ))}
+        <span style={{ fontSize: 12, color: "#9B9B9B" }}>{filtered.length} résultat{filtered.length !== 1 ? "s" : ""}</span>
+        <button onClick={onAdd} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, fontSize: 12, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer" }}>
+          <Plus size={13} /> Ajouter une question
+        </button>
+      </div>
+
+      {/* Table */}
+      <div style={{ backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
+          <thead>
+            <tr style={{ backgroundColor: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              {["ID", "Dimension", "Sous-dimension", "Libellé", "Type", "Poids", "Statut", "Actions"].map(h => (
+                <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#9B9B9B", letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((q, i) => (
+              <tr key={q.id}
+                style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none", opacity: q.status === "Inactive" ? 0.55 : 1, transition: "background 0.1s" }}
+                onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#FAFAFA"}
+                onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+              >
+                <td style={{ padding: "11px 14px" }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 11, backgroundColor: "#F5F5F5", padding: "2px 7px", borderRadius: 4, color: "#4A4A4A", whiteSpace: "nowrap" }}>Q-{q.id}</span>
+                </td>
+                <td style={{ padding: "11px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: q.dimensionColor, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: "#1A1A1A", whiteSpace: "nowrap" }}>{q.dimensionName}</span>
+                  </div>
+                </td>
+                <td style={{ padding: "11px 14px", fontSize: 12, color: "#6B6B6B", whiteSpace: "nowrap" }}>{q.subDimensionName}</td>
+                <td style={{ padding: "11px 14px", maxWidth: 280 }}>
+                  <div style={{ fontSize: 12, color: "#1A1A1A", lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{q.label}</div>
+                </td>
+                <td style={{ padding: "11px 14px" }}><TypeBadge type={q.type} /></td>
+                <td style={{ padding: "11px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: "#F0F0F0" }}>
+                      <div style={{ width: `${Math.min(100, q.weight * 10)}%`, height: "100%", backgroundColor: q.dimensionColor, borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A" }}>{q.weight}</span>
+                  </div>
+                </td>
+                <td style={{ padding: "11px 14px" }}><StatusBadge status={q.status} /></td>
+                <td style={{ padding: "11px 14px" }}>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button title="Modifier" onClick={() => onEdit(q)} style={smallIconBtn}><Edit2 size={12} /></button>
+                    <button title="Prévisualiser" onClick={() => onPreview(q)} style={smallIconBtn}><Eye size={12} /></button>
+                    <button title="Dupliquer" onClick={() => duplicate(q)} disabled={duplicating === q.id} style={{ ...smallIconBtn, cursor: duplicating === q.id ? "wait" : "pointer" }}>
+                      {duplicating === q.id ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+                    </button>
+                    <button title="Supprimer" onClick={() => remove(q)} style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} style={{ padding: "44px 20px", textAlign: "center", fontSize: 13, color: "#9B9B9B" }}>Aucune question ne correspond aux filtres.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
+    </>
+  );
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 export function DimensionsManagement() {
@@ -484,10 +1095,15 @@ export function DimensionsManagement() {
   const [error, setError] = useState(false);
   const [expandedDims, setExpandedDims] = useState<string[]>([]);
   const [expandedSubs, setExpandedSubs] = useState<string[]>([]);
+  const [view, setView] = useState<"tree" | "table">("tree");
 
   const [dimModal, setDimModal] = useState<{ initial?: Dimension } | null>(null);
   const [subModal, setSubModal] = useState<{ dim: Dimension; initial?: SubDimension } | null>(null);
-  const [qModal, setQModal] = useState<{ dim: Dimension; sub: SubDimension; initial?: Question } | null>(null);
+  const [qModal, setQModal] = useState<{
+    dim?: Dimension; sub?: SubDimension; initial?: Question; initialTab?: "edit" | "preview";
+  } | null>(null);
+  const [showNewDim, setShowNewDim] = useState(false);
+  const [newSubWizard, setNewSubWizard] = useState<{ dim: Dimension } | null>(null);
   const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
 
   const load = useCallback(async () => {
@@ -562,9 +1178,22 @@ export function DimensionsManagement() {
             {dimensions.length} dimensions · {totalS} sous-dimensions · {totalQ} questions
           </p>
         </div>
-        <button onClick={() => setDimModal({})} style={{ ...btnPrimary, padding: "9px 18px", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
-          <Plus size={15} /> Nouvelle dimension
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(0,0,0,0.12)" }}>
+            {([["tree", "Arborescence", ListTree], ["table", "Toutes les questions", Table2]] as const).map(([v, l, Icon]) => (
+              <button key={v} onClick={() => setView(v)} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                backgroundColor: view === v ? "#1A1A1A" : "#fff",
+                color: view === v ? "#FFE600" : "#6B6B6B",
+              }}>
+                <Icon size={13} /> {l}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowNewDim(true)} style={{ ...btnPrimary, padding: "9px 18px", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
+            <Plus size={15} /> Nouvelle dimension
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -580,7 +1209,17 @@ export function DimensionsManagement() {
         </div>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && view === "table" && (
+        <QuestionsTable
+          dimensions={dimensions}
+          onAdd={() => setQModal({})}
+          onEdit={q => setQModal({ initial: q })}
+          onPreview={q => setQModal({ initial: q, initialTab: "preview" })}
+          onChanged={load}
+        />
+      )}
+
+      {!loading && !error && view === "tree" && (
         <>
           {/* Weight distribution */}
           {dimensions.length > 0 && (
@@ -589,10 +1228,17 @@ export function DimensionsManagement() {
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A" }}>Pondérations par dimension</span>
                 <span style={{ fontSize: 11, color: "#9B9B9B" }}>{totalWeight}% répartis sur {dimensions.length} dimensions</span>
               </div>
-              <div style={{ display: "flex", height: 36, borderRadius: 8, overflow: "hidden", gap: 2, marginBottom: 14 }}>
+              <div style={{ display: "flex", height: 42, borderRadius: 6, overflow: "hidden", gap: 3, marginBottom: 14 }}>
                 {dimensions.map(d => (
-                  <div key={d.id} title={`${d.name} — ${d.weight}%`} onClick={() => toggleDim(d.id)} style={{ flex: d.weight || 0.01, backgroundColor: d.color, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                    {d.weight >= 12 && <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.92)" }}>{d.weight}%</span>}
+                  <div
+                    key={d.id}
+                    title={`${d.name} — ${d.weight}%`}
+                    onClick={() => toggleDim(d.id)}
+                    style={{ flex: d.weight || 0.01, backgroundColor: d.color, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "filter 0.15s" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.12)"}
+                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", userSelect: "none" }}>{d.weight}%</span>
                   </div>
                 ))}
               </div>
@@ -633,7 +1279,7 @@ export function DimensionsManagement() {
                       ))}
                       <div style={{ display: "flex", gap: 5 }}>
                         <button onClick={e => { e.stopPropagation(); setDimModal({ initial: dim }); }} title="Modifier" style={smallIconBtn}><Edit2 size={12} /></button>
-                        <button onClick={e => { e.stopPropagation(); setSubModal({ dim }); }} title="Ajouter une sous-dimension" style={smallIconBtn}><Plus size={12} /></button>
+                        <button onClick={e => { e.stopPropagation(); setNewSubWizard({ dim }); }} title="Ajouter une sous-dimension" style={smallIconBtn}><Plus size={12} /></button>
                         <button onClick={e => { e.stopPropagation(); deleteDim(dim); }} title="Supprimer" style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
                       </div>
                       {isOpenDim ? <ChevronDown size={16} style={{ color: "#9B9B9B" }} /> : <ChevronRight size={16} style={{ color: "#9B9B9B" }} />}
@@ -679,7 +1325,7 @@ export function DimensionsManagement() {
                         <div style={{ padding: "10px 18px 4px 56px", fontSize: 12, color: "#9B9B9B" }}>Aucune sous-dimension.</div>
                       )}
                       <div style={{ padding: "8px 18px 14px 56px" }}>
-                        <button onClick={() => setSubModal({ dim })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#4A4A4A" }}>
+                        <button onClick={() => setNewSubWizard({ dim })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#4A4A4A" }}>
                           <Plus size={12} /> Ajouter une sous-dimension
                         </button>
                       </div>
@@ -700,7 +1346,19 @@ export function DimensionsManagement() {
 
       {dimModal && <DimensionModal initial={dimModal.initial} onClose={() => setDimModal(null)} onSaved={load} />}
       {subModal && <SubDimensionModal dim={subModal.dim} initial={subModal.initial} onClose={() => setSubModal(null)} onSaved={load} />}
-      {qModal && <QuestionModal dim={qModal.dim} sub={qModal.sub} initial={qModal.initial} onClose={() => setQModal(null)} onSaved={load} />}
+      {showNewDim && <NewDimensionWizard onClose={() => setShowNewDim(false)} onSaved={load} />}
+      {newSubWizard && <NewSubDimensionWizard dim={newSubWizard.dim} onClose={() => setNewSubWizard(null)} onSaved={load} />}
+      {qModal && (
+        <QuestionModal
+          dimensions={dimensions}
+          dim={qModal.dim}
+          sub={qModal.sub}
+          initial={qModal.initial}
+          initialTab={qModal.initialTab}
+          onClose={() => setQModal(null)}
+          onSaved={load}
+        />
+      )}
       {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
     </div>
   );
