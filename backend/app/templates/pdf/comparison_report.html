@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="section">
+  <div class="section-title">Synthèse de l'évolution</div>
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Score initial — {{ period_init }}</div>
+      <div class="kpi-value">{{ score_init | score1 }}<span class="unit"> / 5</span></div>
+      <span class="badge" style="background:{{ level_init.color }}22; color:{{ level_init.color }};">{{ level_init.label }}</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Score actuel — {{ period_curr }}</div>
+      <div class="kpi-value">{{ score_curr | score1 }}<span class="unit"> / 5</span></div>
+      <span class="badge" style="background:{{ level_curr.color }}22; color:{{ level_curr.color }};">{{ level_curr.label }}</span>
+    </div>
+    <div class="kpi-card dark">
+      <div class="kpi-label">Progression</div>
+      <div class="kpi-value">{{ delta | signed1 }}<span class="unit"> pt</span></div>
+      <span class="small" style="color: {{ '#4ADE80' if delta > 0 else ('#F87171' if delta < 0 else 'rgba(255,255,255,0.5)') }};">
+        {{ 'En progression' if delta > 0 else ('En recul' if delta < 0 else 'Stable') }}
+      </span>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-title">Répartition par dimension</div>
+  <div class="kpi-row" style="margin-bottom: 4mm;">
+    <div class="kpi-card">
+      <div class="kpi-label">En progrès</div>
+      <div class="kpi-value" style="color:#2E7D32;">{{ improved_count }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Stables</div>
+      <div class="kpi-value" style="color:#6B6B6B;">{{ stable_count }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">En recul</div>
+      <div class="kpi-value" style="color:#CC0000;">{{ declined_count }}</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="legend-line" style="border-color:#C0C0C0;"></span>{{ period_init }}</span>
+    <span class="legend-item"><span class="legend-line" style="border-color:#1A1A1A; border-top-width: 2pt;"></span>{{ period_curr }}</span>
+  </div>
+
+  <div style="margin-top: 3mm;">
+    {% for d in dimensions %}
+    <div class="dim-row" style="display:block;">
+      <div style="display:flex; justify-content: space-between; margin-bottom: 1mm;">
+        <span class="dim-name" style="width:auto;">{{ d.name }}</span>
+        <span class="small">
+          <span class="muted">{{ d.initial | score1 }}</span>
+          &nbsp;→&nbsp;
+          <strong>{{ d.current | score1 }}</strong>
+          &nbsp;
+          <span style="color: {{ d.color }}; font-weight:700;">({{ d.delta | signed1 }})</span>
+        </span>
+      </div>
+      <div class="dim-bar-track" style="height: 2.4mm;">
+        <div style="position:absolute; height:100%; width:{{ d.initial | pct }}; background:#C0C0C0; border-radius: 1.5mm;"></div>
+      </div>
+      <div class="dim-bar-track" style="height: 2.4mm; margin-top: 0.8mm;">
+        <div class="dim-bar-fill" style="width: {{ d.current | pct }}; background: {{ d.color }};"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if narrative %}
+<section class="section">
+  <div class="section-subtitle">Analyse comparative générée par le moteur EY AI</div>
+  <div class="narrative-box">{{ narrative }}</div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-title">Détail par dimension</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th style="width: 20mm;">Initial</th>
+        <th style="width: 20mm;">Actuel</th>
+        <th style="width: 24mm;">Variation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in dimensions %}
+      <tr>
+        <td><strong>{{ d.name }}</strong></td>
+        <td>{{ d.initial | score1 }} / 5</td>
+        <td>{{ d.current | score1 }} / 5</td>
+        <td style="color: {{ d.color }}; font-weight: 700;">{{ d.delta | signed1 }} pt</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <div class="section-subtitle">Méthodologie</div>
+  <p class="small muted">
+    Cette analyse compare deux évaluations soumises par {{ bank }} à des dates différentes, sur la base du même
+    référentiel EY Data Maturity Assessment. Seules les dimensions communes aux deux évaluations sont comparées.
+    Une variation est considérée significative au-delà de ±0.05 point ; en-deçà, la dimension est classée stable.
+  </p>
+</section>
+
+{% endblock %}

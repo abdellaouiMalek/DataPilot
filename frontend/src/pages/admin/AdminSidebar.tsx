@@ -10,6 +10,7 @@ import {
   Settings,
   ChevronRight,
   Database,
+  ShieldCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -20,6 +21,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: "/admin",            label: "Tableau de bord Admin",    icon: LayoutDashboard },
+  { path: "/admin/veille",     label: "Veille réglementaire",     icon: ShieldCheck },
   { path: "/admin/dimensions", label: "Gestion du framework",     icon: Layers },
   { path: "/admin/scoring",    label: "Référentiel de scoring",   icon: BarChart3 },
   { path: "/admin/users",      label: "Gestion des utilisateurs", icon: Users },
@@ -44,12 +46,14 @@ export function AdminSidebar() {
       className="h-screen flex flex-col overflow-hidden"
     >
       {/* Logo */}
-      <div
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
-        className="flex items-center gap-3 px-6 py-5"
+      <button
+        onClick={() => navigate('/')}
+        style={{ background: "none", border: "none", borderBottom: "1px solid rgba(255,255,255,0.08)", cursor: "pointer", textAlign: "left" }}
+        className="flex items-center gap-3 px-6 py-5 w-full"
+        aria-label="Retour à l'accueil"
       >
         <div
-          style={{ width: 36, height: 36, backgroundColor: "var(--ey-yellow)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{ width: 36, height: 36, backgroundColor: "var(--ey-yellow)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
           <Database size={18} style={{ color: "var(--ey-black)" }} />
         </div>
@@ -61,7 +65,7 @@ export function AdminSidebar() {
             Back Office Admin
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Nav section label */}
       <div style={{ padding: "20px 24px 8px", color: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase" }}>

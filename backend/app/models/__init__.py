@@ -16,6 +16,7 @@ from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
 from app.models.question import Question
 from app.models.recommendation import Recommendation
+from app.models.regulatory import RegulatoryCircular, RegulatoryImpact
 from app.models.subdimension import SubDimension
 
 __all__ = [
@@ -31,4 +32,6 @@ __all__ = [
     "Answer",
     "DimensionScore",
     "AssessmentRecommendationPlan",
+    "RegulatoryCircular",
+    "RegulatoryImpact",
 ]

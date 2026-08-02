@@ -9,6 +9,8 @@ from app.routers import (
     config,
     profile,
     recommendations,
+    regulatory,
+    reports,
 )
 
 app = FastAPI(
@@ -23,6 +25,8 @@ app.include_router(config.router)
 app.include_router(admin.router)
 app.include_router(assessments.router)
 app.include_router(recommendations.router)
+app.include_router(reports.router)
+app.include_router(regulatory.router)
 app.include_router(admin_users.router)
 app.include_router(admin_banks.router)
 app.include_router(profile.router)

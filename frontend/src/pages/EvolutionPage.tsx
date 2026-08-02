@@ -5,13 +5,15 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { ArrowLeft, TrendingUp, TrendingDown, Minus, ChevronDown, ArrowRight, Sparkles, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, TrendingUp, TrendingDown, Minus, ChevronDown, ArrowRight, Sparkles, Check, Loader2, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
 import { getMaturityLevels } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
 import { getMyAssessments } from '../lib/assessment';
 import type { AssessmentResult } from '../lib/assessment';
 import { getComparisonNarrative } from '../lib/recommendations';
+import { downloadComparisonReport } from '../lib/reports';
 import { tint, formatMonthYear } from '../lib/utils';
 
 type NarrStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
@@ -215,12 +217,24 @@ export function EvolutionPage() {
             <span className="text-gray-300">/</span>
             <span className="text-gray-700 font-semibold">Évolution — {bank}</span>
           </nav>
-          <button
-            onClick={() => navigate('/historique')}
-            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Retour
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toast.promise(downloadComparisonReport(stateInit.id, stateCurr.id), {
+                loading: 'Génération du rapport PDF…',
+                success: 'Rapport PDF téléchargé',
+                error: 'Échec du téléchargement du rapport PDF',
+              })}
+              className="flex items-center gap-1.5 text-xs font-semibold border border-gray-200 text-gray-600 hover:border-gray-400 transition-colors px-3 py-2 rounded-lg"
+            >
+              <Download className="w-3.5 h-3.5" /> Exporter PDF
+            </button>
+            <button
+              onClick={() => navigate('/historique')}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Retour
+            </button>
+          </div>
         </div>
 
         {/* ── Title + period selectors ── */}

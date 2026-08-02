@@ -35,6 +35,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 from typing import Any
 
 from dotenv import load_dotenv
@@ -132,6 +133,7 @@ def _call_llm(
     system_prompt: str,
     user_prompt: str,
     json_schema: dict[str, Any] | None = None,
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
 ) -> str:
     """Calls the local Ollama server via its OpenAI-compatible API and
     returns the raw text response.
@@ -155,7 +157,7 @@ def _call_llm(
     try:
         response = client.chat.completions.create(
             model=LLM_MODEL,
-            max_tokens=_MAX_OUTPUT_TOKENS,
+            max_tokens=max_output_tokens,
             temperature=_TEMPERATURE,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -448,5 +450,180 @@ def explain_comparison(comparison_result: dict[str, Any]) -> str:
         if _contains_garbage_token(narrative):
             return fallback
         return narrative
+    except Exception:
+        return fallback
+
+
+# ── Regulatory circular extraction (Veille reglementaire) ───────────────────
+
+_SYSTEM_PROMPT_CIRCULAR = """\
+Tu es un assistant qui analyse des circulaires reglementaires bancaires
+(ex. Banque Centrale de Tunisie) pour en extraire les exigences concretes.
+Tu ne dois JAMAIS inventer d'exigence absente du texte fourni : chaque
+impact doit correspondre a une phrase ou obligation reellement presente
+dans le texte. Si le texte ne contient aucune exigence exploitable,
+renvoie une liste d'impacts vide plutot que d'en inventer.
+Pour chaque exigence, choisis target_type parmi exactement ces trois
+valeurs : "reglementaire" (contrainte de conformite), "nouvelle question"
+(suggere une nouvelle question d'evaluation), "recommandation"
+(bonne pratique non obligatoire).
+Si une date de publication est indiquee dans le texte, convertis-la au
+format ISO AAAA-MM-JJ ; sinon renvoie une chaine vide.
+Ton : professionnel, concis. Reponds uniquement en JSON strict conforme
+au schema demande, en francais."""
+
+_CIRCULAR_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "reference": {"type": "string"},
+        "theme": {"type": "string"},
+        "publication_date": {"type": "string"},
+        "impacts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "requirement_text": {"type": "string"},
+                    "target_type": {"type": "string"},
+                    "target_description": {"type": "string"},
+                },
+                "required": ["requirement_text"],
+            },
+        },
+    },
+    "required": ["reference", "theme", "impacts"],
+    "additionalProperties": False,
+}
+
+# Generous output cap: unlike the other calls here, this one returns a list
+# of several impact items, not one short sentence -- 250 tokens would
+# truncate the JSON mid-array on anything but a trivial circular.
+_CIRCULAR_MAX_OUTPUT_TOKENS = 1200
+# Local small-model inference is slow; keep the prompt itself bounded so a
+# multi-page circular doesn't balloon latency further. Most circulars make
+# their substantive points in the first couple of pages.
+_CIRCULAR_TEXT_CHARS = 6000
+
+_TARGET_TYPE_DISPLAY = {
+    "reglementaire": "réglementaire",
+    "nouvelle question": "nouvelle question",
+    "recommandation": "recommandation",
+}
+
+
+def _strip_accents(value: str) -> str:
+    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+
+
+def _fallback_circular_extraction(text: str, filename: str) -> dict[str, Any]:
+    """No-LLM fallback: splits the text on "Article N" markers so the admin
+    still gets one impact candidate per article to triage manually, instead
+    of an empty result. Reference/theme default to the filename since
+    there's no reliable way to identify them without the LLM."""
+    articles = re.findall(
+        r"(Art(?:icle)?\.?\s*\d+)\s*[:.\-]?\s*(.{20,400}?)"
+        r"(?=Art(?:icle)?\.?\s*\d+|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    impacts = [
+        {
+            "requirement_text": re.sub(r"\s+", " ", f"{art} : {body}").strip()[:500],
+            "target_type": "réglementaire",
+            "target_description": "À qualifier manuellement",
+        }
+        for art, body in articles[:10]
+    ]
+    reference = re.sub(r"\.[a-zA-Z0-9]+$", "", filename).strip()[:200] or "Circulaire"
+    return {
+        "reference": reference,
+        "theme": "À qualifier",
+        "publication_date": None,
+        "impacts": impacts,
+    }
+
+
+def _build_circular_user_prompt(text: str) -> str:
+    truncated = text[:_CIRCULAR_TEXT_CHARS]
+    return f"""Texte de la circulaire :
+---
+{truncated}
+---
+
+Extrait de ce texte : une reference courte du document (ex. "BCT n°2024-03"
+si presente, sinon un intitule court), un theme en quelques mots, sa date de
+publication (publication_date, format AAAA-MM-JJ, chaine vide si absente),
+et la liste des exigences concretes qu'il impose (maximum 8). Pour chaque
+exigence : le texte de l'obligation (requirement_text, fidele au texte
+source), son type (target_type), et une courte description de l'element du
+referentiel qu'elle concerne ou justifie (target_description, ex. "Chiffrement
+des donnees sensibles").
+
+Reponds en JSON avec exactement ces cles : reference, theme, publication_date,
+impacts (liste d'objets avec requirement_text, target_type, target_description)."""
+
+
+def _parse_iso_date(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text
+    return None
+
+
+def extract_circular(text: str, filename: str) -> dict[str, Any]:
+    """Extracts a short reference/theme/date and a list of candidate
+    requirement impacts from a regulatory circular's raw text, for an admin
+    to review (accept/modify/reject) before any of it is applied to the
+    framework -- this function never writes to the framework itself, it
+    only proposes. ``publication_date`` is an ISO "YYYY-MM-DD" string or
+    ``None`` if the model couldn't find one.
+
+    Falls back to a naive "Article N" split (no reference/theme/date,
+    generic target descriptions) if the LLM call fails, returns invalid
+    JSON, or ``LLM_API_KEY`` is unset -- the caller always gets something
+    to review, never an empty result silently.
+    """
+    fallback = _fallback_circular_extraction(text, filename)
+
+    if not LLM_API_KEY or not text.strip():
+        return fallback
+
+    user_prompt = _build_circular_user_prompt(text)
+    try:
+        raw = _call_llm(
+            _SYSTEM_PROMPT_CIRCULAR,
+            user_prompt,
+            _CIRCULAR_JSON_SCHEMA,
+            max_output_tokens=_CIRCULAR_MAX_OUTPUT_TOKENS,
+        )
+        parsed = json.loads(raw)
+        impacts = []
+        for item in parsed.get("impacts", []):
+            requirement_text = str(item.get("requirement_text") or "").strip()
+            if not requirement_text:
+                continue
+            raw_type = _strip_accents(str(item.get("target_type") or "")).strip().lower()
+            target_type = _TARGET_TYPE_DISPLAY.get(raw_type, "réglementaire")
+            impacts.append({
+                "requirement_text": requirement_text,
+                "target_type": target_type,
+                "target_description": str(
+                    item.get("target_description") or "À qualifier manuellement"
+                ).strip(),
+            })
+
+        reference = str(parsed.get("reference") or "").strip() or fallback["reference"]
+        theme = str(parsed.get("theme") or "").strip() or fallback["theme"]
+        publication_date = _parse_iso_date(parsed.get("publication_date"))
+
+        if _contains_garbage_token(reference, theme) or not impacts:
+            return fallback
+
+        return {
+            "reference": reference,
+            "theme": theme,
+            "publication_date": publication_date,
+            "impacts": impacts,
+        }
     except Exception:
         return fallback

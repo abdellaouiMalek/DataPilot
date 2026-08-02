@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="section">
+  <div class="section-title">Synthèse exécutive</div>
+  <div class="kpi-row">
+    <div class="kpi-card dark">
+      <div class="kpi-label">Score global de maturité</div>
+      <div class="kpi-value">{{ score_global | score1 }}<span class="unit"> / 5</span></div>
+      <span class="badge" style="background:{{ maturity_color }}22; color:{{ maturity_color }};">{{ maturity_label }}</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Dimensions à consolider</div>
+      <div class="kpi-value">{{ weaknesses | length }}<span class="unit"> / {{ dimensions | length }}</span></div>
+      <span class="small muted">Score &lt; 3.0 / 5</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Dimensions maîtrisées</div>
+      <div class="kpi-value">{{ strengths | length }}<span class="unit"> / {{ dimensions | length }}</span></div>
+      <span class="small muted">Score &ge; 3.5 / 5</span>
+    </div>
+  </div>
+</section>
+
+{% if narrative %}
+<section class="section">
+  <div class="section-subtitle">Analyse générée par le moteur EY AI</div>
+  <div class="narrative-box">{{ narrative }}</div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-title">Résultats par dimension</div>
+  <div>
+    {% for d in dimensions %}
+    <div class="dim-row">
+      <div class="dim-name">{{ d.name }}</div>
+      <div class="dim-bar-track">
+        <div class="dim-bar-fill" style="width: {{ d.score | pct }}; background: {{ d.color }};"></div>
+      </div>
+      <div class="dim-score">{{ d.score | score1 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-title">Détail des scores</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th style="width: 22mm;">Poids</th>
+        <th style="width: 22mm;">Score</th>
+        <th style="width: 32mm;">Niveau</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in dimensions %}
+      <tr>
+        <td><strong>{{ d.name }}</strong></td>
+        <td>{{ d.weight }}%</td>
+        <td>{{ d.score | score1 }} / 5</td>
+        <td>
+          <span class="badge" style="background:{{ d.level_color }}22; color:{{ d.level_color }};">{{ d.level_label }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if recommendations %}
+<section class="section">
+  <div class="section-title">Recommandations prioritaires</div>
+  <p class="small muted" style="margin-bottom: 3.5mm;">
+    Actions à plus fort impact pour progresser d'un niveau de maturité sur chaque dimension, classées par pertinence.
+  </p>
+  {% for r in recommendations %}
+  <div class="rec-card">
+    <div class="rec-head">
+      <div><span class="rec-rank">{{ r.rank }}</span><span class="rec-title">{{ r.title }}</span></div>
+    </div>
+    <div class="rec-text">{{ r.text }}</div>
+    <div class="rec-tags">
+      <span class="tag">{{ r.dimension_name }}</span>
+      <span class="tag">{{ r.category }}</span>
+      <span class="tag">Effort {{ r.effort }}/3</span>
+      {% if r.regulatory_flag %}<span class="tag regulatory">Réglementaire</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-subtitle">Méthodologie</div>
+  <p class="small muted">
+    Le score de maturité (0 à 5) résulte de l'agrégation pondérée des réponses au questionnaire EY Data Maturity
+    Assessment, réparties sur {{ dimensions | length }} dimensions. Chaque dimension est notée sur la base des
+    réponses aux questions qui la composent, pondérées par leur importance relative. Le niveau de maturité global
+    associe ce score à l'échelle de référence EY (Initial, En développement, Défini, Maîtrisé, Optimisé).
+  </p>
+</section>
+
+{% endblock %}

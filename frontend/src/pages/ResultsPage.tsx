@@ -12,6 +12,7 @@ import { getMaturityLevels } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
 import type { AssessmentResult } from '../lib/assessment';
 import { getNarrative } from '../lib/recommendations';
+import { downloadEvaluationReport } from '../lib/reports';
 import { tint } from '../lib/utils';
 
 export function ResultsPage() {
@@ -184,7 +185,11 @@ export function ResultsPage() {
               Partager
             </button>
             <button
-              onClick={() => toast.success('Génération du rapport PDF...')}
+              onClick={() => toast.promise(downloadEvaluationReport(result.id), {
+                loading: 'Génération du rapport PDF…',
+                success: 'Rapport PDF téléchargé',
+                error: 'Échec du téléchargement du rapport PDF',
+              })}
               className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-gray-900 text-white hover:bg-black transition-colors rounded-lg"
             >
               <Download className="w-3.5 h-3.5" />

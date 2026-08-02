@@ -154,6 +154,61 @@ uvicorn app.main:app --reload
 > The only thing `init_db` adds is auto-creating the database itself, so with the
 > manual route the `datapilot` database must already exist (see Prerequisites).
 
+### AI features (local LLM via Ollama)
+
+Results narratives, recommendation reformulation, and the "Veille réglementaire"
+circular extraction all call a local **Ollama** server through its
+OpenAI-compatible API — no data ever reaches a public LLM API, which matters
+for real bank records. Every one of these features degrades gracefully (a
+templated sentence, the catalog text as-is, a regex-based article split) if
+Ollama isn't running, so a fresh checkout works with no `.env` changes — you
+only need this if you want the *actual* AI output instead of the fallback:
+
+```bash
+# https://ollama.com/download
+ollama pull llama3.2:3b
+ollama run llama3.2:3b   # first run pulls/warms the model; Ctrl+D to exit once ready
+```
+
+The backend expects the model name `llama32cpu` by default (`LLM_MODEL` env
+var) — either `ollama cp llama3.2:3b llama32cpu` to alias it, or set
+`LLM_MODEL=llama3.2:3b` in `backend/.env`. `LLM_BASE_URL` defaults to
+`http://localhost:11434/v1` (Ollama's default port).
+
+> **Heads up on speed:** this is CPU inference on a small model — a single
+> "Veille réglementaire" import (extracting requirements from a whole
+> circular) can take one to a few minutes. That's expected, not a hang.
+
+### PDF reports (Jinja2 + WeasyPrint) — Windows only
+
+The "Exporter PDF" buttons (Résultats, Évolution) render Jinja2 templates to PDF
+with WeasyPrint. On Linux/Docker this just works once the system packages are
+installed (`apt-get install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
+libcairo2 fonts-liberation` or equivalent) — skip this section there.
+
+On Windows, WeasyPrint doesn't bundle its native Pango/cairo/GObject libraries,
+and the official installer ([GTK3 Runtime Windows Installer](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer))
+requires admin rights. The admin-free alternative is a throwaway conda
+environment holding just those libraries:
+
+```bash
+conda create -n gtk-libs -c conda-forge pango cairo gdk-pixbuf fontconfig glib -y
+```
+
+`app/services/pdf.py` picks this up automatically via the `GTK_DLL_DIR` env var
+(defaults to `C:\Users\<you>\.conda\envs\gtk-libs\Library\bin` — set it in
+`.env` if your conda env lives elsewhere, e.g. `GTK_DLL_DIR=C:\Users\me\.conda\envs\gtk-libs\Library\bin`).
+No conda on your machine? Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) first (a lightweight,
+admin-free conda) — you only need it for this one environment, not for running
+the project itself.
+
+> **Gotcha:** some unrelated tools (Tesseract-OCR, observed) ship their own,
+> incompatible `libgobject`/`libglib` and put it on PATH, shadowing the
+> correct ones even with the conda directory registered — `pdf.py`'s bootstrap
+> already strips matching PATH entries for the current process, so this
+> shouldn't bite you, but if PDF generation throws `OSError: cannot load
+> library`, that's the likely cause.
+
 ## 4. Frontend (React + Vite)
 
 ```bash

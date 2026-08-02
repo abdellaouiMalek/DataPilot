@@ -12,6 +12,7 @@ import { EvolutionPage } from './pages/EvolutionPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { VeilleReglementaire } from './pages/admin/AdminVeille';
 import { UserManagement } from './pages/admin/AdminUsers';
 import { BankManagement } from './pages/admin/AdminBanks';
 import { DimensionsManagement } from './pages/admin/AdminDimensions';
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
     element: <RequireAdmin><AdminLayout /></RequireAdmin>,
     children: [
       { index: true,        Component: AdminDashboard },
+      { path: 'veille',     Component: VeilleReglementaire },
       { path: 'users',      Component: UserManagement },
       { path: 'banks',      Component: BankManagement },
       { path: 'dimensions', Component: DimensionsManagement },

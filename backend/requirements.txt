@@ -15,3 +15,7 @@ pandas
 lightgbm
 shap
 openai
+jinja2
+weasyprint
+pypdf
+python-multipart

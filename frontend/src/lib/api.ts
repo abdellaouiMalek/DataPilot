@@ -45,7 +45,10 @@ export async function apiFetch<T = unknown>(
 
   const headers = new Headers(options.headers);
   headers.set("Authorization", `Bearer ${token}`);
-  if (options.body && !headers.has("Content-Type")) {
+  // FormData sets its own Content-Type (with the multipart boundary) when
+  // the browser serializes the request — setting it here manually would
+  // drop that boundary and break parsing server-side.
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -71,6 +74,23 @@ export async function apiFetch<T = unknown>(
   return data as T;
 }
 
+/** Fetches a binary response (e.g. a generated PDF) as a Blob. Bypasses
+ * apiFetch's JSON/text parsing -- a blob response has no JSON body to read. */
+async function fetchBlob(path: string): Promise<Blob> {
+  const token = await getFreshToken();
+  if (!token) {
+    throw new ApiError(401, "Non authentifié");
+  }
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ApiError(res.status, text || res.statusText);
+  }
+  return res.blob();
+}
+
 export const api = {
   get: <T = unknown>(path: string) => apiFetch<T>(path),
   post: <T = unknown>(path: string, body?: unknown) =>
@@ -80,4 +100,7 @@ export const api = {
   patch: <T = unknown>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   del: <T = unknown>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+  getBlob: fetchBlob,
+  postForm: <T = unknown>(path: string, form: FormData) =>
+    apiFetch<T>(path, { method: "POST", body: form }),
 };
