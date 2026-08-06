@@ -106,6 +106,8 @@ export interface Circular {
   reference: string;
   publicationDate: string | null;
   theme: string;
+  /** Issuing authority (e.g. "Banque Centrale de Tunisie"), auto-extracted. */
+  institution: string | null;
   status: string;
   version: string;
   sourceFilename: string | null;
@@ -119,11 +121,24 @@ export interface Circular {
   pendingCount: number;
 }
 
+export interface Article {
+  /** "Art. N" style label, empty for the preamble block (text before the
+   * first numbered article, e.g. "Objet : ..."). */
+  label: string;
+  /** Verbatim article text -- a structural sub-split of `rawText`, never
+   * a generated summary (see split_into_articles on the backend). */
+  text: string;
+}
+
 export interface CircularDetail extends Circular {
   /** The analyzed text (French -- translated if the source was Arabic). */
   rawText: string | null;
   /** The source-language text, only set when a translation happened. */
   rawTextOriginal: string | null;
+  /** `rawText` split by article ("Art. N :") for a cleaner, structured
+   * display -- empty if no article markers were detected (fall back to
+   * showing `rawText` as-is). */
+  articles: Article[];
   impacts: Impact[];
 }
 
@@ -148,6 +163,7 @@ interface ApiCircular {
   reference: string;
   publication_date: string | null;
   theme: string;
+  institution: string | null;
   status: string;
   version: string;
   source_filename: string | null;
@@ -160,9 +176,14 @@ interface ApiCircular {
   impact_count: number;
   pending_count: number;
 }
+interface ApiArticle {
+  label: string;
+  text: string;
+}
 interface ApiCircularDetail extends ApiCircular {
   raw_text: string | null;
   raw_text_original: string | null;
+  articles: ApiArticle[];
   impacts: ApiImpact[];
 }
 
@@ -185,6 +206,7 @@ function mapCircular(c: ApiCircular): Circular {
     reference: c.reference,
     publicationDate: c.publication_date,
     theme: c.theme,
+    institution: c.institution,
     status: c.status,
     version: c.version,
     sourceFilename: c.source_filename,
@@ -203,6 +225,7 @@ function mapCircularDetail(c: ApiCircularDetail): CircularDetail {
     ...mapCircular(c),
     rawText: c.raw_text,
     rawTextOriginal: c.raw_text_original,
+    articles: c.articles.map(a => ({ label: a.label, text: a.text })),
     impacts: c.impacts.map(mapImpact),
   };
 }

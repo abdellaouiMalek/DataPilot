@@ -374,15 +374,22 @@ def call_regulatory_llm(
     Ne leve que si Gemini (avec ses tentatives) ET le repli local echouent
     tous les deux -- l'appelant (regulatory_analysis.py) capture deja
     largement pour retomber sur une liste vide plutot que de planter ou
-    d'inventer, conformement a la regle du human-in-the-loop."""
+    d'inventer, conformement a la regle du human-in-the-loop.
+
+    Journalisation : chaque appel logue explicitement lequel des deux
+    chemins a servi ("USING GEMINI" / "USING LOCAL LLM ...") avec la
+    duree prise -- pas juste un detail parmi d'autres, c'est LE moyen de
+    voir a l'oeil, dans le terminal, pourquoi une analyse est lente
+    (Gemini est nettement plus rapide que l'inference CPU locale sur ce
+    poste). Ces logs ne servent a rien sans la config apportee par
+    ``app.main`` (``logging.basicConfig`` -- sans elle, les logs de niveau
+    INFO n'atteignent jamais le terminal, meme si le code les emet)."""
     global _quota_exhausted_until
+    t0 = time.time()
+    fallback_reason: str | None = None
     now = time.time()
     if REG_LLM_API_KEY and now < _quota_exhausted_until:
-        logger.info(
-            "Veille reglementaire : Gemini en pause (quota épuisé), encore "
-            "%.0fs avant nouvel essai -- repli direct sur le modele local.",
-            _quota_exhausted_until - now,
-        )
+        fallback_reason = f"Gemini en pause (quota épuisé, {_quota_exhausted_until - now:.0f}s restantes)"
     elif REG_LLM_API_KEY:
         for attempt in range(1, _REG_LLM_MAX_RETRIES + 1):
             try:
@@ -398,8 +405,9 @@ def call_regulatory_llm(
                     ollama_extras=False,
                 )
                 logger.info(
-                    "Veille reglementaire : appel Gemini reussi (tentative %d/%d).",
-                    attempt, _REG_LLM_MAX_RETRIES,
+                    "[Veille reglementaire] USING GEMINI -- reussi en %.1fs "
+                    "(tentative %d/%d).",
+                    time.time() - t0, attempt, _REG_LLM_MAX_RETRIES,
                 )
                 return result
             except Exception as exc:
@@ -410,11 +418,11 @@ def call_regulatory_llm(
                         else _REG_QUOTA_COOLDOWN_SECONDS
                     )
                     _quota_exhausted_until = time.time() + cooldown
+                    fallback_reason = f"quota Gemini épuisé ({exc})"
                     logger.warning(
                         "Veille reglementaire : quota Gemini épuisé -- pas de "
-                        "nouvelle tentative Gemini avant %.0fs (%.1f min), "
-                        "repli sur le modele local (%s).",
-                        cooldown, cooldown / 60, exc,
+                        "nouvelle tentative Gemini avant %.0fs (%.1f min).",
+                        cooldown, cooldown / 60,
                     )
                     break
                 transient = _is_transient_llm_error(exc)
@@ -429,14 +437,21 @@ def call_regulatory_llm(
                     continue
                 # Erreur persistante (ou plus de tentatives) : on arrete
                 # d'essayer Gemini et on tombe sur le repli local.
-                logger.warning(
-                    "Veille reglementaire : Gemini indisponible apres %d "
-                    "tentative(s) (%s, %s) -- repli sur le modele local.",
-                    attempt, "transitoire" if transient else "persistante", exc,
+                fallback_reason = (
+                    f"{'erreur transitoire' if transient else 'erreur persistante'} "
+                    f"apres {attempt} tentative(s) ({exc})"
                 )
                 break
+    else:
+        fallback_reason = "REG_LLM_API_KEY non configuree"
+
+    logger.warning("[Veille reglementaire] USING LOCAL LLM -- %s.", fallback_reason)
+    t_local = time.time()
     result = _call_llm(system_prompt, user_prompt, json_schema, max_output_tokens)
-    logger.info("Veille reglementaire : modele local (%s) utilise.", LLM_MODEL)
+    logger.warning(
+        "[Veille reglementaire] Local LLM (%s) termine en %.1fs (%.1fs total).",
+        LLM_MODEL, time.time() - t_local, time.time() - t0,
+    )
     return result
 
 

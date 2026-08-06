@@ -16,13 +16,14 @@ from sqlalchemy.orm import selectinload
 from app.core.auth import require_admin
 from app.db.database import get_db
 from app.models import RegulatoryCircular, RegulatoryImpact
-from app.schemas.regulatory import CircularDetailRead, CircularRead, ImpactRead, ImpactUpdate
+from app.schemas.regulatory import ArticleRead, CircularDetailRead, CircularRead, ImpactRead, ImpactUpdate
 from app.services.regulatory import (
     compute_source_hash,
     create_pending_circular,
     fetch_source,
     find_circular_by_hash,
     run_circular_analysis,
+    split_into_articles,
 )
 from app.services.regulatory_index import reindex_catalog
 
@@ -48,6 +49,19 @@ async def _get_circular_or_404(db: AsyncSession, circular_id: int) -> Regulatory
     if circular is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Circulaire introuvable.")
     return circular
+
+
+def _to_detail(circular: RegulatoryCircular) -> CircularDetailRead:
+    """Construit la réponse détaillée, avec le découpage par article
+    calculé à la volée (jamais stocké -- voir
+    ``services.regulatory.split_into_articles``) plutôt que déjà présent
+    sur l'objet ORM, donc pas couvert par la validation ``from_attributes``
+    automatique de ``CircularDetailRead``."""
+    detail = CircularDetailRead.model_validate(circular)
+    detail.articles = [
+        ArticleRead(**a) for a in split_into_articles(circular.raw_text or "")
+    ]
+    return detail
 
 
 async def _get_impact_or_404(db: AsyncSession, impact_id: int) -> RegulatoryImpact:
@@ -92,7 +106,7 @@ async def list_circulars(db: AsyncSession = Depends(get_db)):
 async def get_circular(circular_id: int, db: AsyncSession = Depends(get_db)):
     """Also the polling endpoint: the frontend re-calls this after
     ``POST .../import`` until ``analysis_status`` is no longer "en_cours"."""
-    return await _get_circular_or_404(db, circular_id)
+    return _to_detail(await _get_circular_or_404(db, circular_id))
 
 
 @router.delete("/circulars/{circular_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -131,12 +145,13 @@ async def import_circular(
     front doit re-consulter ``GET .../circulars/{id}`` jusqu'à ce que
     ``analysis_status`` change.
 
-    Référence et thème ne sont PAS demandés à l'admin : ils sont extraits
-    automatiquement du contenu de la circulaire pendant l'analyse (voir
-    ``llm.regulatory_analysis.extract_reference_theme``) -- la référence
-    provisoire ci-dessous (nom de fichier) n'est visible que le temps de
-    l'analyse. La date de publication est simplement la date d'import
-    (aujourd'hui), pas une date extraite ni saisie."""
+    Référence, thème, institution et date de publication ne sont PAS
+    demandés à l'admin : ils sont extraits automatiquement du contenu de la
+    circulaire pendant l'analyse (voir
+    ``llm.regulatory_analysis.extract_document_metadata``) -- la référence
+    provisoire ci-dessous (nom de fichier) et la date d'import ne sont
+    visibles que le temps de l'analyse, remplacées dès que l'extraction
+    aboutit."""
     if not file and not url:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Fournissez un fichier ou une URL."
@@ -154,7 +169,7 @@ async def import_circular(
         # doesn't selectinload `impacts`, and CircularDetailRead needs it
         # (impact_count/pending_count/impacts) -- a lazy-load here would
         # fail outside the request's async session context.
-        return await _get_circular_or_404(db, cached.id)
+        return _to_detail(await _get_circular_or_404(db, cached.id))
 
     circular = await create_pending_circular(
         db,
@@ -166,7 +181,7 @@ async def import_circular(
         source_hash=source_hash,
     )
     background_tasks.add_task(run_circular_analysis, circular.id, raw_bytes)
-    return await _get_circular_or_404(db, circular.id)
+    return _to_detail(await _get_circular_or_404(db, circular.id))
 
 
 @router.patch("/impacts/{impact_id}", response_model=ImpactRead)

@@ -32,6 +32,9 @@ class CircularRead(BaseModel):
     reference: str
     publication_date: Optional[date] = None
     theme: str
+    # Autorité émettrice (ex. "Banque Centrale de Tunisie"), extraite
+    # automatiquement -- voir llm.regulatory_analysis.extract_document_metadata.
+    institution: Optional[str] = None
     status: str
     version: str
     source_filename: Optional[str] = None
@@ -47,12 +50,27 @@ class CircularRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ArticleRead(BaseModel):
+    """Un article (ou le préambule) du texte réglementaire, découpé par
+    ``app.services.regulatory.split_into_articles`` -- pur sous-découpage
+    verbatim de ``raw_text``, jamais un résumé généré. ``label`` est vide
+    pour le préambule (texte avant le premier article numéroté)."""
+
+    label: str
+    text: str
+
+
 class CircularDetailRead(CircularRead):
     # Texte ANALYSÉ (français) -- ce qu'affiche l'admin par défaut, même
     # pour une circulaire arabe (voir services/regulatory.py).
     raw_text: Optional[str] = None
     # Texte langue SOURCE, uniquement renseigné si une traduction a eu lieu.
     raw_text_original: Optional[str] = None
+    # `raw_text` découpé par article ("Art. N :") -- calculé à la volée à
+    # chaque lecture (voir routers/regulatory.py), pas stocké : liste vide
+    # si aucun marqueur d'article n'est détecté (le front retombe alors sur
+    # `raw_text` brut).
+    articles: list[ArticleRead] = []
     impacts: list[ImpactRead] = []
 
 

@@ -12,7 +12,8 @@ Two phases, split so the HTTP request never blocks on LLM inference:
    (``translate_document_to_french``) AVANT le découpage, pour ne payer
    qu'un seul appel LLM de traduction (ou quelques-uns sur un très long
    document) plutôt qu'un par chunk ; extrait automatiquement la
-   référence/le thème (``extract_reference_theme``) ; puis pour chaque
+   référence/le thème/l'institution/la date réelle
+   (``extract_document_metadata``) ; puis pour chaque
    section (chunk, avec chevauchement -- voir ``pdf_extract.chunk_text``),
    récupère les candidats du catalogue les plus proches par similarité
    d'embeddings (RAG, ``regulatory_index.retrieve``) et analyse ce chunk
@@ -35,6 +36,8 @@ import ipaddress
 import logging
 import re
 import socket
+import time
+from datetime import date
 from typing import Any
 
 import httpx
@@ -56,8 +59,9 @@ from llm.pdf_extract import chunk_text, extract_text
 from llm.regulatory_analysis import (
     analyze_chunk_with_candidates,
     build_retrieval_query,
-    extract_reference_theme,
+    extract_document_metadata,
     find_original_context,
+    generate_palier_recommendations,
     translate_document_to_french,
 )
 
@@ -211,28 +215,6 @@ async def compute_weight_recalc(db: AsyncSession, dimension: Dimension, delta: i
     }
 
 
-# Libellés génériques pour les 4 paliers d'une question (1->2 ... 4->5) --
-# le LLM ne les rédige pas (trop de structure imbriquée pour un petit
-# modèle local, voir Task 7) : ce sont des ébauches ("is_placeholder") que
-# l'admin complète/reformule pendant la revue humaine, jamais publiées
-# telles quelles.
-_PALIER_TRANSITIONS = ((1, 2), (2, 3), (3, 4), (4, 5))
-
-
-def _placeholder_associated_recommendations() -> list[dict[str, Any]]:
-    return [
-        {
-            "trigger_level": trigger,
-            "title": f"Recommandation à définir (niveau {trigger} → {target})",
-            "recommendation_text": "",
-            "category": "Conformité",
-            "effort": 2,
-            "is_placeholder": True,
-        }
-        for trigger, target in _PALIER_TRANSITIONS
-    ]
-
-
 async def _fetch_question_context(db: AsyncSession, question_code: str) -> dict[str, str] | None:
     """Résout un code de question SYNTHÉTIQUE ("D4Q4", non persisté --
     voir ``regulatory_index._synthesize_question_codes``) vers son texte
@@ -292,8 +274,10 @@ async def _enrich_impact(db: AsyncSession, exigence: dict[str, Any]) -> dict[str
       existante visée) ;
     - "weight_recalc" (ajouter/desactiver une question, voir
       ``compute_weight_recalc``) et "associated_recommendations" (4
-      ébauches par palier, ajouter uniquement, voir
-      ``_placeholder_associated_recommendations``).
+      recommandations de progression par palier, ajouter uniquement,
+      rédigées par le LLM -- voir
+      ``llm.regulatory_analysis.generate_palier_recommendations``, avec
+      repli sur des ébauches génériques en cas d'échec).
 
     Best-effort partout : un code qui ne résout à rien (référentiel
     changé entretemps, incohérence) laisse simplement le champ absent
@@ -331,8 +315,17 @@ async def _enrich_impact(db: AsyncSession, exigence: dict[str, Any]) -> dict[str
         return exigence
 
     if action == "ajouter":
-        proposed["associated_recommendations"] = _placeholder_associated_recommendations()
         dim = await _resolve_dimension_by_name(db, proposed.get("dimension_hint", ""))
+        dimension_name = dim.name if dim is not None else proposed.get("dimension_hint", "")
+        # Un appel LLM dedie (voir generate_palier_recommendations) --
+        # jamais bloquant, retombe sur des ebauches generiques
+        # (is_placeholder=True) en cas d'echec, jamais une liste vide.
+        proposed["associated_recommendations"] = await asyncio.to_thread(
+            generate_palier_recommendations,
+            proposed.get("title", ""),
+            dimension_name,
+            proposed.get("level_labels") or [],
+        )
         delta = 1
     else:  # desactiver -- reuse the dimension just resolved above
         dim = await _resolve_dimension_by_name(db, proposed.get("question_dimension", ""))
@@ -355,6 +348,66 @@ def _normalize_display_text(text: str) -> str:
     espace blanc au lieu du texte. N'affecte que l'affichage : le texte
     envoyé au LLM pour l'analyse n'est pas modifié par cette fonction."""
     return re.sub(r"\n{3,}", "\n\n", text.strip())
+
+
+# Détecte un marqueur d'article en début de ligne : "Art. 3 :", "Article 5
+# -", "Art 12.", "Article premier", éventuellement suivi de "bis"/"ter"
+# (numérotation d'un article inséré après coup, courante dans les textes
+# réglementaires). Le séparateur (":", "-", ".") est optionnel pour
+# couvrir "Article 3" seul sur sa ligne.
+_ARTICLE_HEADER_RE = re.compile(
+    r"(?im)^[ \t]*("
+    r"article\s+(?:\d+|premier)(?:\s+(?:bis|ter|quater))?"
+    r"|art\.?\s*\d+(?:\s*(?:bis|ter|quater))?"
+    r")\s*[:.\-–]?\s*"
+)
+
+
+def split_into_articles(text: str) -> list[dict[str, str]]:
+    """Découpe un texte réglementaire en articles ("Art. N :" / "Article N
+    :"), en préservant le texte de CHAQUE article EXACTEMENT tel qu'il
+    apparaît dans le document -- pur découpage structurel par expression
+    régulière sur les marqueurs d'article, sans aucun appel LLM et sans
+    aucune reformulation.
+
+    Volontairement PAS un résumé généré par LLM : en contexte bancaire, un
+    chiffre, un délai ou une référence normative mal reproduits par un
+    modèle de langage (même invités à "copier fidèlement") auraient des
+    conséquences réelles -- la précision prime sur la concision. Ceci ne
+    fait que présenter le document existant de façon plus lisible (un bloc
+    par article, comme le sommaire d'un texte de loi) qu'un unique pavé de
+    texte brut ; le contenu affiché reste un sous-découpage verbatim du
+    texte déjà stocké (``raw_text``), jamais un contenu généré.
+
+    Le texte AVANT le premier marqueur d'article (préambule -- objet,
+    visas "Vu la loi...", en-tête institution/référence/date) n'est PAS
+    inclus ici : il fait presque toujours doublon avec ce que
+    ``extract_document_metadata`` a déjà extrait séparément (institution,
+    référence, thème, date -- affichés en en-tête par l'appelant, voir
+    ``routers/regulatory.py``). Rien n'est perdu pour autant : le document
+    COMPLET (préambule inclus) reste disponible tel quel via ``raw_text``
+    -- l'appelant propose un accès au texte intégral en plus de cette vue
+    par article, plutôt que de dupliquer le préambule dans les deux vues.
+
+    Retourne une liste vide si aucun marqueur d'article n'est détecté (ex.
+    une note ou un communiqué non structuré en articles) -- l'appelant
+    affiche alors le texte brut tel quel plutôt qu'une liste vide qui en
+    masquerait le contenu."""
+    if not text or not text.strip():
+        return []
+    matches = list(_ARTICLE_HEADER_RE.finditer(text))
+    if not matches:
+        return []
+
+    articles: list[dict[str, str]] = []
+    for i, m in enumerate(matches):
+        label = re.sub(r"\s+", " ", m.group(1)).strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        if body:
+            articles.append({"label": label, "text": body})
+    return articles
 
 
 def _extract_text_and_language(raw_bytes: bytes) -> tuple[str, str]:
@@ -409,18 +462,80 @@ async def run_circular_analysis(circular_id: int, raw_bytes: bytes) -> None:
                 else:
                     analysis_text, translation_blocks = text, []
 
-                ref_theme = await asyncio.to_thread(extract_reference_theme, analysis_text)
-                if ref_theme["reference"]:
-                    circular.reference = ref_theme["reference"][:200]
-                if ref_theme["theme"]:
-                    circular.theme = ref_theme["theme"][:300]
+                metadata = await asyncio.to_thread(extract_document_metadata, analysis_text)
+                if metadata["reference"]:
+                    circular.reference = metadata["reference"][:200]
+                if metadata["theme"]:
+                    circular.theme = metadata["theme"][:300]
+                if metadata["institution"]:
+                    circular.institution = metadata["institution"][:300]
+                if metadata["publication_date"]:
+                    # La date REELLE de la circulaire (ecrite dans le texte)
+                    # prime sur la date d'import posee par defaut a la
+                    # creation (voir create_pending_circular) -- important en
+                    # contexte bancaire pour le suivi reglementaire. Repli
+                    # silencieux sur la date d'import si le format renvoye
+                    # par le LLM n'est pas un ISO AAAA-MM-JJ valide (jamais
+                    # bloquant : mieux vaut garder la date d'import qu'une
+                    # date mal parsee).
+                    try:
+                        circular.publication_date = date.fromisoformat(metadata["publication_date"])
+                    except ValueError:
+                        logger.warning(
+                            "Regulatory circular analysis: date de publication non "
+                            "parsable (%r) pour circular id=%s -- date d'import conservee.",
+                            metadata["publication_date"], circular_id,
+                        )
 
                 all_exigences: list[dict[str, Any]] = []
-                for chunk in chunk_text(analysis_text):
-                    query_text = await asyncio.to_thread(build_retrieval_query, chunk, "fr")
-                    candidates = await retrieve(db, query_text)
-                    chunk_exigences = await asyncio.to_thread(
-                        analyze_chunk_with_candidates, chunk, "fr", candidates
+                chunks = chunk_text(analysis_text)
+                skipped_chunks = 0
+                analysis_t0 = time.time()
+                logger.info(
+                    "[Veille reglementaire] circular id=%s : demarrage de "
+                    "l'analyse, %d section(s) a traiter.",
+                    circular_id, len(chunks),
+                )
+                for chunk_index, chunk in enumerate(chunks, start=1):
+                    # Chaque chunk est traite isolement : une panne locale
+                    # (ex. Ollama qui echoue a charger bge-m3 sous pression
+                    # memoire -- voir llm/embeddings.py) ne doit faire
+                    # perdre que CE chunk, pas jeter les exigences deja
+                    # extraites des chunks precedents en faisant echouer
+                    # toute la circulaire (c'etait le comportement avant ce
+                    # fix : une seule section en panne = "erreur" globale,
+                    # meme si le reste du document avait deja ete analyse
+                    # avec succes).
+                    chunk_t0 = time.time()
+                    try:
+                        query_text = await asyncio.to_thread(build_retrieval_query, chunk, "fr")
+                        t_retrieve = time.time()
+                        candidates = await retrieve(db, query_text)
+                        t_retrieved = time.time()
+                        chunk_exigences = await asyncio.to_thread(
+                            analyze_chunk_with_candidates, chunk, "fr", candidates
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Regulatory circular analysis: section %d/%d ignoree "
+                            "apres echec (circular id=%s)",
+                            chunk_index, len(chunks), circular_id,
+                        )
+                        skipped_chunks += 1
+                        continue
+                    # Repere ce qui prend le temps sur CE chunk (retrieval --
+                    # embeddings, voir llm/embeddings.py -- vs. generation --
+                    # Gemini ou local, voir call_regulatory_llm dans
+                    # llm/generation.py, qui logue deja lequel des deux a
+                    # servi) : utile pour voir a l'oeil si un chunk lent
+                    # vient d'Ollama (embeddings/local, souvent la pression
+                    # memoire de cette machine) ou d'un aller-retour Gemini.
+                    logger.info(
+                        "[Veille reglementaire] circular id=%s section %d/%d : "
+                        "retrieval %.1fs, analyse %.1fs (total section %.1fs).",
+                        circular_id, chunk_index, len(chunks),
+                        t_retrieved - t_retrieve, time.time() - t_retrieved,
+                        time.time() - chunk_t0,
                     )
                     if translation_blocks:
                         # Tracabilite : le chunk (donc l'excerpt que le LLM
@@ -432,6 +547,12 @@ async def run_circular_analysis(circular_id: int, raw_bytes: bytes) -> None:
                         for exigence in chunk_exigences:
                             exigence["excerpt_original"] = original_context
                     all_exigences.extend(chunk_exigences)
+
+                logger.info(
+                    "[Veille reglementaire] circular id=%s : analyse terminee "
+                    "en %.1fs (%d exigence(s), %d section(s) ignoree(s)).",
+                    circular_id, time.time() - analysis_t0, len(all_exigences), skipped_chunks,
+                )
 
                 # `raw_text` garde le texte ANALYSÉ (français) pour
                 # l'affichage -- l'admin doit pouvoir lire le document quelle
@@ -448,6 +569,15 @@ async def run_circular_analysis(circular_id: int, raw_bytes: bytes) -> None:
                 )
                 circular.detected_language = language
                 circular.analysis_status = "terminee"
+                circular.analysis_error = (
+                    f"{skipped_chunks} section(s) sur {len(chunks)} n'ont pas pu "
+                    "etre analysees (panne temporaire, ex. surcharge memoire "
+                    "locale) -- resultat partiel, voir les logs backend pour le "
+                    "detail. Vous pouvez relancer l'analyse (re-uploader la "
+                    "circulaire) pour retenter les sections manquees."
+                    if skipped_chunks
+                    else None
+                )
                 for exigence in all_exigences:
                     exigence = await _enrich_impact(db, exigence)
                     db.add(

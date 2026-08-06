@@ -24,6 +24,11 @@ class RegulatoryCircular(Base):
     reference: Mapped[str] = mapped_column(String(200))
     publication_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     theme: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    # Autorité émettrice (ex. "Banque Centrale de Tunisie"), extraite
+    # automatiquement de l'en-tête -- voir
+    # llm.regulatory_analysis.extract_document_metadata. Vide si non
+    # déterminée (LLM indisponible, en-tête non reconnaissable).
+    institution: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     # Statut de PUBLICATION (distinct de analysis_status, qui suit le
     # traitement en arrière-plan) : "Brouillon" | "En vigueur" | "Abrogée".
     status: Mapped[str] = mapped_column(

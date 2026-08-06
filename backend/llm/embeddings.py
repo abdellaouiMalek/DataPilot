@@ -17,12 +17,16 @@ utilisé tel quel pour les citations ("excerpt") présentées à l'admin.
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 
 import numpy as np
 import requests
 
 from llm.generation import LLM_API_KEY, LLM_BASE_URL, REG_LLM_API_KEY, call_regulatory_llm
+
+logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3")
 EMBEDDING_DIM = 1024
@@ -33,30 +37,70 @@ _EMBED_TIMEOUT_SECONDS = 60.0
 # la racine du serveur depuis LLM_BASE_URL en retirant le suffixe "/v1".
 _OLLAMA_ROOT = LLM_BASE_URL[: -len("/v1")] if LLM_BASE_URL.endswith("/v1") else LLM_BASE_URL
 
+# Constaté en conditions réelles sur cette machine (16 Go de RAM, souvent
+# quasi saturée par d'autres logiciels -- navigateur, IDE, une VM...) :
+# quand il ne reste presque plus de RAM libre, le sous-processus
+# llama-server qu'Ollama lance pour charger bge-m3 peut planter au
+# démarrage (violation d'accès Windows, 0xc0000005) faute de mémoire
+# suffisante, et Ollama traduit ça en 500 sur /api/embed -- une panne
+# TRANSITOIRE liée à la pression mémoire du moment, pas une erreur de
+# config : un nouvel essai quelques secondes plus tard (le temps qu'un
+# autre modèle libère sa mémoire, ou que Windows en récupère) réussit
+# souvent en pratique. Même logique de nouvel essai que
+# ``call_regulatory_llm`` pour Gemini, adaptée ici à l'endpoint natif
+# d'Ollama (pas de ``status_code`` structuré comme le SDK openai -- on se
+# base directement sur l'exception ``requests``).
+_EMBED_MAX_RETRIES = int(os.getenv("EMBED_MAX_RETRIES", "3"))
+_EMBED_BACKOFF_BASE_SECONDS = float(os.getenv("EMBED_BACKOFF_BASE", "5.0"))
+
 
 def embed(texts: list[str]) -> np.ndarray:
     """Encode une liste de textes en vecteurs bge-m3, **normalisés** (norme
     L2 = 1) pour que la similarité cosinus se réduise à un simple produit
     scalaire au moment de la recherche. Retourne un tableau ``(n, 1024)``.
 
-    Lève une exception si le serveur Ollama est injoignable ou si le modèle
-    n'est pas chargé -- pas de repli silencieux ici, contrairement à
-    ``llm.generation`` : sans embeddings, la recherche RAG ne peut
-    fonctionner du tout, mieux vaut échouer bruyamment que router vers du
-    "presque vide" sans que l'appelant s'en aperçoive.
+    Réessaie jusqu'à ``_EMBED_MAX_RETRIES`` fois (backoff exponentiel) sur
+    une erreur réseau/serveur -- voir la note ci-dessus sur les 500
+    transitoires d'Ollama sous pression mémoire. Lève l'exception d'origine
+    si toutes les tentatives échouent -- pas de repli silencieux ici,
+    contrairement à ``llm.generation`` : sans embeddings, la recherche RAG
+    ne peut fonctionner du tout, mieux vaut échouer bruyamment que router
+    vers du "presque vide" sans que l'appelant s'en aperçoive.
     """
     if not texts:
         return np.zeros((0, EMBEDDING_DIM), dtype=np.float32)
-    resp = requests.post(
-        f"{_OLLAMA_ROOT}/api/embed",
-        json={"model": EMBEDDING_MODEL, "input": texts},
-        timeout=_EMBED_TIMEOUT_SECONDS,
-    )
-    resp.raise_for_status()
-    arr = np.array(resp.json()["embeddings"], dtype=np.float32)
-    norms = np.linalg.norm(arr, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return arr / norms
+
+    last_exc: Exception | None = None
+    for attempt in range(1, _EMBED_MAX_RETRIES + 1):
+        try:
+            resp = requests.post(
+                f"{_OLLAMA_ROOT}/api/embed",
+                json={"model": EMBEDDING_MODEL, "input": texts},
+                timeout=_EMBED_TIMEOUT_SECONDS,
+            )
+            resp.raise_for_status()
+            arr = np.array(resp.json()["embeddings"], dtype=np.float32)
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            return arr / norms
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < _EMBED_MAX_RETRIES:
+                delay = _EMBED_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+                logger.warning(
+                    "Embeddings (bge-m3) : échec tentative %d/%d (%s) -- "
+                    "nouvel essai dans %.0fs (pression mémoire locale "
+                    "probable -- voir Ollama server.log).",
+                    attempt, _EMBED_MAX_RETRIES, exc, delay,
+                )
+                time.sleep(delay)
+            else:
+                logger.error(
+                    "Embeddings (bge-m3) : échec après %d tentative(s) (%s).",
+                    attempt, exc,
+                )
+    assert last_exc is not None
+    raise last_exc
 
 
 _TRANSLATE_SYSTEM_PROMPT = """\

@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Upload, FileText, ChevronRight, Check, Edit2, XCircle,
+  Upload, FileText, ChevronRight, ChevronDown, Check, Edit2, XCircle,
   BookOpen, ExternalLink, RefreshCw, CheckCircle2,
-  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle, Scale, ListPlus, Trash2,
+  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle, Scale, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   regulatoryApi,
-  type Circular, type CircularDetail, type Impact, type ImpactAction,
+  type Circular, type CircularDetail, type Impact, type ImpactAction, type AssociatedRecommendation,
 } from "../../lib/regulatory";
+import { getMaturityLevels, type MaturityLevel } from "../../lib/config";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "Date non détectée";
@@ -37,34 +38,119 @@ function StatutBadge({ statut }: { statut: string }) {
   );
 }
 
+// Libellés + couleurs EXACTEMENT ceux de la maquette ImpactsProposes.tsx
+// (typeMap) pour les 5 types qu'elle couvre. "question:desactiver" et
+// "recommandation:desactiver" n'existent pas dans la maquette (ses 5 types
+// de démonstration ne couvrent pas la désactivation) -- extension au même
+// langage visuel (rouge d'alerte, cohérent avec le reste de la palette).
 const IMPACT_LABEL: Record<string, string> = {
+  "recommandation:activer_flag": "Réglementaire",
+  "recommandation:modifier": "Mise à jour recommandations",
+  "question:modifier": "Mise à jour question",
   "question:ajouter": "Nouvelle question",
-  "question:modifier": "Question à modifier",
-  "question:desactiver": "Question à rendre obsolète",
-  "recommandation:ajouter": "Nouvelle recommandation",
-  "recommandation:modifier": "Recommandation à modifier",
-  "recommandation:desactiver": "Recommandation à rendre obsolète",
-  "recommandation:activer_flag": "Activation indicateur réglementaire",
+  "recommandation:ajouter": "Recommandation",
+  "question:desactiver": "Question à désactiver",
+  "recommandation:desactiver": "Recommandation à désactiver",
 };
 
 const IMPACT_COLOR: Record<string, { bg: string; color: string }> = {
-  "question:ajouter":                  { bg: "#EEF2FF", color: "#3730A3" },
-  "question:modifier":                 { bg: "#EEF2FF", color: "#3730A3" },
-  "question:desactiver":               { bg: "#FFEBEE", color: "#B91C1C" },
-  "recommandation:ajouter":            { bg: "#F0FDF4", color: "#166534" },
-  "recommandation:modifier":           { bg: "#FFF7ED", color: "#9A3412" },
-  "recommandation:desactiver":         { bg: "#FFEBEE", color: "#B91C1C" },
-  "recommandation:activer_flag":       { bg: "#FDF4FF", color: "#6B21A8" },
+  "recommandation:activer_flag": { bg: "#F0F4FF", color: "#3730A3" },
+  "recommandation:modifier":     { bg: "#EEF2FF", color: "#3730A3" },
+  "question:modifier":           { bg: "#EEF2FF", color: "#3730A3" },
+  "question:ajouter":            { bg: "#EEF2F7", color: "#2C4A6E" },
+  "recommandation:ajouter":      { bg: "#FFF7ED", color: "#9A3412" },
+  "question:desactiver":         { bg: "#FFF5F5", color: "#B91C1C" },
+  "recommandation:desactiver":   { bg: "#FFF5F5", color: "#B91C1C" },
 };
 
 function impactKey(impact: Impact): string {
   return `${impact.entityType}:${impact.proposedAction}`;
 }
 
-function TypeBadge({ impact }: { impact: Impact }) {
-  const key = impactKey(impact);
-  const c = IMPACT_COLOR[key] ?? { bg: "#F5F5F5", color: "#6B6B6B" };
-  return <span style={{ backgroundColor: c.bg, color: c.color, borderRadius: 4, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>{IMPACT_LABEL[key] ?? key}</span>;
+/** Compact "élément / dimension" pair shown at a glance on each card --
+ * derived purely from fields already resolved by the backend (never
+ * invented here). "Nouvelle question"/"Nouvelle recommandation" cover the
+ * "ajouter" cases, which have no catalog code yet -- that's the point. */
+function impactElementAndDimension(impact: Impact): { element: string; dimension: string } {
+  const p = impact.proposedData;
+  switch (impactKey(impact)) {
+    case "question:ajouter":
+      return { element: "Nouvelle question", dimension: p.dimension || p.dimension_hint || "" };
+    case "recommandation:ajouter":
+      return { element: "Nouvelle recommandation", dimension: p.question_dimension || "" };
+    case "question:modifier":
+    case "question:desactiver":
+      return { element: p.question_code || "", dimension: p.question_dimension || "" };
+    default: // recommandation:modifier | recommandation:desactiver | recommandation:activer_flag
+      return { element: p.reco_code || "", dimension: p.question_dimension || "" };
+  }
+}
+
+interface SuggestedLevel {
+  level: number;
+  label: string;
+  color: string;
+  text: string;
+  recommendation: AssociatedRecommendation | null;
+}
+
+/** Pairs each of the proposed question's `level_labels` (its own maturity
+ * scale, from D1 = plus faible) with the REAL, currently-configured
+ * maturity levels (name + color, from `/api/maturity-levels` -- the same
+ * source used everywhere else in the app, e.g. AdminScoring/ResultsPage --
+ * so an admin-customized label/color is reflected here too, not a
+ * hardcoded guess) and the recommendation attached to that specific
+ * palier (`associated_recommendations`, matched by `trigger_level`).
+ * Falls back to a neutral "Niveau N" if the real levels haven't loaded
+ * yet (or don't cover 5 levels) -- never blocks rendering on that call. */
+function buildSuggestedLevels(impact: Impact, maturityLevels: MaturityLevel[]): SuggestedLevel[] {
+  const labels = impact.proposedData.level_labels ?? [];
+  const recos = impact.proposedData.associated_recommendations ?? [];
+  return labels.map((text, i) => {
+    const level = i + 1;
+    const meta = maturityLevels[i];
+    return {
+      level,
+      label: meta?.label ?? `Niveau ${level}`,
+      color: meta?.color ?? "#6B6B6B",
+      text,
+      recommendation: recos.find(r => r.trigger_level === level) ?? null,
+    };
+  });
+}
+
+/** Draft/edited content for a proposed impact -- mirrors exactly what the
+ * maquette (ImpactsProposes.tsx) lets an expert edit per field: the
+ * recommandation text, the question text, the désactivation justification,
+ * or (for a new question) each maturity level's answer + associated
+ * recommendation. There is still only ONE storage slot on the backend
+ * (`RegulatoryImpact.edited_text`, a free Text column via the existing
+ * PATCH .../impacts/{id} endpoint -- see ImpactUpdate) : rather than
+ * extending the schema, this whole structure is JSON-serialized into that
+ * single column (see saveEditedFields/parseEditedPayload below). No
+ * backend change needed -- "modifié" still means exactly what it always
+ * did (one string persisted per impact), only its CONTENT is now
+ * structured JSON instead of plain text when produced by this rich editor. */
+interface EditedFields {
+  recommandation?: string;
+  question?: string;
+  justification?: string;
+  levels?: Record<number, { answer?: string; recText?: string }>;
+}
+
+/** Parses `impact.editedText` back into structured fields. Returns null
+ * for a plain-text legacy edit (from before this rich editor existed) --
+ * displayed as a simple override banner instead (see ImpactCardBody)
+ * rather than silently discarding it. */
+function parseEditedPayload(editedText: string | null): EditedFields | null {
+  if (!editedText) return null;
+  try {
+    const parsed = JSON.parse(editedText);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as EditedFields;
+  } catch {
+    // Legacy plain-text edit, or genuinely not JSON -- not a structured payload.
+  }
+  return null;
 }
 
 function EffortDots({ effort }: { effort: number }) {
@@ -87,28 +173,6 @@ function WeightRecalcNote({ impact }: { impact: Impact }) {
         Recalcul du poids intra-dimension ({w.dimension}) : {w.questions_actives_avant} → {w.questions_actives_apres} question{w.questions_actives_apres !== 1 ? "s" : ""} actives,
         {" "}poids {w.poids_avant != null ? `${w.poids_avant} → ` : ""}{w.poids_apres}.
       </span>
-    </div>
-  );
-}
-
-function AssociatedRecommendations({ impact }: { impact: Impact }) {
-  const list = impact.proposedData.associated_recommendations;
-  if (!list || list.length === 0) return null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#4A4A4A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        Recommandations par palier ({list.length})
-      </div>
-      {list.map((r, i) => (
-        <div key={i} style={{ padding: "8px 10px", backgroundColor: "#F7F7F7", borderRadius: 6, border: r.is_placeholder ? "1px dashed rgba(0,0,0,0.15)" : "1px solid rgba(0,0,0,0.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B" }}>Palier {r.trigger_level} → {r.trigger_level + 1}</span>
-            {r.is_placeholder && <span style={{ fontSize: 9, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "1px 6px", borderRadius: 3 }}>À rédiger</span>}
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A" }}>{r.title}</div>
-          {r.recommendation_text && <p style={{ fontSize: 11, color: "#6B6B6B", margin: "3px 0 0" }}>{r.recommendation_text}</p>}
-        </div>
-      ))}
     </div>
   );
 }
@@ -146,69 +210,186 @@ function CatalogRefBox({ kind, code, title, subtitle, text }: {
   );
 }
 
+const editTextareaStyle: React.CSSProperties = {
+  width: "100%", fontFamily: "inherit", border: "none", outline: "none",
+  resize: "vertical", padding: 0, backgroundColor: "transparent", boxSizing: "border-box",
+};
+
 /** Renders the (entityType, proposedAction)-specific fields of a proposed
  * impact (see llm/regulatory_analysis.py for what proposedData carries per
  * combination). Existing-element references (reco_title, question_title,
  * etc.) come from the backend's own catalog lookup at analysis time (see
  * app/services/regulatory.py::_enrich_impact) -- never invented by the LLM,
- * always the real current content, so a bare code is never shown alone. */
-function ProposedDetails({ impact }: { impact: Impact }) {
+ * always the real current content, so a bare code is never shown alone.
+ *
+ * Editing (isEditing/draft/onDraftChange) mirrors the maquette
+ * ImpactsProposes.tsx exactly : the actual proposed text (recommandation,
+ * question, justification, or -- for a new question -- each maturity
+ * level's answer/recommendation) is edited in place, not a generic summary
+ * field. Persisted as JSON in the single `edited_text` column the backend
+ * already has (see EditedFields/parseEditedPayload) -- no schema change. */
+function ProposedDetails({
+  impact, maturityLevels, expanded, onToggleExpand, activeLevel, onSetActiveLevel,
+  isEditing, draft, onDraftChange,
+}: {
+  impact: Impact;
+  maturityLevels: MaturityLevel[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  activeLevel: number;
+  onSetActiveLevel: (level: number) => void;
+  isEditing: boolean;
+  draft: EditedFields;
+  onDraftChange: (updater: (prev: EditedFields) => EditedFields) => void;
+}) {
   const p = impact.proposedData;
   const key = impactKey(impact);
 
   if (key === "question:ajouter") {
+    const levels = buildSuggestedLevels(impact, maturityLevels);
+    const active = levels.find(l => l.level === activeLevel) ?? levels[0];
+    const draftLevel = active ? draft.levels?.[active.level] : undefined;
+    const questionValue = draft.question ?? p.title ?? "";
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ padding: "10px 12px", backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "#3730A3", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-            Nouvelle question proposée
+        {/* Question proposée -- la dimension est déjà affichée dans la
+            ligne "Dimension concernée" au-dessus de ce bloc (voir le
+            wrapper de la carte), pas besoin de la répéter ici. Modifiable
+            (draft.question), contrairement aux autres champs de ce type
+            avant cette révision -- l'expert peut désormais reformuler la
+            question proposée elle-même, pas seulement les paliers. */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+            Question proposée au référentiel
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{p.title}</div>
-          {p.dimension && (
-            <div style={{ fontSize: 11, fontWeight: 600, color: "#3730A3", marginTop: 4 }}>Dimension : {p.dimension}</div>
-          )}
+          <div style={{ backgroundColor: "#fff", border: `1.5px solid ${isEditing ? "#3730A3" : "#1A1A1A"}`, borderRadius: 6, padding: "12px 14px" }}>
+            {isEditing ? (
+              <textarea
+                value={questionValue}
+                onChange={e => onDraftChange(d => ({ ...d, question: e.target.value }))}
+                style={{ ...editTextareaStyle, fontSize: 13, color: "#1A1A1A", lineHeight: 1.7, minHeight: 60 }}
+              />
+            ) : (
+              <p style={{ fontSize: 13, fontWeight: 400, color: "#1A1A1A", lineHeight: 1.7, margin: 0 }}>{questionValue}</p>
+            )}
+          </div>
         </div>
 
-        {p.level_labels && p.level_labels.length > 0 && (
+        {levels.length > 0 && (
+          // Vue par palier (onglets colorés, mêmes libellés/couleurs que le
+          // barème de maturité réel de l'app -- voir buildSuggestedLevels) :
+          // pour chaque niveau, la réponse type ET la recommandation qui
+          // ferait franchir ce palier, plutôt qu'une liste à plat -- reprend
+          // le comportement de la maquette ImpactsProposes.tsx, avec les
+          // vraies données (level_labels + associated_recommendations),
+          // pas des exemples statiques.
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>
-              Échelle de maturité proposée (réponses possibles)
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {p.level_labels.map((lbl, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ flexShrink: 0, width: 18, height: 18, marginTop: 1, borderRadius: "50%", backgroundColor: "#1A1A1A", color: "#FFE600", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {i + 1}
-                  </span>
-                  <span style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.5 }}>{lbl}</span>
+            <button
+              onClick={onToggleExpand}
+              style={{ width: "100%", padding: "9px 10px", display: "flex", alignItems: "center", gap: 8, background: expanded ? "#FAFAFA" : "#fff", border: "1px solid #E8E8E8", borderRadius: 8, cursor: "pointer", textAlign: "left" }}
+            >
+              <div style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: "#1A1A1A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {expanded ? <ChevronDown size={10} style={{ color: "#fff" }} /> : <ChevronRight size={10} style={{ color: "#fff" }} />}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1A1A" }}>Réponses suggérées par niveau de maturité</span>
+              <span style={{ fontSize: 10, color: "#9B9B9B", marginLeft: "auto" }}>{levels.length} niveaux</span>
+            </button>
+
+            {expanded && (
+              <div style={{ backgroundColor: "#FAFAFA", border: "1px solid #E8E8E8", borderTop: "none", borderRadius: "0 0 8px 8px", padding: "12px 10px" }}>
+                <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
+                  {levels.map(l => {
+                    const isActive = activeLevel === l.level;
+                    return (
+                      <button
+                        key={l.level}
+                        onClick={() => onSetActiveLevel(l.level)}
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", borderRadius: 20, border: `1.5px solid ${isActive ? l.color : "#E0E0E0"}`, backgroundColor: "#fff", cursor: "pointer" }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 800, color: l.color }}>{l.level}</span>
+                        <span style={{ fontSize: 10, fontWeight: isActive ? 600 : 400, color: isActive ? l.color : "#9B9B9B" }}>{l.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+
+                {active && (
+                  <div style={{ display: "grid", gridTemplateColumns: active.recommendation ? "1fr 1fr" : "1fr", gap: 8 }}>
+                    <div style={{ backgroundColor: "#fff", border: `1px solid ${isEditing ? "#3730A3" : `${active.color}22`}`, borderLeft: `3px solid ${active.color}`, borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: active.color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                        Réponse type — Niveau {active.level}
+                      </div>
+                      {isEditing ? (
+                        <textarea
+                          value={draftLevel?.answer ?? active.text}
+                          onChange={e => onDraftChange(d => ({ ...d, levels: { ...d.levels, [active.level]: { ...d.levels?.[active.level], answer: e.target.value } } }))}
+                          style={{ ...editTextareaStyle, fontSize: 11, color: "#3A3A3A", lineHeight: 1.55, minHeight: 60 }}
+                        />
+                      ) : (
+                        <p style={{ fontSize: 11, color: "#3A3A3A", lineHeight: 1.55, margin: 0 }}>{active.text}</p>
+                      )}
+                    </div>
+                    {active.recommendation && (
+                      <div style={{ backgroundColor: "#fff", border: `1px solid ${isEditing ? "#3730A3" : "#E8E8E8"}`, borderLeft: "3px solid #FFE600", borderRadius: 8, padding: "10px 12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, fontWeight: 700, color: "#1A1A1A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                          Recommandation associée
+                          {active.recommendation.is_placeholder && <span style={{ fontSize: 8, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "1px 5px", borderRadius: 3 }}>À rédiger</span>}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#1A1A1A", marginBottom: 2 }}>{active.recommendation.title}</div>
+                        {isEditing ? (
+                          <textarea
+                            value={draftLevel?.recText ?? active.recommendation.recommendation_text}
+                            onChange={e => onDraftChange(d => ({ ...d, levels: { ...d.levels, [active.level]: { ...d.levels?.[active.level], recText: e.target.value } } }))}
+                            style={{ ...editTextareaStyle, fontSize: 11, color: "#4A4A4A", lineHeight: 1.5, minHeight: 60 }}
+                          />
+                        ) : (
+                          active.recommendation.recommendation_text && <p style={{ fontSize: 11, color: "#4A4A4A", lineHeight: 1.5, margin: 0 }}>{active.recommendation.recommendation_text}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
+        {/* Pas d'AssociatedRecommendations ici : la vue par palier
+            ci-dessus reprend déjà associated_recommendations, une palier à
+            la fois -- l'afficher aussi à plat serait redondant. */}
         <WeightRecalcNote impact={impact} />
-        <AssociatedRecommendations impact={impact} />
       </div>
     );
   }
 
   if (key === "question:modifier" || key === "recommandation:modifier") {
     const isQuestion = key === "question:modifier";
+    // Pas de CatalogRefBox ici : le texte EXISTANT s'affiche directement
+    // dans "Texte en vigueur" ci-dessous (le code reste visible dans la
+    // ligne Référence, juste au-dessus de ce bloc) -- pas besoin de le
+    // répéter dans une boîte séparée.
+    const oldText = isQuestion ? p.question_title : p.reco_text;
+    const value = (isQuestion ? draft.question : draft.recommandation) ?? p.modification ?? "";
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <CatalogRefBox
-          kind={isQuestion ? "question" : "recommandation"}
-          code={isQuestion ? p.question_code : p.reco_code}
-          title={isQuestion ? p.question_title : p.reco_title}
-          subtitle={isQuestion ? p.question_dimension : [p.reco_category, p.question_title].filter(Boolean).join(" · ")}
-          text={isQuestion ? undefined : p.reco_text}
-        />
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#9A3412", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
-            Modification proposée
-          </div>
-          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{p.modification}</p>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+          {isQuestion ? "Modifier question" : "Modifier recommandation"}
+        </div>
+        <div style={{ backgroundColor: "#F7F7F7", borderRadius: 6, padding: "10px 12px", marginBottom: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "#9B9B9B", letterSpacing: "0.06em", marginBottom: 4 }}>Texte en vigueur</div>
+          <p style={{ fontSize: 12, color: "#7A7A7A", lineHeight: 1.65, margin: 0 }}>{oldText}</p>
+        </div>
+        <div style={{ backgroundColor: "#fff", border: `1.5px solid ${isEditing ? "#3730A3" : "#1A1A1A"}`, borderRadius: 6, padding: "10px 12px" }}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: "#1A1A1A", letterSpacing: "0.06em", marginBottom: 4 }}>Texte révisé</div>
+          {isEditing ? (
+            <textarea
+              value={value}
+              onChange={e => onDraftChange(d => isQuestion ? { ...d, question: e.target.value } : { ...d, recommandation: e.target.value })}
+              style={{ ...editTextareaStyle, fontSize: 12, color: "#1A1A1A", lineHeight: 1.6, minHeight: 64 }}
+            />
+          ) : (
+            <p style={{ fontSize: 12, color: "#1A1A1A", lineHeight: 1.6, margin: 0 }}>{value}</p>
+          )}
         </div>
       </div>
     );
@@ -216,6 +397,7 @@ function ProposedDetails({ impact }: { impact: Impact }) {
 
   if (key === "question:desactiver" || key === "recommandation:desactiver") {
     const isQuestion = key === "question:desactiver";
+    const value = draft.justification ?? p.justification ?? "";
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <CatalogRefBox
@@ -223,13 +405,22 @@ function ProposedDetails({ impact }: { impact: Impact }) {
           code={isQuestion ? p.question_code : p.reco_code}
           title={isQuestion ? p.question_title : p.reco_title}
           subtitle={isQuestion ? p.question_dimension : [p.reco_category, p.question_title].filter(Boolean).join(" · ")}
-          text={isQuestion ? undefined : p.reco_text}
         />
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#B91C1C", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#B91C1C", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
             Motif de désactivation
           </div>
-          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{p.justification}</p>
+          <div style={{ backgroundColor: "#fff", border: `1.5px solid ${isEditing ? "#3730A3" : "#1A1A1A"}`, borderRadius: 6, padding: "10px 12px" }}>
+            {isEditing ? (
+              <textarea
+                value={value}
+                onChange={e => onDraftChange(d => ({ ...d, justification: e.target.value }))}
+                style={{ ...editTextareaStyle, fontSize: 12, color: "#1A1A1A", lineHeight: 1.6, minHeight: 64 }}
+              />
+            ) : (
+              <p style={{ fontSize: 12, color: "#1A1A1A", lineHeight: 1.6, margin: 0 }}>{value}</p>
+            )}
+          </div>
         </div>
         <span style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic" }}>Passera au statut « obsolète » (jamais supprimé) à la publication.</span>
         <WeightRecalcNote impact={impact} />
@@ -238,14 +429,21 @@ function ProposedDetails({ impact }: { impact: Impact }) {
   }
 
   if (key === "recommandation:ajouter") {
+    const value = draft.recommandation ?? p.recommendation_text ?? "";
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ padding: "10px 12px", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-            Nouvelle recommandation proposée
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{p.title}</div>
-          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: "5px 0 0" }}>{p.recommendation_text}</p>
+        <div style={{ fontSize: 10, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.08em" }}>Recommandation</div>
+        <div style={{ backgroundColor: "#fff", border: `1.5px solid ${isEditing ? "#3730A3" : "#1A1A1A"}`, borderRadius: 6, padding: "12px 14px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>{p.title}</div>
+          {isEditing ? (
+            <textarea
+              value={value}
+              onChange={e => onDraftChange(d => ({ ...d, recommandation: e.target.value }))}
+              style={{ ...editTextareaStyle, fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, minHeight: 64 }}
+            />
+          ) : (
+            <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{value}</p>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -268,21 +466,20 @@ function ProposedDetails({ impact }: { impact: Impact }) {
     );
   }
 
-  // recommandation:activer_flag
+  // recommandation:activer_flag ("réglementaire") -- jamais éditable, ni
+  // dans la maquette (pas de bouton "Modifier" pour ce type) ni ici :
+  // c'est une recommandation EXISTANTE, il n'y a pas de nouveau texte à
+  // rédiger, juste son indicateur réglementaire à activer.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <CatalogRefBox
-        kind="recommandation"
-        code={p.reco_code}
-        title={p.reco_title}
-        subtitle={[p.reco_category, p.question_title].filter(Boolean).join(" · ")}
-        text={p.reco_text}
-      />
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "8px 10px", backgroundColor: "#FDF4FF", border: "1px solid #F3E8FF", borderRadius: 6 }}>
-        <ShieldCheck size={13} style={{ color: "#6B21A8", flexShrink: 0, marginTop: 1 }} />
-        <span style={{ fontSize: 12, color: "#6B21A8", lineHeight: 1.5 }}>
-          Cette recommandation existante couvre déjà l'exigence de la circulaire — elle sera marquée comme <strong>obligation réglementaire</strong> (indicateur activé), sans changer son contenu.
-        </span>
+      <div style={{ fontSize: 10, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.08em" }}>Recommandation à qualifier</div>
+      <div style={{ backgroundColor: "#fff", border: "1px solid #1A1A1A", borderRadius: 6, padding: "14px 16px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>{p.reco_title}</div>
+        <p style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.75, margin: 0 }}>{p.reco_text}</p>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <ShieldCheck size={13} style={{ color: "#3730A3" }} />
+        <span style={{ fontSize: 11, color: "#3730A3", fontWeight: 500 }}>Cette recommandation doit être marquée comme exigence réglementaire dans le référentiel.</span>
       </div>
     </div>
   );
@@ -558,6 +755,18 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                   <span style={{ fontSize: 12, color: "#3730A3" }}>L'analyse des impacts sur le référentiel est prête à être validée.</span>
                 </div>
               )}
+              {/* analysisError peut être renseigné même en cas de succès
+                  ("terminee") : signale un résultat PARTIEL -- une ou
+                  plusieurs sections du document n'ont pas pu être
+                  analysées (panne transitoire locale) alors que le reste
+                  a bien été traité -- distinct du cas impactCount === 0
+                  ci-dessus (aucune section en échec, juste rien détecté). */}
+              {result.analysisError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 14px", backgroundColor: "#FFF3E0", borderRadius: 8, border: "1px solid #FFE0B2" }}>
+                  <AlertTriangle size={13} style={{ color: "#9A5B00", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: "#9A5B00" }}>{result.analysisError}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -591,7 +800,31 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
   const [published, setPublished] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editText, setEditText] = useState("");
+  // Brouillon d'édition RICHE (par champ réel -- recommandation, question,
+  // justification, ou par palier pour une nouvelle question), pas un texte
+  // générique -- voir EditedFields. Un seul brouillon actif à la fois
+  // (editingId), comme aujourd'hui -- pas besoin d'un Record par impact.
+  const [editDraft, setEditDraft] = useState<EditedFields>({});
+  // Vue par défaut : par article (précise mais lisible, voir
+  // split_into_articles côté backend) -- bascule vers le texte intégral
+  // sur demande, pour ne jamais rendre inaccessible le préambule/les visas
+  // non repris dans la vue par article (voir sa docstring).
+  const [showFullText, setShowFullText] = useState(false);
+  // Onglets "par palier de maturité" (voir ProposedDetails/question:ajouter) :
+  // état par impact (id), pas un seul état global -- plusieurs cartes
+  // "nouvelle question" peuvent être ouvertes/à des niveaux différents en
+  // même temps sans se marcher dessus.
+  const [expandedLevels, setExpandedLevels] = useState<Record<number, boolean>>({});
+  const [activeLevelByImpact, setActiveLevelByImpact] = useState<Record<number, number>>({});
+  // Barème de maturité RÉEL (label + couleur), la même source que partout
+  // ailleurs dans l'app (AdminScoring, ResultsPage...) -- reflète un
+  // libellé/couleur personnalisé par l'admin plutôt qu'un nom générique
+  // codé en dur. Echec silencieux : ProposedDetails retombe sur "Niveau N"
+  // si l'appel échoue, ce n'est qu'un habillage, pas une donnée critique.
+  const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
+  useEffect(() => {
+    getMaturityLevels().then(setMaturityLevels).catch(() => {});
+  }, []);
 
   async function setAction(id: string | number, action: ImpactAction, editedText?: string) {
     const prev = impacts;
@@ -605,12 +838,39 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
   }
 
   function startEdit(impact: Impact) {
+    // Pré-remplit le brouillon avec un edited_text déjà structuré s'il y en
+    // a un (ré-édition), sinon avec le contenu PROPOSÉ actuel (jamais un
+    // champ vide) -- exactement le comportement de la maquette.
+    const existing = parseEditedPayload(impact.editedText) ?? {};
+    const p = impact.proposedData;
+    const key = impactKey(impact);
+    const draft: EditedFields = { ...existing };
+    if (key === "recommandation:modifier") draft.recommandation ??= p.modification ?? "";
+    if (key === "recommandation:ajouter") draft.recommandation ??= p.recommendation_text ?? "";
+    if (key === "question:modifier") draft.question ??= p.modification ?? "";
+    if (key === "question:desactiver" || key === "recommandation:desactiver") draft.justification ??= p.justification ?? "";
+    if (key === "question:ajouter") {
+      draft.question ??= p.title ?? "";
+      const levels: NonNullable<EditedFields["levels"]> = { ...(existing.levels ?? {}) };
+      (p.level_labels ?? []).forEach((lbl, i) => {
+        const lvl = i + 1;
+        const rec = (p.associated_recommendations ?? []).find(r => r.trigger_level === lvl);
+        levels[lvl] = {
+          answer: levels[lvl]?.answer ?? lbl,
+          recText: levels[lvl]?.recText ?? rec?.recommendation_text ?? "",
+        };
+      });
+      draft.levels = levels;
+      // Ouvre directement les paliers en édition -- sinon rien n'est
+      // visible à modifier tant que l'expert ne clique pas séparément.
+      setExpandedLevels(p2 => ({ ...p2, [impact.id]: true }));
+    }
+    setEditDraft(draft);
     setEditingId(impact.id);
-    setEditText(impact.editedText ?? impact.requirementText);
   }
 
   async function saveEdit(id: number) {
-    await setAction(id, "modifié", editText);
+    await setAction(id, "modifié", JSON.stringify(editDraft));
     setEditingId(null);
   }
 
@@ -663,14 +923,7 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
           <span style={{ color: "#1A1A1A", fontWeight: 600 }}>Analyse — {circular.reference}</span>
         </div>
 
-        <div style={{ display: "flex", gap: 10, padding: "12px 16px", backgroundColor: "#EEF2FF", borderRadius: 8, border: "1px solid #C7D2FE", marginBottom: 22 }}>
-          <Sparkles size={15} style={{ color: "#3730A3", flexShrink: 0, marginTop: 1 }} />
-          <div>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#3730A3" }}>Analyse générée par IA</span>
-            <span style={{ fontSize: 13, color: "#4338CA" }}> — à valider par un expert avant publication.</span>
-            <div style={{ fontSize: 12, color: "#6366F1", marginTop: 2 }}>Acceptez, modifiez ou rejetez chaque exigence détectée pour mettre à jour le référentiel.</div>
-          </div>
-        </div>
+  
 
         <div style={{ ...card, padding: "14px 20px", marginBottom: 22, display: "flex", alignItems: "center", gap: 20 }}>
           <div style={{ flex: 1 }}>
@@ -707,21 +960,71 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                   {circular.detectedLanguage === "ar" ? "AR" : "FR"}
                 </span>
               )}
-              {circular.sourceUrl && (
-                <a href={circular.sourceUrl} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#6B6B6B", textDecoration: "none" }}>
-                  <ExternalLink size={11} /> Ouvrir
-                </a>
-              )}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+                {circular.articles.length > 0 && (
+                  // Bascule vue par article (par défaut, précise et lisible)
+                  // / texte intégral -- le préambule et les visas ("Vu la
+                  // loi...") ne sont pas repris dans la vue par article (ils
+                  // font doublon avec l'en-tête institution/référence/thème
+                  // déjà affiché, voir split_into_articles côté backend) :
+                  // cette bascule garantit qu'ils restent accessibles en un
+                  // clic, rien n'est jamais masqué définitivement.
+                  <button
+                    onClick={() => setShowFullText(v => !v)}
+                    style={{ fontSize: 11, fontWeight: 600, color: "#6366F1", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                  >
+                    {showFullText ? "Vue par article" : "Texte intégral"}
+                  </button>
+                )}
+                {circular.sourceUrl && (
+                  <a href={circular.sourceUrl} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#6B6B6B", textDecoration: "none" }}>
+                    <ExternalLink size={11} /> Ouvrir
+                  </a>
+                )}
+              </div>
             </div>
             <div style={{ padding: "16px", fontSize: 12, color: "#4A4A4A", lineHeight: 1.8, maxHeight: 520, overflowY: "auto" }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A1A", marginBottom: 2 }}>{circular.reference}</div>
-              <div style={{ fontSize: 11, color: "#9B9B9B", marginBottom: 12 }}>
-                {formatDate(circular.publicationDate)}{circular.sourceFilename ? ` · ${circular.sourceFilename}` : ""}
+              {/* En-tête façon "minute officielle" : institution puis
+                  référence · date, puis le thème en titre -- l'admin doit
+                  reconnaître le document d'un coup d'œil, comme dans
+                  l'exemple fourni (Banque Centrale de Tunisie / Circulaire
+                  n°... · date / objet). Ne remplace PAS le texte : tout ce
+                  qui suit (les articles) reste le texte intégral, jamais
+                  résumé -- voir split_into_articles côté backend. */}
+              <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
+                {circular.institution && (
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                    {circular.institution}
+                  </div>
+                )}
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 8 }}>
+                  {circular.reference}
+                  {circular.publicationDate ? ` · ${formatDate(circular.publicationDate)}` : ""}
+                  {circular.sourceFilename ? ` · ${circular.sourceFilename}` : ""}
+                </div>
+                {circular.theme && (
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{circular.theme}</div>
+                )}
               </div>
-              {circular.theme && (
-                <div style={{ fontWeight: 600, color: "#1A1A1A", marginBottom: 10, fontSize: 12 }}>{circular.theme}</div>
-              )}
-              {circular.rawText ? (
+
+              {circular.articles.length > 0 && !showFullText ? (
+                // Découpage par article (précis, verbatim -- pas un résumé
+                // généré) : chaque bloc affiche son marqueur ("Art. N")
+                // suivi du texte exact de l'article, comme le sommaire
+                // d'un texte réglementaire.
+                <div>
+                  {circular.articles.map((a, i) => (
+                    <p key={i} style={{ margin: i === circular.articles.length - 1 ? 0 : "0 0 14px" }}>
+                      {a.label && <strong style={{ color: "#1A1A1A" }}>{a.label} : </strong>}
+                      {a.text}
+                    </p>
+                  ))}
+                </div>
+              ) : circular.rawText ? (
+                // Texte intégral tel quel -- soit parce qu'aucun marqueur
+                // d'article n'a été détecté (note, communiqué non
+                // structuré...), soit sur demande explicite (bascule
+                // ci-dessus) pour retrouver le préambule/les visas.
                 <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{circular.rawText}</p>
               ) : (
                 <p style={{ color: "#9B9B9B", fontStyle: "italic" }}>Texte source indisponible.</p>
@@ -734,92 +1037,160 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
               Impacts proposés <span style={{ fontSize: 12, fontWeight: 400, color: "#9B9B9B" }}>· {total} exigence{total !== 1 ? "s" : ""}</span>
             </div>
 
-            {impacts.map(c => (
-              <div key={c.id} style={{
-                ...card, padding: "16px 18px",
-                borderLeft: c.action === "accepté" ? "3px solid #2E7D32"
-                  : c.action === "rejeté"  ? "3px solid #CC0000"
-                  : c.action === "modifié" ? "3px solid #E65100"
-                  : "3px solid rgba(0,0,0,0.07)",
-                opacity: c.action === "rejeté" ? 0.55 : 1,
-                transition: "all 0.18s",
-              }}>
-                <p style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.55, margin: "0 0 6px", fontWeight: 600 }}>
-                  {c.editedText || c.requirementText}
-                </p>
-                {c.excerpt && (
-                  <p style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic", lineHeight: 1.5, margin: c.excerptOriginal ? "0 0 4px" : "0 0 10px", borderLeft: "2px solid #E0E0E0", paddingLeft: 8 }}>
-                    « {c.excerpt} »
-                  </p>
-                )}
-                {c.excerptOriginal && (
-                  <p
-                    dir="rtl"
-                    title="Texte original de la circulaire (avant traduction)"
-                    style={{ fontSize: 11, color: "#B0B0B0", fontStyle: "italic", lineHeight: 1.6, margin: "0 0 10px", borderLeft: "2px solid #E0E0E0", paddingLeft: 8, textAlign: "right" }}
-                  >
-                    « {c.excerptOriginal} »
-                  </p>
-                )}
+            {impacts.map(c => {
+              const key = impactKey(c);
+              const typeColor = IMPACT_COLOR[key] ?? { bg: "#F5F5F5", color: "#6B6B6B" };
+              const actionColor = c.action === "accepté" ? "#2E7D32" : c.action === "rejeté" ? "#CC0000" : c.action === "modifié" ? "#E65100" : null;
+              const isEditing = editingId === c.id;
+              const { element, dimension } = impactElementAndDimension(c);
+              const isActivationFlag = key === "recommandation:activer_flag";
+              // Un edited_text pré-existant qui n'est PAS du JSON structuré :
+              // un edit "résumé" fait avant ce rebuild -- affiché tel quel
+              // en repli plutôt que silencieusement perdu.
+              const legacyEdit = !isEditing && c.editedText && !parseEditedPayload(c.editedText) ? c.editedText : null;
 
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <TypeBadge impact={c} />
+              return (
+                <div key={c.id} style={{
+                  backgroundColor: "#fff", borderRadius: 10, overflow: "hidden",
+                  border: `1px solid ${actionColor ? `${actionColor}30` : "#E8E8E8"}`,
+                  boxShadow: actionColor ? `0 0 0 1px ${actionColor}18` : "0 1px 4px rgba(0,0,0,0.05)",
+                  opacity: c.action === "rejeté" ? 0.55 : 1,
+                  transition: "all 0.2s",
+                }}>
+                  {/* Barre d'accent */}
+                  <div style={{ height: 3, backgroundColor: actionColor ?? "#E0E0E0" }} />
+
+                  {/* En-tête : type + statut */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px 12px", borderBottom: "1px solid #F2F2F2" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: typeColor.color, backgroundColor: typeColor.bg, padding: "3px 9px", borderRadius: 4, letterSpacing: "0.04em" }}>
+                      {(IMPACT_LABEL[key] ?? key).toUpperCase()}
+                    </span>
+                    {actionColor && (
+                      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: actionColor }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: actionColor }} />
+                        {c.action === "accepté" ? "Accepté" : c.action === "rejeté" ? "Rejeté" : "À modifier"}
+                      </span>
+                    )}
                   </div>
-                  <ProposedDetails impact={c} />
-                </div>
 
-                {editingId === c.id ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <textarea
-                      value={editText}
-                      onChange={e => setEditText(e.target.value)}
-                      rows={3}
-                      style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1.5px solid rgba(0,0,0,0.13)", fontSize: 12, outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                      autoFocus
-                    />
-                    <div style={{ display: "flex", gap: 7, justifyContent: "flex-end" }}>
-                      <button onClick={() => setEditingId(null)} style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", color: "#6B6B6B" }}>Annuler</button>
-                      <button onClick={() => saveEdit(c.id)} style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 700, border: "none", backgroundColor: "#E65100", color: "#fff", cursor: "pointer" }}>Enregistrer</button>
+                  {/* Exigence + Dimension (tous types, jamais éditable --
+                      c'est un résumé, le contenu réellement proposé
+                      (recommandation/question/paliers) s'édite plus bas,
+                      dans ProposedDetails). */}
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid #F2F2F2" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#C0C0C0", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Exigence réglementaire</div>
+                    <p style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.65, margin: 0, fontWeight: 500 }}>{c.requirementText}</p>
+                    {legacyEdit && (
+                      <p style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic", lineHeight: 1.5, margin: "6px 0 0" }}>Résumé modifié : {legacyEdit}</p>
+                    )}
+                  </div>
+                  <div style={{ padding: "11px 18px", borderBottom: "1px solid #F2F2F2", display: "flex", gap: 24 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#C0C0C0", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Dimension concernée</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "#3A3A3A" }}>{dimension || "—"}</div>
+                    </div>
+                    <div style={{ borderLeft: "1px solid #F0F0F0", paddingLeft: 24 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#C0C0C0", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Référence</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A", fontFamily: "monospace" }}>{element || "—"}</div>
                     </div>
                   </div>
-                ) : c.action !== null ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "3px 10px",
-                      backgroundColor: c.action === "accepté" ? "#E8F5E9" : c.action === "rejeté" ? "#FFEBEE" : "#FFF3E0",
-                      color:           c.action === "accepté" ? "#2E7D32" : c.action === "rejeté" ? "#CC0000"  : "#E65100",
-                    }}>
-                      {c.action === "accepté" ? "✓ Accepté" : c.action === "rejeté" ? "✕ Rejeté" : "✎ Modifié"}
-                    </span>
-                    <button onClick={() => setAction(c.id, null)} style={{ fontSize: 11, color: "#9B9B9B", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-                      Annuler
-                    </button>
+
+                  {/* Détail spécifique au type -- voir ProposedDetails */}
+                  <div style={{ padding: "20px 18px", borderBottom: "1px solid #F2F2F2" }}>
+                    <ProposedDetails
+                      impact={c}
+                      maturityLevels={maturityLevels}
+                      expanded={expandedLevels[c.id] ?? false}
+                      onToggleExpand={() => setExpandedLevels(p => ({ ...p, [c.id]: !p[c.id] }))}
+                      activeLevel={activeLevelByImpact[c.id] ?? 1}
+                      onSetActiveLevel={lvl => setActiveLevelByImpact(p => ({ ...p, [c.id]: lvl }))}
+                      isEditing={isEditing}
+                      draft={isEditing ? editDraft : (parseEditedPayload(c.editedText) ?? {})}
+                      onDraftChange={updater => setEditDraft(updater)}
+                    />
                   </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 7 }}>
-                    <button
-                      onClick={() => setAction(c.id, "accepté")}
-                      style={{ display: "flex", alignItems: "center", gap: 5, flex: 1, justifyContent: "center", padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #2E7D32", backgroundColor: "#fff", color: "#2E7D32", cursor: "pointer", transition: "all 0.12s" }}
-                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2E7D32"; b.style.color = "#fff"; }}
-                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#2E7D32"; }}
-                    ><Check size={12} /> Accepter</button>
-                    <button
-                      onClick={() => startEdit(c)}
-                      style={{ display: "flex", alignItems: "center", gap: 5, flex: 1, justifyContent: "center", padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #E65100", backgroundColor: "#fff", color: "#E65100", cursor: "pointer", transition: "all 0.12s" }}
-                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#E65100"; b.style.color = "#fff"; }}
-                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#E65100"; }}
-                    ><Edit2 size={12} /> Modifier</button>
-                    <button
-                      onClick={() => setAction(c.id, "rejeté")}
-                      style={{ display: "flex", alignItems: "center", gap: 5, flex: 1, justifyContent: "center", padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #CC0000", backgroundColor: "#fff", color: "#CC0000", cursor: "pointer", transition: "all 0.12s" }}
-                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#CC0000"; b.style.color = "#fff"; }}
-                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#CC0000"; }}
-                    ><XCircle size={12} /> Rejeter</button>
+
+                  {/* Pied d'action */}
+                  <div style={{ padding: "11px 18px", backgroundColor: c.action ? "#FAFAFA" : "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    {isEditing ? (
+                      <>
+                        <span style={{ fontSize: 11, color: "#3730A3", fontWeight: 500 }}>Mode édition — modifiez les champs ci-dessus</span>
+                        <div style={{ display: "flex", gap: 7 }}>
+                          <button onClick={() => setEditingId(null)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #E0E0E0", backgroundColor: "#fff", color: "#4A4A4A", cursor: "pointer" }}>
+                            <X size={12} /> Annuler
+                          </button>
+                          <button onClick={() => saveEdit(c.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer" }}>
+                            <Check size={12} /> Confirmer
+                          </button>
+                        </div>
+                      </>
+                    ) : c.action === "accepté" || c.action === "rejeté" ? (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: actionColor! }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: actionColor! }}>
+                            {isActivationFlag
+                              ? (c.action === "accepté" ? "Marquée comme réglementaire — sera intégrée au référentiel" : "Non qualifiée comme réglementaire")
+                              : (c.action === "accepté" ? "Acceptée — sera intégrée au référentiel" : "Rejetée — non intégrée")}
+                          </span>
+                        </div>
+                        <button onClick={() => setAction(c.id, null)} style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", background: "#fff", border: "1px solid #E0E0E0", borderRadius: 5, padding: "5px 12px", cursor: "pointer", flexShrink: 0 }}>
+                          Annuler
+                        </button>
+                      </>
+                    ) : c.action === "modifié" ? (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: actionColor! }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: actionColor! }}>Modifié — en attente de validation finale</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 7 }}>
+                          <button onClick={() => setAction(c.id, null)} style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", background: "#fff", border: "1px solid #E0E0E0", borderRadius: 5, padding: "5px 12px", cursor: "pointer" }}>Annuler</button>
+                          <button
+                            onClick={() => setAction(c.id, "accepté")}
+                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #2E7D3230", backgroundColor: "#2E7D320A", color: "#2E7D32", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2E7D32"; b.style.color = "#fff"; }}
+                            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2E7D320A"; b.style.color = "#2E7D32"; }}
+                          ><Check size={12} /> Accepter</button>
+                          <button
+                            onClick={() => setAction(c.id, "rejeté")}
+                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #CC000030", backgroundColor: "#CC00000A", color: "#CC0000", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#CC0000"; b.style.color = "#fff"; }}
+                            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#CC00000A"; b.style.color = "#CC0000"; }}
+                          ><XCircle size={12} /> Rejeter</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 11, color: "#C0C0C0" }}>En attente de décision</span>
+                        <div style={{ display: "flex", gap: 7 }}>
+                          <button
+                            onClick={() => setAction(c.id, "accepté")}
+                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #2E7D3230", backgroundColor: "#2E7D320A", color: "#2E7D32", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2E7D32"; b.style.color = "#fff"; }}
+                            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2E7D320A"; b.style.color = "#2E7D32"; }}
+                          ><Check size={12} /> Accepter</button>
+                          {!isActivationFlag && (
+                            <button
+                              onClick={() => startEdit(c)}
+                              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #E6510030", backgroundColor: "#E651000A", color: "#E65100", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                              onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#E65100"; b.style.color = "#fff"; }}
+                              onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#E651000A"; b.style.color = "#E65100"; }}
+                            ><Edit2 size={12} /> Modifier</button>
+                          )}
+                          <button
+                            onClick={() => setAction(c.id, "rejeté")}
+                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #CC000030", backgroundColor: "#CC00000A", color: "#CC0000", cursor: "pointer", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#CC0000"; b.style.color = "#fff"; }}
+                            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#CC00000A"; b.style.color = "#CC0000"; }}
+                          ><XCircle size={12} /> Rejeter</button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
 
             {total === 0 && (
               <div style={{ ...card, padding: "24px 18px", textAlign: "center", fontSize: 13, color: "#9B9B9B" }}>
@@ -954,7 +1325,7 @@ export function VeilleReglementaire() {
             <button
               onClick={reindex}
               disabled={reindexing}
-              title="Ré-encode le référentiel (questions + recommandations) pour la recherche RAG"
+              title="Ré-encode le référentiel (questions + recommandations) pour le modèle IA"
               style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", color: "#4A4A4A", cursor: reindexing ? "wait" : "pointer", whiteSpace: "nowrap" }}
             >
               {reindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Réindexer le référentiel
@@ -1038,6 +1409,15 @@ export function VeilleReglementaire() {
                   {c.analysisStatus === "erreur" && (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#CC0000", backgroundColor: "#FFEBEE", padding: "2px 7px", borderRadius: 4 }}>
                       <AlertTriangle size={10} /> Échec de l'analyse
+                    </span>
+                  )}
+                  {/* analysisStatus "terminee" + analysisError renseigne :
+                      resultat PARTIEL (une ou plusieurs sections en echec,
+                      voir services/regulatory.py run_circular_analysis) --
+                      distinct de "erreur" ci-dessus (echec total). */}
+                  {c.analysisStatus === "terminee" && c.analysisError && (
+                    <span title={c.analysisError} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "2px 7px", borderRadius: 4 }}>
+                      <AlertTriangle size={10} /> Analyse partielle
                     </span>
                   )}
                   {c.pendingCount > 0 && (

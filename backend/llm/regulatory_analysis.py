@@ -261,64 +261,92 @@ def find_original_context(chunk: str, full_french_text: str, blocks: list[Transl
     return "\n\n".join(matching) if matching else chunk
 
 
-# ── Extraction reference/theme (une fois par circulaire, sur l'en-tete) ──
+# ── Extraction des metadonnees (une fois par circulaire, sur l'en-tete) ──
 
 _EXTRACT_REF_SYSTEM_PROMPT = """\
 Tu extrais des metadonnees d'une circulaire reglementaire bancaire depuis
-son en-tete. Reponds uniquement en JSON strict conforme au schema demande."""
+son en-tete. Tu n'inventes JAMAIS une valeur absente du texte : si un champ
+n'est pas identifiable, renvoie une chaine vide pour ce champ plutot que de
+deviner. Reponds uniquement en JSON strict conforme au schema demande."""
 
 _EXTRACT_REF_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "reference": {"type": "string"},
         "theme": {"type": "string"},
+        "institution": {"type": "string"},
+        "publication_date": {"type": "string"},
     },
-    "required": ["reference", "theme"],
+    "required": ["reference", "theme", "institution", "publication_date"],
     "additionalProperties": False,
 }
 
-# L'en-tete (reference, objet) est quasi toujours dans les tout premiers
-# paragraphes -- inutile d'envoyer tout le document pour cette extraction.
+# L'en-tete (institution, reference, date, objet) est quasi toujours dans
+# les tout premiers paragraphes -- inutile d'envoyer tout le document pour
+# cette extraction.
 _EXTRACT_REF_HEAD_CHARS = 2000
 
 
-def extract_reference_theme(text: str) -> dict[str, str]:
-    """Extrait automatiquement la reference courte (ex. "Circulaire BCT
-    n°2024-09 du 5 fevrier 2026") et le theme de la circulaire depuis son
-    texte -- appeler APRES une eventuelle traduction (le texte doit etre
-    en francais, voir ``translate_document_to_french``), sur le texte
-    complet ou juste son debut (seul l'en-tete est utilise ici).
+def extract_document_metadata(text: str) -> dict[str, str]:
+    """Extrait automatiquement, depuis l'en-tete de la circulaire :
+    - ``reference`` : ex. "Circulaire BCT n°2024-09", SANS la date (voir
+      ``publication_date`` ci-dessous, extraite separement) ;
+    - ``theme`` : l'objet, en quelques mots ;
+    - ``institution`` : l'autorite emettrice, ex. "Banque Centrale de
+      Tunisie" ;
+    - ``publication_date`` : la date de la circulaire TELLE QU'ECRITE dans
+      le document (pas la date d'import), au format ISO ``AAAA-MM-JJ`` si
+      elle est determinable, chaine vide sinon.
+
+    Appeler APRES une eventuelle traduction (le texte doit etre en
+    francais, voir ``translate_document_to_french``), sur le texte complet
+    ou juste son debut (seul l'en-tete est utilise ici).
 
     Permet a l'admin d'importer une circulaire sans devoir saisir
-    manuellement sa reference/son theme : ils sont proposes automati-
-    quement (voir ``app/services/regulatory.py``).
+    manuellement ces informations : elles sont proposees automatiquement
+    (voir ``app/services/regulatory.py``) -- important en contexte
+    bancaire, ou la date/reference reelles du texte reglementaire priment
+    sur la date a laquelle l'outil interne l'a recu.
 
-    Retourne ``{"reference": "", "theme": ""}`` si l'extraction echoue
-    (LLM indisponible, reponse invalide) -- l'appelant affiche alors un
-    repli (ex. le nom du fichier) plutot que de bloquer l'import."""
+    Retourne un dict avec les 4 cles ci-dessus, toutes vides, si
+    l'extraction echoue (LLM indisponible, reponse invalide) -- l'appelant
+    garde alors ses valeurs de repli (ex. le nom du fichier, la date
+    d'import) plutot que de bloquer l'import."""
+    empty = {"reference": "", "theme": "", "institution": "", "publication_date": ""}
     head = text.strip()[:_EXTRACT_REF_HEAD_CHARS]
     if not head:
-        return {"reference": "", "theme": ""}
+        return empty
     user_prompt = f"""Texte (debut de la circulaire) :
 ---
 {head}
 ---
 
-Extrait la reference courte du document (ex. "Circulaire BCT n°2024-09
-du 5 fevrier 2026", ou un intitule court si aucune reference numerotee
-n'est visible) et son theme en quelques mots.
+Extrait :
+- la reference courte du document, SANS la date -- elle est extraite
+  separement ci-dessous (ex. "Circulaire BCT n°2024-09", ou un intitule
+  court si aucune reference numerotee n'est visible) ;
+- son theme (l'objet) en quelques mots ;
+- l'institution emettrice (ex. "Banque Centrale de Tunisie") ;
+- sa date de publication telle qu'ecrite dans le texte, au format ISO
+  AAAA-MM-JJ (chaine vide si non determinable -- n'invente jamais une
+  date absente du texte).
 
-Reponds en JSON avec exactement les cles "reference" et "theme"."""
+Reponds en JSON avec exactement les cles "reference", "theme",
+"institution", "publication_date"."""
     try:
         raw = call_regulatory_llm(_EXTRACT_REF_SYSTEM_PROMPT, user_prompt, _EXTRACT_REF_SCHEMA, max_output_tokens=300)
         parsed = json.loads(raw)
-        reference = str(parsed.get("reference") or "").strip()
-        theme = str(parsed.get("theme") or "").strip()
-        if _contains_garbage_token(reference, theme):
-            return {"reference": "", "theme": ""}
-        return {"reference": reference, "theme": theme}
+        result = {
+            "reference": str(parsed.get("reference") or "").strip(),
+            "theme": str(parsed.get("theme") or "").strip(),
+            "institution": str(parsed.get("institution") or "").strip(),
+            "publication_date": str(parsed.get("publication_date") or "").strip(),
+        }
+        if _contains_garbage_token(*result.values()):
+            return empty
+        return result
     except Exception:
-        return {"reference": "", "theme": ""}
+        return empty
 
 
 def build_retrieval_query(chunk: str, langue: str) -> str:
@@ -337,6 +365,149 @@ def build_retrieval_query(chunk: str, langue: str) -> str:
     ``langue`` vaut toujours "fr" en pratique -- le parametre est gardé
     pour la clarte de l'appelant plutot que retire."""
     return chunk
+
+
+# ── Recommandations par palier (une question:ajouter, une fois analysee) ──
+
+_PALIER_TRANSITIONS = ((1, 2), (2, 3), (3, 4), (4, 5))
+
+_PALIER_RECOMMENDATIONS_SYSTEM_PROMPT = """\
+Tu es un assistant qui redige des recommandations d'amelioration pour un
+referentiel d'evaluation de maturite data bancaire. Pour UNE question de
+maturite (nouvellement proposee), tu dois rediger UNE recommandation par
+palier de progression (niveau N vers niveau N+1, pour N de 1 a 4) : l'action
+concrete qu'une banque situee au niveau N sur cette question doit mener
+pour atteindre le niveau N+1.
+
+Chaque recommandation :
+- traduit l'ecart entre le niveau N et le niveau N+1 (fournis ci-dessous)
+  en une action CONCRETE que la banque doit mener, jamais un simple
+  constat de l'ecart ;
+- reste GENERIQUE (applicable a n'importe quelle banque) : tu n'as pas le
+  contexte d'un etablissement precis, tu ne dois JAMAIS en inventer un ;
+- titre de 8 mots maximum, texte de 2 phrases maximum ;
+- categorie parmi : strategie, gouvernance, qualite, architecture,
+  securite, competences ;
+- effort estime de 1 (faible) a 3 (eleve).
+
+Reponds uniquement en JSON strict conforme au schema demande."""
+
+_PALIER_RECOMMENDATIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "recommandations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "trigger_level": {"type": "integer", "enum": [1, 2, 3, 4]},
+                    "title": {"type": "string"},
+                    "recommendation_text": {"type": "string"},
+                    "category": {"type": "string"},
+                    "effort": {"type": "integer"},
+                },
+                "required": ["trigger_level", "title", "recommendation_text", "category", "effort"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["recommandations"],
+    "additionalProperties": False,
+}
+
+
+def _placeholder_associated_recommendations() -> list[dict[str, Any]]:
+    """Ebauches generiques (is_placeholder=True, texte vide) -- repli
+    utilise si la generation LLM (ci-dessous) echoue entierement ou pour
+    les paliers qu'elle n'a pas reussi a produire correctement. Jamais
+    publiees telles quelles ; l'admin les complete pendant la revue."""
+    return [
+        {
+            "trigger_level": trigger,
+            "title": f"Recommandation à définir (niveau {trigger} → {target})",
+            "recommendation_text": "",
+            "category": "Conformité",
+            "effort": 2,
+            "is_placeholder": True,
+        }
+        for trigger, target in _PALIER_TRANSITIONS
+    ]
+
+
+def generate_palier_recommendations(
+    question_title: str, dimension: str, level_labels: list[str]
+) -> list[dict[str, Any]]:
+    """Fait rediger par le LLM une recommandation par palier de progression
+    (1->2, 2->3, 3->4, 4->5) pour une question de maturite NOUVELLEMENT
+    PROPOSEE -- meme mecanisme (meme fournisseur Gemini/local, memes
+    champs title/recommendation_text/category/effort) que la generation
+    d'une recommandation "ajouter" autonome, applique ici aux 4 transitions
+    d'un coup (un seul appel LLM, pas quatre).
+
+    Historique : ces 4 paliers etaient auparavant de pures ebauches
+    generiques ("Recommandation a definir...", texte vide) que l'admin
+    devait integralement rediger -- un modele local etait juge peu fiable
+    sur une structure a 4 elements imbriques (voir Task 7). Le repli
+    Gemini-first (voir ``call_regulatory_llm``) et la validation stricte
+    ci-dessous (chaque palier est ecarte individuellement s'il echoue,
+    plutot que de rejeter tout le lot) rendent maintenant cette generation
+    fiable.
+
+    Retourne TOUJOURS exactement 4 elements (trigger_level 1 a 4) : tout
+    palier que le LLM n'a pas produit -- ou dont la reponse est invalide
+    (champ vide, jeton de remplissage type "None"/"null") -- retombe sur
+    l'ebauche generique correspondante (``is_placeholder: True``) plutot
+    que d'etre omis. Repli total sur les 4 ebauches si l'appel echoue
+    entierement, si ``question_title`` est vide, ou si la reponse est
+    inexploitable -- jamais bloquant."""
+    fallback = _placeholder_associated_recommendations()
+    if not question_title.strip():
+        return fallback
+
+    labels_text = "\n".join(f"Niveau {i + 1} : {lbl}" for i, lbl in enumerate(level_labels[:5]))
+    user_prompt = f"""Question de maturite proposee : {question_title}
+Dimension : {dimension or "non precisee"}
+
+Echelle de maturite de cette question (du niveau le plus faible au plus fort) :
+{labels_text}
+
+Redige les 4 recommandations de progression (niveau 1->2, 2->3, 3->4,
+4->5) pour cette question. Reponds en JSON avec exactement la cle
+"recommandations" (liste de 4 objets, un par transition)."""
+
+    try:
+        raw = call_regulatory_llm(
+            _PALIER_RECOMMENDATIONS_SYSTEM_PROMPT,
+            user_prompt,
+            _PALIER_RECOMMENDATIONS_SCHEMA,
+            max_output_tokens=1200,
+        )
+        parsed = json.loads(raw)
+        by_level: dict[int, dict[str, Any]] = {}
+        for item in parsed.get("recommandations", []):
+            level = item.get("trigger_level")
+            title = str(item.get("title") or "").strip()
+            text = str(item.get("recommendation_text") or "").strip()
+            if level not in (1, 2, 3, 4) or not title or not text:
+                continue
+            if _contains_garbage_token(title, text):
+                continue
+            effort = item.get("effort")
+            by_level[level] = {
+                "trigger_level": level,
+                "title": title,
+                "recommendation_text": text,
+                "category": str(item.get("category") or "Conformité").strip(),
+                "effort": effort if isinstance(effort, int) and 1 <= effort <= 3 else 2,
+                "is_placeholder": False,
+            }
+        if not by_level:
+            return fallback
+        # Complete les paliers manquants/invalides avec l'ebauche
+        # generique correspondante plutot que de retourner un lot partiel.
+        return [by_level.get(f["trigger_level"], f) for f in fallback]
+    except Exception:
+        return fallback
 
 
 def _build_candidates_text(candidates: dict[str, list[dict[str, Any]]]) -> str:
