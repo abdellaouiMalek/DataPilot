@@ -1,0 +1,6 @@
+# The LightGBM model dump is read by LightGBM's own text parser, which does
+# not tolerate CR: with core.autocrlf=true a Windows checkout turns it into
+# CRLF and every "Tree=N" marker fails to parse ("Model format error, expect
+# a tree here"), taking app/services/ranking.py down at import time.
+# Keep it LF in the working tree regardless of the user's autocrlf setting.
+backend/app/ml_models/*.txt -text

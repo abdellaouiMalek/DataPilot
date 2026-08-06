@@ -29,16 +29,16 @@ export interface BankPayload {
   description?: string;
 }
 
-export const listBanks = () => api.get<AdminBank[]>("/api/admin/banks");
+export const listBanks = () => api.get<AdminBank[]>("/api/super-admin/banks");
 
 export const createBank = (payload: BankPayload) =>
-  api.post<AdminBank>("/api/admin/banks", payload);
+  api.post<AdminBank>("/api/super-admin/banks", payload);
 
 export const updateBank = (id: number, payload: BankPayload) =>
-  api.put<AdminBank>(`/api/admin/banks/${id}`, payload);
+  api.put<AdminBank>(`/api/super-admin/banks/${id}`, payload);
 
 export const setBankActive = (id: number, is_active: boolean) =>
-  api.put<AdminBank>(`/api/admin/banks/${id}/active`, { is_active });
+  api.put<AdminBank>(`/api/super-admin/banks/${id}/active`, { is_active });
 
 export const setBankArchived = (id: number, archived: boolean) =>
-  api.put<AdminBank>(`/api/admin/banks/${id}/archived`, { archived });
+  api.put<AdminBank>(`/api/super-admin/banks/${id}/archived`, { archived });

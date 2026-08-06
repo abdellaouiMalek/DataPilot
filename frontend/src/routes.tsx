@@ -1,6 +1,9 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { RequireAuth } from './components/RequireAuth';
+import { RequireSuperAdmin } from './components/RequireSuperAdmin';
 import { RequireAdmin } from './components/RequireAdmin';
+import { AdminLayout as RestrictedAdminLayout } from './pages/admin/AdminLayout';
+import { AdminDashboard as RestrictedAdminDashboard } from './pages/admin/AdminDashboard';
 import { LandingPage } from './pages/LandingPage';
 import { QuestionnairePage } from './pages/QuestionnairePage';
 import { ResultsPage } from './pages/ResultsPage';
@@ -10,16 +13,16 @@ import { SimulationPage } from './pages/SimulationPage';
 import { HistoriquePage } from './pages/HistoriquePage';
 import { EvolutionPage } from './pages/EvolutionPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { AdminLayout } from './pages/admin/AdminLayout';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { VeilleReglementaire } from './pages/admin/AdminVeille';
-import { UserManagement } from './pages/admin/AdminUsers';
-import { BankManagement } from './pages/admin/AdminBanks';
-import { DimensionsManagement } from './pages/admin/AdminDimensions';
-import { ScoringReferential } from './pages/admin/AdminScoring';
-import { QuestionnaireVersions } from './pages/admin/AdminVersions';
-import { AuditLogs } from './pages/admin/AdminLogs';
-import { Settings } from './pages/admin/AdminSettings';
+import { AdminLayout } from './pages/superAdmin/AdminLayout';
+import { AdminDashboard } from './pages/superAdmin/AdminDashboard';
+import { VeilleReglementaire } from './pages/superAdmin/AdminVeille';
+import { UserManagement } from './pages/superAdmin/AdminUsers';
+import { BankManagement } from './pages/superAdmin/AdminBanks';
+import { DimensionsManagement } from './pages/superAdmin/AdminDimensions';
+import { ScoringReferential } from './pages/superAdmin/AdminScoring';
+import { QuestionnaireVersions } from './pages/superAdmin/AdminVersions';
+import { AuditLogs } from './pages/superAdmin/AdminLogs';
+import { Settings } from './pages/superAdmin/AdminSettings';
 
 export const router = createBrowserRouter([
   // Public — accessible sans authentification
@@ -35,10 +38,21 @@ export const router = createBrowserRouter([
   { path: '/evolution', element: <RequireAuth><EvolutionPage /></RequireAuth> },
   { path: '/profile', element: <RequireAuth><ProfilePage /></RequireAuth> },
 
-  // Admin back-office — requires the `admin` realm role
+  // Espace admin — rôle `admin` (ou `super_admin`, sur-ensemble).
+  // Périmètre volontairement réduit : tableau de bord + utilisateurs.
   {
     path: '/admin',
-    element: <RequireAdmin><AdminLayout /></RequireAdmin>,
+    element: <RequireAdmin><RestrictedAdminLayout /></RequireAdmin>,
+    children: [
+      { index: true,   Component: RestrictedAdminDashboard },
+      { path: 'users', Component: UserManagement },
+    ],
+  },
+
+  // Back-office — requires the `super_admin` realm role
+  {
+    path: '/super-admin',
+    element: <RequireSuperAdmin><AdminLayout /></RequireSuperAdmin>,
     children: [
       { index: true,        Component: AdminDashboard },
       { path: 'veille',     Component: VeilleReglementaire },

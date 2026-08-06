@@ -135,7 +135,7 @@ export function AdminTopbar() {
               {[
                 { icon: User,    label: "Mon profil" },
                 { icon: Shield,  label: "Sécurité & accès" },
-                { icon: Settings, label: "Paramètres", action: () => navigate('/admin/settings') },
+                { icon: Settings, label: "Paramètres", action: () => navigate('/super-admin/settings') },
               ].map(({ icon: Icon, label, action }) => (
                 <button
                   key={label}

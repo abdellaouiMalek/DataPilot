@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_admin
+from app.core.auth import require_super_admin
 from app.db.database import get_db
 from app.models import RegulatoryCircular, RegulatoryImpact
 from app.schemas.regulatory import ArticleRead, CircularDetailRead, CircularRead, ImpactRead, ImpactUpdate
@@ -28,9 +28,9 @@ from app.services.regulatory import (
 from app.services.regulatory_index import reindex_catalog
 
 router = APIRouter(
-    prefix="/api/admin/regulatory",
+    prefix="/api/super-admin/regulatory",
     tags=["regulatory"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_super_admin)],
 )
 
 _VALID_ACTIONS = {"accepté", "modifié", "rejeté"}

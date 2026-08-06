@@ -12,15 +12,34 @@ import {
 import type { AdminUser, BusinessRole, UserPayload } from "@/lib/adminUsers";
 import { ApiError } from "@/lib/api";
 import { getBanks } from "@/lib/config";
+import { isSuperAdmin } from "@/lib/keycloak";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 const ROLE_LABELS: Record<BusinessRole, string> = {
-  admin:      "Admin EY",
-  consultant: "Consultant EY",
-  repondant:  "Répondant Banque",
-  validateur: "Validateur Banque",
+  super_admin: "Super Admin EY",
+  admin:       "Admin",
+  consultant:  "Consultant EY",
+  repondant:   "Répondant Banque",
+  validateur:  "Validateur Banque",
 };
+
+/**
+ * Rôles proposés dans le formulaire de création/édition.
+ *
+ * Un admin ne peut pas attribuer `super_admin` : ce serait une élévation de
+ * privilège (il pourrait se promouvoir lui-même). Le masquage ici n'est que
+ * confort d'interface — le refus qui compte est côté serveur, dans
+ * `admin_users.py::_assert_may_assign`.
+ *
+ * Évalué à l'affichage, jamais au chargement du module : `keycloak.init()`
+ * est encore en vol quand les modules sont évalués (voir main.tsx), donc un
+ * calcul au niveau module verrait toujours « pas super admin ».
+ */
+function selectableRoles(): string[] {
+  const all = Object.values(ROLE_LABELS);
+  return isSuperAdmin() ? all : all.filter(l => l !== ROLE_LABELS.super_admin);
+}
 
 const LABEL_TO_ROLE: Record<string, BusinessRole> = Object.fromEntries(
   Object.entries(ROLE_LABELS).map(([role, label]) => [label, role as BusinessRole]),
@@ -70,7 +89,10 @@ function errorMessage(err: unknown): string {
   return "Une erreur est survenue. Vérifiez que l'API est démarrée.";
 }
 
-const roles   = ["Tous les rôles",   "Admin EY", "Consultant EY", "Répondant Banque", "Validateur Banque"];
+// Liste des filtres, dérivée de ROLE_LABELS. Comme selectableRoles(), elle
+// est calculée à l'affichage : le rôle de l'utilisateur n'est pas encore
+// connu au moment où le module est évalué.
+const buildRoleFilters = () => ["Tous les rôles", ...selectableRoles()];
 const statuses = ["Tous les statuts", "Actif", "En attente", "Désactivé", "Archivé"];
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
@@ -84,7 +106,7 @@ interface KpiCardData {
   detail: string;
 }
 
-interface KpiStats {
+export interface KpiStats {
   total: number;
   active: number;
   admins: number;
@@ -96,7 +118,10 @@ interface KpiStats {
 
 // All values and chips are computed from live data (created_at + login events);
 // only "% vs period" style trends are impossible without stored count history.
-function buildKpiCards(s: KpiStats): KpiCardData[] {
+export function buildKpiCards(
+  s: KpiStats,
+  { includeAdmins = true }: { includeAdmins?: boolean } = {},
+): KpiCardData[] {
   return [
     {
       label:   "Total utilisateurs",
@@ -114,14 +139,19 @@ function buildKpiCards(s: KpiStats): KpiCardData[] {
       icon:    UserCheck,
       detail:  "Comptes au statut Actif",
     },
-    {
-      label:   "Admins EY",
-      value:   String(s.admins),
-      sub:     "Accès complet",
-      trend:   "neutral",
-      icon:    ShieldCheck,
-      detail:  "Admin EY · Permissions totales",
-    },
+    // Masqué pour l'espace admin : celui-ci ne voit que les comptes qu'il a
+    // créés et ne peut pas créer de super admin, donc ce compteur y vaudrait
+    // toujours 0.
+    ...(includeAdmins
+      ? [{
+          label:   "Admins EY",
+          value:   String(s.admins),
+          sub:     "Super Admin + Admin",
+          trend:   "neutral" as const,
+          icon:    ShieldCheck,
+          detail:  "Super Admin EY (back-office) + Admin",
+        }]
+      : []),
     {
       label:   "En attente d'activation",
       value:   String(s.pending),
@@ -137,7 +167,7 @@ function buildKpiCards(s: KpiStats): KpiCardData[] {
   ];
 }
 
-function KpiCard({ card }: { card: KpiCardData }) {
+export function KpiCard({ card }: { card: KpiCardData }) {
   const Icon = card.icon;
   const trendColor = card.trend === "up" ? "#2E7D32" : card.trend === "down" ? "#CC0000" : "#6B6B6B";
   const trendBg    = card.trend === "up" ? "#E8F5E9"  : card.trend === "down" ? "#FFEBEE"  : "#F5F5F5";
@@ -310,7 +340,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>Rôle</label>
               <select value={formData.role} onChange={e => setFormData(p => ({ ...p, role: e.target.value }))} style={{ ...inp, appearance: "none", backgroundColor: "#fff", cursor: "pointer" }}>
-                {["Admin EY", "Consultant EY", "Répondant Banque", "Validateur Banque"].map(r => <option key={r}>{r}</option>)}
+                {selectableRoles().map(r => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
@@ -421,7 +451,12 @@ export function UserManagement() {
         setKpiStats({
           total: count.count,
           active: list.filter(u => u.status === "Actif").length,
-          admins: list.filter(u => u.role === "admin").length,
+          // Les deux rôles EY : "super_admin" (back-office) et "admin"
+          // (rôle métier). Compter uniquement "admin" exclurait les super
+          // admins du KPI depuis la séparation des deux rôles.
+          admins: list.filter(
+            u => u.role === "admin" || u.role === "super_admin",
+          ).length,
           pending: list.filter(u => u.status === "En attente").length,
           createdThisWeek: list.filter(
             u => u.created_at && now - Date.parse(u.created_at) < 7 * DAY,
@@ -578,19 +613,26 @@ export function UserManagement() {
     for (let p = Math.max(1, end - 4); p <= end; p++) pageNumbers.push(p);
   }
 
-  const kpiCards = buildKpiCards(kpiStats);
+  // Cet écran sert les deux espaces (/super-admin/users et /admin/users).
+  // Pour un admin, la carte « Admins EY » n'a pas de sens : il ne voit que
+  // les comptes qu'il a créés et ne peut pas créer de super admin.
+  const kpiCards = buildKpiCards(kpiStats, { includeAdmins: isSuperAdmin() });
 
   const initials = (u: User) =>
     `${u.firstName[0] || ""}${u.lastName[0] || ""}`.toUpperCase() || "?";
 
   // avatar bg by role
   const avatarBg = (role: string) => {
-    if (role === "Admin EY")          return "#1A1A1A";
-    if (role === "Consultant EY")     return "#3730A3";
-    if (role === "Validateur Banque") return "#9A3412";
+    if (role === ROLE_LABELS.super_admin) return "#1A1A1A";
+    if (role === ROLE_LABELS.admin)       return "#1A1A1A";
+    if (role === ROLE_LABELS.consultant)  return "#3730A3";
+    if (role === ROLE_LABELS.validateur)  return "#9A3412";
     return "#166534";
   };
-  const avatarFg = (role: string) => role === "Admin EY" ? "#FFE600" : "#fff";
+  const avatarFg = (role: string) =>
+    role === ROLE_LABELS.super_admin || role === ROLE_LABELS.admin
+      ? "#FFE600"
+      : "#fff";
 
   return (
     <div style={{ padding: "28px 32px 40px", backgroundColor: "#F2F2F2", minHeight: "100%" }}>
@@ -680,7 +722,7 @@ export function UserManagement() {
               boxShadow: focusRole ? "0 0 0 3px rgba(26,26,26,0.08)" : "none",
             }}
           >
-            {roles.map(r => <option key={r}>{r}</option>)}
+            {buildRoleFilters().map(r => <option key={r}>{r}</option>)}
           </select>
           <ChevronDown size={12} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "#9B9B9B", pointerEvents: "none" }} />
         </div>

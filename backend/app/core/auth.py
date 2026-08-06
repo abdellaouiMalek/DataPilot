@@ -20,6 +20,12 @@ REALM = os.getenv("KEYCLOAK_REALM")
 ALGORITHMS = [a.strip() for a in os.getenv("KEYCLOAK_ALGORITHMS", "RS256").split(",")]
 # Optional: if set, the token's `azp` must match (the SPA client id).
 CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")
+# Realm role gating the back-office. Named "super_admin" because "admin" is
+# now a plain business role (like consultant/validateur) with no back-office
+# access -- see BUSINESS_ROLES in app.routers.admin_users.
+SUPER_ADMIN_ROLE = os.getenv("KEYCLOAK_SUPER_ADMIN_ROLE", "super_admin")
+# Back-office role with a reduced scope: dashboard + user management only,
+# and it can never see or grant SUPER_ADMIN_ROLE (see app.routers.admin_users).
 ADMIN_ROLE = os.getenv("KEYCLOAK_ADMIN_ROLE", "admin")
 
 ISSUER = f"{KEYCLOAK_URL}/realms/{REALM}"
@@ -82,19 +88,43 @@ def verify_token(
     return payload
 
 
-def require_admin(payload: dict = Depends(verify_token)) -> dict:
-    """Allow only callers holding the realm ``admin`` role."""
-    roles = payload.get("realm_access", {}).get("roles", [])
-    if ADMIN_ROLE not in roles:
-        raise HTTPException(status_code=403, detail="Admin role required")
+def _realm_roles(payload: dict) -> list[str]:
+    return payload.get("realm_access", {}).get("roles", [])
+
+
+def is_super_admin(payload: dict) -> bool:
+    """True if the caller holds ``super_admin`` (unrestricted back-office)."""
+    return SUPER_ADMIN_ROLE in _realm_roles(payload)
+
+
+def require_super_admin(payload: dict = Depends(verify_token)) -> dict:
+    """Allow only callers holding the realm ``super_admin`` role."""
+    if SUPER_ADMIN_ROLE not in _realm_roles(payload):
+        raise HTTPException(status_code=403, detail="Super admin role required")
+    return payload
+
+
+def require_back_office(payload: dict = Depends(verify_token)) -> dict:
+    """Allow ``super_admin`` or ``admin`` -- the two back-office roles.
+
+    ``admin`` reaches a strict subset (dashboard + user management) and is
+    additionally barred, inside the endpoints themselves, from seeing or
+    granting ``super_admin``. Callers that branch on this must use
+    ``is_super_admin`` rather than re-reading the claims.
+    """
+    roles = _realm_roles(payload)
+    if SUPER_ADMIN_ROLE not in roles and ADMIN_ROLE not in roles:
+        raise HTTPException(
+            status_code=403, detail="Admin or super admin role required"
+        )
     return payload
 
 
 async def get_bank_scope(claims: dict = Depends(verify_token)) -> int | None:
     """Resolves the caller's bank-access scope for assessment data.
 
-    Returns ``None`` for admins: unrestricted, matching the full access
-    they already have via the ``/admin`` back-office. For everyone else,
+    Returns ``None`` for super admins: unrestricted, matching the full
+    access they already have via the back-office. For everyone else,
     returns the bank id attached to their account (an admin-managed
     Keycloak user attribute, ``bank_id`` -- see app.routers.admin_users;
     intentionally not user-editable, since it's a real permission
@@ -107,7 +137,7 @@ async def get_bank_scope(claims: dict = Depends(verify_token)) -> int | None:
     round-trip, add a mapper that puts ``bank_id`` in the access token
     and read it from ``claims`` directly instead.
 
-    Raises 403 if a non-admin has no bank attached -- a real
+    Raises 403 if a non-super-admin has no bank attached -- a real
     configuration gap, not a "nothing to show yet" case, so it's an
     explicit error rather than a silently empty result.
     """
@@ -117,7 +147,7 @@ async def get_bank_scope(claims: dict = Depends(verify_token)) -> int | None:
     from app.core.keycloak_admin import kc_get
 
     roles = claims.get("realm_access", {}).get("roles", [])
-    if ADMIN_ROLE in roles:
+    if SUPER_ADMIN_ROLE in roles:
         return None
 
     sub = claims.get("sub")

@@ -6,7 +6,7 @@ import { Select as RadixSelect } from 'radix-ui';
 import { Navbar } from '../components/Navbar';
 import { getBanks, getDepartments, getRoles, getDimensions } from '../lib/config';
 import type { Dimension } from '../lib/config';
-import { isAdmin } from '../lib/keycloak';
+import { isSuperAdmin, isAdmin } from '../lib/keycloak';
 import { getProfile } from '../lib/profile';
 import backImage from '../assets/back.png';
 
@@ -119,7 +119,8 @@ export function LandingPage() {
   // Admins don't take the assessment — send them straight to the back-office.
   // The landing page ("/") is where Keycloak returns after login.
   useEffect(() => {
-    if (isAdmin()) navigate('/admin', { replace: true });
+    if (isSuperAdmin()) navigate('/super-admin', { replace: true });
+    else if (isAdmin()) navigate('/admin', { replace: true });
   }, [navigate]);
 
   useEffect(() => {

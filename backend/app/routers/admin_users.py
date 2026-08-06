@@ -17,10 +17,10 @@ import string
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_admin
+from app.core.auth import is_super_admin, require_back_office
 from app.core.keycloak_admin import kc_delete, kc_get, kc_post, kc_put
 from app.core.mailer import send_email
 from app.db.database import get_db
@@ -34,10 +34,84 @@ from app.schemas.admin_user import (
     UserUpdate,
 )
 
-router = APIRouter(prefix="/api/admin", tags=["admin-users"])
+router = APIRouter(prefix="/api/super-admin", tags=["super-admin-users"])
 
 # Priority order: when a user holds several business roles, the first match wins.
-BUSINESS_ROLES = ("admin", "validateur", "consultant", "repondant")
+# "super_admin" is the only one granting back-office access (app.core.auth
+# .require_super_admin); "admin" is a plain business role like the others.
+BUSINESS_ROLES = ("super_admin", "admin", "validateur", "consultant", "repondant")
+
+
+SUPER_ADMIN_ROLE = "super_admin"
+
+# Keycloak user attribute holding the `sub` of whoever created the account.
+# Scopes an "admin" to their own accounts; a super admin ignores it entirely.
+# Relies on the realm's unmanagedAttributePolicy=ENABLED (app.keycloak_bootstrap),
+# same as `organization` / `archived` / `bank_id`.
+CREATED_BY_ATTR = "created_by"
+
+
+def _created_by(user: dict[str, Any]) -> str | None:
+    values = (user.get("attributes") or {}).get(CREATED_BY_ATTR)
+    return values[0] if isinstance(values, list) and values else None
+
+
+def _scope_to_owner(params: dict[str, Any], claims: dict[str, Any]) -> None:
+    """Restrict a Keycloak ``/users`` query to the caller's own accounts.
+
+    No-op for a super admin (full visibility). For an ``admin``, adds
+    Keycloak's custom-attribute filter ``q=created_by:<sub>``, so the
+    filtering happens in Keycloak and ``first``/``max`` keep paginating over
+    the restricted set instead of over everyone.
+    """
+    if is_super_admin(claims):
+        return
+    params["q"] = f"{CREATED_BY_ATTR}:{claims.get('sub')}"
+
+
+def _forbidden_super_admin() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Seul un super administrateur peut gerer les comptes "
+            "super administrateur."
+        ),
+    )
+
+
+def _assert_may_assign(claims: dict[str, Any], role: str | None) -> None:
+    """An ``admin`` may never grant ``super_admin`` -- that would let them
+    promote themselves and make the two roles equivalent. Enforced here,
+    server-side, not only by omitting the option from the UI dropdown."""
+    if role == SUPER_ADMIN_ROLE and not is_super_admin(claims):
+        raise _forbidden_super_admin()
+
+
+async def _assert_may_target(claims: dict[str, Any], user_id: str) -> None:
+    """Restrict what an ``admin`` may act on (edit, disable, archive, reset).
+
+    Two rules, both irrelevant to a super admin:
+    1. never an existing super-admin account;
+    2. only accounts they created themselves (``created_by``).
+
+    Accounts predating this attribute have no owner recorded, so they stay
+    super-admin-only -- deliberately fail-closed rather than granting every
+    admin access to the whole legacy population.
+    """
+    if is_super_admin(claims):
+        return
+
+    user, mappings = await asyncio.gather(
+        kc_get(f"/users/{user_id}"),
+        kc_get(f"/users/{user_id}/role-mappings/realm"),
+    )
+    if any(m["name"] == SUPER_ADMIN_ROLE for m in mappings):
+        raise _forbidden_super_admin()
+    if _created_by(user) != claims.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous ne pouvez gerer que les comptes que vous avez crees.",
+        )
 
 
 def _archived(user: dict[str, Any]) -> bool:
@@ -255,34 +329,47 @@ async def list_users(
     search: Optional[str] = Query(None, description="Match name / email / username"),
     first: int = Query(0, ge=0, description="Pagination offset"),
     max: int = Query(20, ge=1, le=100, description="Page size"),
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
 ):
     params: dict[str, Any] = {"first": first, "max": max}
     if search:
         params["search"] = search
+    # Scope an "admin" to the accounts they created. Filtering server-side
+    # (Keycloak's `q=key:value` attribute search) rather than in Python keeps
+    # pagination honest -- a post-filter would return short pages.
+    _scope_to_owner(params, claims)
+
     users, roles, logins = await asyncio.gather(
         kc_get("/users", params), _role_by_user(), _last_login_by_user()
     )
+    # Defence in depth: `q` already excludes them (an admin cannot create a
+    # super admin), but never surface an account we would refuse to act on.
+    if not is_super_admin(claims):
+        users = [u for u in users if roles.get(u["id"]) != SUPER_ADMIN_ROLE]
     return [_map_user(u, roles.get(u["id"]), logins.get(u["id"])) for u in users]
 
 
 @router.get("/users/count")
 async def count_users(
     search: Optional[str] = Query(None),
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
 ):
     params: dict[str, Any] = {}
     if search:
         params["search"] = search
+    # Same scoping as list_users -- otherwise an admin sees "3 of 47" while
+    # only 3 rows exist for them.
+    _scope_to_owner(params, claims)
     return {"count": await kc_get("/users/count", params)}
 
 
 @router.post("/users", response_model=UserRead, status_code=201)
 async def create_user(
     payload: UserCreate,
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
 ):
+    _assert_may_assign(claims, payload.role)
     await _validate_bank_id(db, payload.bank_id)
 
     attributes: dict[str, Any] = {}
@@ -292,6 +379,12 @@ async def create_user(
         attributes["bank_id"] = [str(payload.bank_id)]
     if payload.status == "Archivé":
         attributes["archived"] = ["true"]
+    # Ownership marker: an "admin" only ever sees and manages the accounts
+    # they created themselves. Recorded for super admins too, so the
+    # provenance of every account stays traceable.
+    creator_sub = claims.get("sub")
+    if creator_sub:
+        attributes[CREATED_BY_ATTR] = [creator_sub]
 
     representation: dict[str, Any] = {
         # A stable, opaque username decoupled from email — the realm has
@@ -359,9 +452,13 @@ async def create_user(
 async def update_user(
     user_id: str,
     payload: UserUpdate,
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
 ):
+    # Both directions: an admin may neither target an existing super admin
+    # nor promote anyone (including themselves) to super_admin.
+    await _assert_may_target(claims, user_id)
+    _assert_may_assign(claims, payload.role)
     await _validate_bank_id(db, payload.bank_id)
 
     user = await kc_get(f"/users/{user_id}")
@@ -405,8 +502,9 @@ async def update_user(
 async def set_user_enabled(
     user_id: str,
     payload: UserEnabledUpdate,
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
 ):
+    await _assert_may_target(claims, user_id)
     user = await kc_get(f"/users/{user_id}")
     user["enabled"] = payload.enabled
     await kc_put(f"/users/{user_id}", user)
@@ -421,8 +519,9 @@ async def set_user_enabled(
 async def set_user_archived(
     user_id: str,
     payload: UserArchivedUpdate,
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
 ):
+    await _assert_may_target(claims, user_id)
     user = await kc_get(f"/users/{user_id}")
     attributes = user.get("attributes") or {}
     if payload.archived:
@@ -445,8 +544,9 @@ async def set_user_archived(
 @router.put("/users/{user_id}/reset-password", response_model=ActionEmailResult)
 async def reset_user_password(
     user_id: str,
-    _claims: dict = Depends(require_admin),
+    claims: dict = Depends(require_back_office),
 ):
+    await _assert_may_target(claims, user_id)
     # 404 passthrough if the user doesn't exist.
     user = await kc_get(f"/users/{user_id}")
     email = user.get("email")
