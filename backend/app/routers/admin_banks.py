@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_admin
+from app.core.auth import require_super_admin
 from app.db.database import get_db
 from app.models import Assessment, Bank
 from app.schemas.admin_bank import (
@@ -28,7 +28,7 @@ from app.schemas.admin_bank import (
     BankUpdate,
 )
 
-router = APIRouter(prefix="/api/admin/banks", tags=["admin-banks"])
+router = APIRouter(prefix="/api/super-admin/banks", tags=["super-admin-banks"])
 
 
 def _status(bank: Bank) -> str:
@@ -97,7 +97,7 @@ async def _read_one(db: AsyncSession, bank: Bank) -> BankAdminRead:
 @router.get("", response_model=list[BankAdminRead])
 async def list_banks(
     db: AsyncSession = Depends(get_db),
-    _claims: dict = Depends(require_admin),
+    _claims: dict = Depends(require_super_admin),
 ):
     banks = (
         (await db.execute(select(Bank).order_by(Bank.sort_order, Bank.id)))
@@ -112,7 +112,7 @@ async def list_banks(
 async def create_bank(
     payload: BankCreate,
     db: AsyncSession = Depends(get_db),
-    _claims: dict = Depends(require_admin),
+    _claims: dict = Depends(require_super_admin),
 ):
     max_order = (
         await db.execute(select(func.coalesce(func.max(Bank.sort_order), 0)))
@@ -140,7 +140,7 @@ async def update_bank(
     bank_id: int,
     payload: BankUpdate,
     db: AsyncSession = Depends(get_db),
-    _claims: dict = Depends(require_admin),
+    _claims: dict = Depends(require_super_admin),
 ):
     bank = await _get_bank(db, bank_id)
     bank.name = payload.name.strip()
@@ -162,7 +162,7 @@ async def set_bank_active(
     bank_id: int,
     payload: BankActiveUpdate,
     db: AsyncSession = Depends(get_db),
-    _claims: dict = Depends(require_admin),
+    _claims: dict = Depends(require_super_admin),
 ):
     bank = await _get_bank(db, bank_id)
     bank.is_active = payload.is_active
@@ -176,7 +176,7 @@ async def set_bank_archived(
     bank_id: int,
     payload: BankArchivedUpdate,
     db: AsyncSession = Depends(get_db),
-    _claims: dict = Depends(require_admin),
+    _claims: dict = Depends(require_super_admin),
 ):
     bank = await _get_bank(db, bank_id)
     bank.archived = payload.archived

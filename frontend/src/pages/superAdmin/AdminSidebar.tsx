@@ -12,31 +12,48 @@ import {
   Database,
   ShieldCheck,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-interface NavItem {
+export interface NavItem {
   path: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
+}
+
+interface AdminSidebarProps {
+  /** Entrées de navigation. Par défaut : le back-office super admin complet. */
+  items?: NavItem[];
+  /** Chemin racine, pour le calcul de l'onglet actif (match exact). */
+  rootPath?: string;
+  /** Libellé sous le logo (ex. « Back Office Admin »). */
+  subtitle?: string;
+  /** Libellé du pied de page (rôle affiché). */
+  footerLabel?: string;
 }
 
 const navItems: NavItem[] = [
-  { path: "/admin",            label: "Tableau de bord Admin",    icon: LayoutDashboard },
-  { path: "/admin/veille",     label: "Veille réglementaire",     icon: ShieldCheck },
-  { path: "/admin/dimensions", label: "Gestion du framework",     icon: Layers },
-  { path: "/admin/scoring",    label: "Référentiel de scoring",   icon: BarChart3 },
-  { path: "/admin/users",      label: "Gestion des utilisateurs", icon: Users },
-  { path: "/admin/banks",      label: "Gestion des banques",      icon: Building2 },
-  { path: "/admin/versions",   label: "Versions du questionnaire",icon: GitBranch },
-  { path: "/admin/logs",       label: "Historique & logs",        icon: History },
-  { path: "/admin/settings",   label: "Paramètres",               icon: Settings },
+  { path: "/super-admin",            label: "Tableau de bord Super Admin",    icon: LayoutDashboard },
+  { path: "/super-admin/veille",     label: "Veille réglementaire",     icon: ShieldCheck },
+  { path: "/super-admin/dimensions", label: "Gestion du framework",     icon: Layers },
+  { path: "/super-admin/scoring",    label: "Référentiel de scoring",   icon: BarChart3 },
+  { path: "/super-admin/users",      label: "Gestion des utilisateurs", icon: Users },
+  { path: "/super-admin/banks",      label: "Gestion des banques",      icon: Building2 },
+  { path: "/super-admin/versions",   label: "Versions du questionnaire",icon: GitBranch },
+  { path: "/super-admin/logs",       label: "Historique & logs",        icon: History },
+  { path: "/super-admin/settings",   label: "Paramètres",               icon: Settings },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  items = navItems,
+  rootPath = "/super-admin",
+  subtitle = "Back Office Admin",
+  footerLabel = "Super Admin EY",
+}: AdminSidebarProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
 
   const isActive = (path: string) => {
-    if (path === "/admin") return location.pathname === "/admin";
+    if (path === rootPath) return location.pathname === rootPath;
     return location.pathname.startsWith(path);
   };
 
@@ -62,7 +79,7 @@ export function AdminSidebar() {
             EY DataMaturity
           </div>
           <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Back Office Admin
+            {subtitle}
           </div>
         </div>
       </button>
@@ -74,7 +91,7 @@ export function AdminSidebar() {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4" style={{ scrollbarWidth: "none" }}>
-        {navItems.map((item) => {
+        {items.map((item) => {
           const active = isActive(item.path);
           const Icon = item.icon;
           return (
@@ -128,7 +145,7 @@ export function AdminSidebar() {
             AD
           </div>
           <div>
-            <div style={{ color: "white", fontSize: 12, fontWeight: 500 }}>Admin EY</div>
+            <div style={{ color: "white", fontSize: 12, fontWeight: 500 }}>{footerLabel}</div>
             <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Retour au site</div>
           </div>
         </button>

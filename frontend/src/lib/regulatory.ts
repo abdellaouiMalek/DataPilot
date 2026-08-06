@@ -1,5 +1,5 @@
 /**
- * Client for the "Veille réglementaire" admin endpoints (`/api/admin/regulatory/*`).
+ * Client for the "Veille réglementaire" admin endpoints (`/api/super-admin/regulatory/*`).
  *
  * Importing a circular returns IMMEDIATELY (`analysisStatus: "en_cours"`
  * for a fresh document, or an already-resolved status if this exact file
@@ -209,10 +209,10 @@ function mapCircularDetail(c: ApiCircularDetail): CircularDetail {
 
 export const regulatoryApi = {
   listCirculars: async (): Promise<Circular[]> =>
-    (await api.get<ApiCircular[]>("/api/admin/regulatory/circulars")).map(mapCircular),
+    (await api.get<ApiCircular[]>("/api/super-admin/regulatory/circulars")).map(mapCircular),
 
   getCircular: async (id: number): Promise<CircularDetail> =>
-    mapCircularDetail(await api.get<ApiCircularDetail>(`/api/admin/regulatory/circulars/${id}`)),
+    mapCircularDetail(await api.get<ApiCircularDetail>(`/api/super-admin/regulatory/circulars/${id}`)),
 
   /** Reference, theme, and publication date are never asked of the admin
    * -- reference/theme are extracted automatically from the circular's
@@ -222,7 +222,7 @@ export const regulatoryApi = {
     const form = new FormData();
     form.append("file", file);
     return mapCircularDetail(
-      await api.postForm<ApiCircularDetail>("/api/admin/regulatory/circulars/import", form)
+      await api.postForm<ApiCircularDetail>("/api/super-admin/regulatory/circulars/import", form)
     );
   },
 
@@ -230,7 +230,7 @@ export const regulatoryApi = {
     const form = new FormData();
     form.append("url", url);
     return mapCircularDetail(
-      await api.postForm<ApiCircularDetail>("/api/admin/regulatory/circulars/import", form)
+      await api.postForm<ApiCircularDetail>("/api/super-admin/regulatory/circulars/import", form)
     );
   },
 
@@ -257,19 +257,19 @@ export const regulatoryApi = {
     input: { action: ImpactAction; editedText?: string }
   ): Promise<Impact> =>
     mapImpact(
-      await api.patch<ApiImpact>(`/api/admin/regulatory/impacts/${id}`, {
+      await api.patch<ApiImpact>(`/api/super-admin/regulatory/impacts/${id}`, {
         action: input.action,
         edited_text: input.editedText ?? null,
       })
     ),
 
   publishCircular: async (id: number): Promise<Circular> =>
-    mapCircular(await api.post<ApiCircular>(`/api/admin/regulatory/circulars/${id}/publish`)),
+    mapCircular(await api.post<ApiCircular>(`/api/super-admin/regulatory/circulars/${id}/publish`)),
 
   /** Rejected by the backend (400) if the circular is already published --
    * publication is meant to leave a permanent regulatory audit trail. */
   deleteCircular: async (id: number): Promise<void> => {
-    await api.del(`/api/admin/regulatory/circulars/${id}`);
+    await api.del(`/api/super-admin/regulatory/circulars/${id}`);
   },
 
   /** Re-embeds the whole active catalog (questions + recommandations) into
@@ -277,5 +277,5 @@ export const regulatoryApi = {
    * elsewhere in the admin so "Veille réglementaire" retrieval reflects
    * them. Not triggered automatically on every catalog edit. */
   reindexCatalog: async (): Promise<ReindexResult> =>
-    api.post<ReindexResult>("/api/admin/regulatory/reindex"),
+    api.post<ReindexResult>("/api/super-admin/regulatory/reindex"),
 };

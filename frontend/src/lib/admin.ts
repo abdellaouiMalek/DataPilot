@@ -1,5 +1,5 @@
 /**
- * Authenticated client for the admin framework endpoints (`/api/admin/*`).
+ * Authenticated client for the admin framework endpoints (`/api/super-admin/*`).
  *
  * The backend speaks `is_active` / `text` / numeric ids; the admin UI speaks
  * `status` ("Active"/"Inactive") / `label` / string ids. This module maps
@@ -176,11 +176,11 @@ export interface QuestionInput {
 
 export const adminApi = {
   listDimensions: async (): Promise<Dimension[]> =>
-    (await api.get<ApiDimension[]>("/api/admin/dimensions")).map(mapDimension),
+    (await api.get<ApiDimension[]>("/api/super-admin/dimensions")).map(mapDimension),
 
   // Dimensions
   createDimension: (input: DimensionInput) =>
-    api.post<{ id: number }>("/api/admin/dimensions", {
+    api.post<{ id: number }>("/api/super-admin/dimensions", {
       name: input.name,
       description: input.description ?? "",
       weight: input.weight ?? 0,
@@ -188,7 +188,7 @@ export const adminApi = {
       is_active: toActive(input.status),
     }),
   updateDimension: (id: string, input: Partial<DimensionInput>) =>
-    api.patch(`/api/admin/dimensions/${id}`, {
+    api.patch(`/api/super-admin/dimensions/${id}`, {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.weight !== undefined && { weight: input.weight }),
@@ -196,30 +196,30 @@ export const adminApi = {
       ...(input.status !== undefined && { is_active: toActive(input.status) }),
     }),
   deleteDimension: (id: string, force = false) =>
-    api.del(`/api/admin/dimensions/${id}${force ? "?force=true" : ""}`),
+    api.del(`/api/super-admin/dimensions/${id}${force ? "?force=true" : ""}`),
   getDimensionDeleteImpact: async (id: string): Promise<DeleteImpact> =>
-    mapImpact(await api.get<ApiDeleteImpact>(`/api/admin/dimensions/${id}/impact`)),
+    mapImpact(await api.get<ApiDeleteImpact>(`/api/super-admin/dimensions/${id}/impact`)),
 
   // Sub-dimensions
   createSubDimension: (dimensionId: string, input: SubDimensionInput) =>
-    api.post<{ id: number }>("/api/admin/subdimensions", {
+    api.post<{ id: number }>("/api/super-admin/subdimensions", {
       dimension_id: Number(dimensionId),
       name: input.name,
       is_active: toActive(input.status),
     }),
   updateSubDimension: (id: string, input: Partial<SubDimensionInput>) =>
-    api.patch(`/api/admin/subdimensions/${id}`, {
+    api.patch(`/api/super-admin/subdimensions/${id}`, {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.status !== undefined && { is_active: toActive(input.status) }),
     }),
   deleteSubDimension: (id: string, force = false) =>
-    api.del(`/api/admin/subdimensions/${id}${force ? "?force=true" : ""}`),
+    api.del(`/api/super-admin/subdimensions/${id}${force ? "?force=true" : ""}`),
   getSubDimensionDeleteImpact: async (id: string): Promise<DeleteImpact> =>
-    mapImpact(await api.get<ApiDeleteImpact>(`/api/admin/subdimensions/${id}/impact`)),
+    mapImpact(await api.get<ApiDeleteImpact>(`/api/super-admin/subdimensions/${id}/impact`)),
 
   // Questions
   createQuestion: (subDimensionId: string, input: QuestionInput) =>
-    api.post<{ id: number }>("/api/admin/questions", {
+    api.post<{ id: number }>("/api/super-admin/questions", {
       sub_dimension_id: Number(subDimensionId),
       text: input.label,
       description: input.description ?? "",
@@ -232,7 +232,7 @@ export const adminApi = {
       is_active: toActive(input.status),
     }),
   updateQuestion: (id: string, input: Partial<QuestionInput>) =>
-    api.patch(`/api/admin/questions/${id}`, {
+    api.patch(`/api/super-admin/questions/${id}`, {
       ...(input.label !== undefined && { text: input.label }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.type !== undefined && { type: input.type }),
@@ -245,7 +245,7 @@ export const adminApi = {
       ...(input.subDimensionId !== undefined && { sub_dimension_id: Number(input.subDimensionId) }),
     }),
   deleteQuestion: (id: string, force = false) =>
-    api.del(`/api/admin/questions/${id}${force ? "?force=true" : ""}`),
+    api.del(`/api/super-admin/questions/${id}${force ? "?force=true" : ""}`),
   getQuestionDeleteImpact: async (id: string): Promise<DeleteImpact> =>
-    mapImpact(await api.get<ApiDeleteImpact>(`/api/admin/questions/${id}/impact`)),
+    mapImpact(await api.get<ApiDeleteImpact>(`/api/super-admin/questions/${id}/impact`)),
 };

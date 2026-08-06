@@ -2,13 +2,17 @@ import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
-import keycloak, { isAdmin } from '../lib/keycloak';
+import keycloak, { hasBackOffice } from '../lib/keycloak';
 import { Navbar } from './Navbar';
 
 /**
- * Protège une route réservée aux administrateurs.
+ * Protège l'espace admin (`/admin`) : tableau de bord + gestion des
+ * utilisateurs uniquement.
  * - Non connecté → redirige vers Keycloak.
- * - Connecté mais sans le rôle `admin` → affiche un écran « accès refusé ».
+ * - Sans rôle `admin` ni `super_admin` → écran « accès refusé ».
+ *
+ * Un super admin est accepté ici : son propre back-office (`/super-admin`)
+ * est un sur-ensemble, il n'y a pas de raison de lui fermer cette porte.
  */
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -23,7 +27,7 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
     return null;
   }
 
-  if (!isAdmin()) {
+  if (!hasBackOffice()) {
     return (
       <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
         <Navbar />

@@ -5,7 +5,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-BusinessRole = Literal["admin", "consultant", "repondant", "validateur"]
+BusinessRole = Literal[
+    "super_admin", "admin", "consultant", "repondant", "validateur"
+]
 
 
 class UserRead(BaseModel):

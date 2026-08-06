@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_admin
+from app.core.auth import require_super_admin
 from app.db.database import get_db
 from app.models import (
     Answer,
@@ -37,9 +37,9 @@ from app.schemas.admin import (
 )
 
 router = APIRouter(
-    prefix="/api/admin",
-    tags=["admin"],
-    dependencies=[Depends(require_admin)],
+    prefix="/api/super-admin",
+    tags=["super-admin"],
+    dependencies=[Depends(require_super_admin)],
 )
 
 REFERENCED_409 = (

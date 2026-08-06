@@ -38,7 +38,24 @@ export function Navbar() {
 
       {user ? (
         <div className="flex items-center gap-4">
-          {user.isAdmin && (
+          {user.isSuperAdmin && (
+            <>
+              <Link
+                to="/super-admin"
+                className="flex items-center gap-2 text-sm font-bold text-gray-700 hover:text-black transition-colors outline-none"
+                title="Espace super administrateur"
+              >
+                <span className="bg-gray-100 p-1.5 rounded-sm">
+                  <Shield className="w-4 h-4 text-black" />
+                </span>
+                <span className="hidden sm:inline">SUPER ADMIN</span>
+              </Link>
+              <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+            </>
+          )}
+          {/* Espace admin restreint — affiché uniquement pour un `admin`
+              qui n'est pas super admin (ce dernier a déjà son propre lien). */}
+          {!user.isSuperAdmin && user.isAdmin && (
             <>
               <Link
                 to="/admin"
@@ -82,9 +99,9 @@ export function Navbar() {
                         {user.email}
                       </span>
                     )}
-                    {user.isAdmin && (
+                    {(user.isSuperAdmin || user.isAdmin) && (
                       <span className="mt-1 w-fit inline-flex items-center text-[9px] font-bold tracking-widest text-black bg-[#FFE600] px-1.5 py-0.5 rounded-sm uppercase">
-                        Admin
+                        {user.isSuperAdmin ? 'Super Admin' : 'Admin'}
                       </span>
                     )}
                   </div>
