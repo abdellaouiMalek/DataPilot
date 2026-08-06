@@ -19,3 +19,6 @@ jinja2
 weasyprint
 pypdf
 python-multipart
+pymupdf
+pytesseract
+langdetect

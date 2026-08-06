@@ -1,37 +1,73 @@
-"""Import pipeline for "Veille réglementaire": turns an uploaded PDF or a
-URL into extracted text, runs it through the LLM extractor
-(``llm.generation.extract_circular``), and returns plain data the router
-persists as a ``RegulatoryCircular`` + its ``RegulatoryImpact`` rows.
+"""Import + analysis pipeline for "Veille réglementaire".
 
-Kept as pure functions with no DB access -- the router owns persistence,
-this module only owns "turn raw input into a proposed circular".
+Two phases, split so the HTTP request never blocks on LLM inference:
+
+1. Request-time (fast): fetch the source bytes (upload or URL), hash them,
+   and either reuse an already-analyzed ``RegulatoryCircular`` with the same
+   hash (cache hit -- ``find_circular_by_hash``) or create a fresh one in
+   "en_cours" state (``create_pending_circular``). Owned by the router.
+2. Background (slow, run via ``BackgroundTasks``): extract the PDF's text
+   (native or OCR, see ``llm.pdf_extract``) ; si la langue détectée est
+   l'arabe, traduit le DOCUMENT ENTIER en français en un seul passage
+   (``translate_document_to_french``) AVANT le découpage, pour ne payer
+   qu'un seul appel LLM de traduction (ou quelques-uns sur un très long
+   document) plutôt qu'un par chunk ; extrait automatiquement la
+   référence/le thème (``extract_reference_theme``) ; puis pour chaque
+   section (chunk, avec chevauchement -- voir ``pdf_extract.chunk_text``),
+   récupère les candidats du catalogue les plus proches par similarité
+   d'embeddings (RAG, ``regulatory_index.retrieve``) et analyse ce chunk
+   contre ces seuls candidats
+   (``llm.regulatory_analysis.analyze_chunk_with_candidates``) -- entièrement
+   sur sa propre session DB, la requête ayant déjà répondu
+   (``run_circular_analysis``).
+
+RÈGLE ABSOLUE (rappel) : ce module ne persiste que des PROPOSITIONS
+("proposed_data" sur chaque ``RegulatoryImpact``, action=None) -- rien n'est
+appliqué au référentiel tant qu'un humain ne l'a pas validé.
 """
 
 from __future__ import annotations
 
 import asyncio
-import io
+import difflib
+import hashlib
 import ipaddress
+import logging
+import re
 import socket
-from datetime import date, datetime
 from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
-from pypdf import PdfReader
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from llm.generation import extract_circular
+from app.db.database import AsyncSessionLocal
+from app.models import (
+    Dimension,
+    Question,
+    Recommendation,
+    RegulatoryCircular,
+    RegulatoryEmbedding,
+    RegulatoryImpact,
+)
+from app.services.regulatory_index import retrieve
+from llm.pdf_extract import chunk_text, extract_text
+from llm.regulatory_analysis import (
+    analyze_chunk_with_candidates,
+    build_retrieval_query,
+    extract_reference_theme,
+    find_original_context,
+    translate_document_to_french,
+)
+
+logger = logging.getLogger(__name__)
 
 MAX_SOURCE_BYTES = 20 * 1024 * 1024  # 20 MB
 FETCH_TIMEOUT_SECONDS = 20.0
-
-
-def _extract_pdf_text(data: bytes) -> str:
-    try:
-        reader = PdfReader(io.BytesIO(data))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:
-        return ""
+# Ce qu'on garde du texte extrait pour affichage/relecture -- l'analyse LLM,
+# elle, voit le texte complet (voir run_circular_analysis).
+_RAW_TEXT_STORE_CHARS = 50_000
 
 
 def _looks_internal_host(hostname: str) -> bool:
@@ -95,47 +131,344 @@ def _looks_like_pdf(data: bytes) -> bool:
     return data[:5] == b"%PDF-"
 
 
-async def analyze_source(
-    file_bytes: bytes | None, filename: str | None, url: str | None
-) -> dict[str, Any]:
-    """Fetches (if needed), extracts text from, and LLM-analyzes a
-    circular. Returns a dict ready to persist:
-    ``{reference, theme, publication_date, raw_text, source_filename,
-    source_url, impacts}``.
-    """
-    raw_bytes, source_filename = await fetch_source(
-        file_bytes=file_bytes, filename=filename, url=url
+def compute_source_hash(data: bytes) -> str:
+    """Empreinte du document source, pour éviter de ré-analyser deux fois
+    le même PDF (voir ``find_circular_by_hash``)."""
+    return hashlib.sha256(data).hexdigest()
+
+
+async def find_circular_by_hash(db: AsyncSession, source_hash: str) -> RegulatoryCircular | None:
+    return await db.scalar(
+        select(RegulatoryCircular).where(RegulatoryCircular.source_hash == source_hash)
     )
 
-    text = _extract_pdf_text(raw_bytes) if _looks_like_pdf(raw_bytes) else (
-        raw_bytes.decode("utf-8", errors="ignore")
+
+async def create_pending_circular(
+    db: AsyncSession,
+    *,
+    reference: str,
+    publication_date: Any,
+    theme: str,
+    source_filename: str | None,
+    source_url: str | None,
+    source_hash: str,
+) -> RegulatoryCircular:
+    """Crée la ligne circulaire immédiatement (analysis_status="en_cours"),
+    avant même l'extraction/analyse -- c'est cette ligne que la requête HTTP
+    renvoie tout de suite, pendant que ``run_circular_analysis`` tourne en
+    arrière-plan."""
+    circular = RegulatoryCircular(
+        reference=reference,
+        publication_date=publication_date,
+        theme=theme,
+        source_filename=source_filename,
+        source_url=source_url,
+        source_hash=source_hash,
+        analysis_status="en_cours",
     )
-    if not text.strip():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Aucun texte n'a pu être extrait de ce document.",
-        )
+    db.add(circular)
+    await db.commit()
+    await db.refresh(circular)
+    return circular
 
-    # extract_circular is a synchronous, CPU/network-bound LLM call (up to
-    # a couple of minutes on local CPU inference) -- run it off the event
-    # loop so it doesn't stall every other request in the meantime.
-    extracted = await asyncio.to_thread(extract_circular, text, source_filename)
 
-    publication_date: date | None = None
-    if extracted.get("publication_date"):
-        try:
-            publication_date = datetime.strptime(
-                extracted["publication_date"], "%Y-%m-%d"
-            ).date()
-        except ValueError:
-            publication_date = None
+async def _resolve_dimension_by_name(db: AsyncSession, name_hint: str) -> Dimension | None:
+    """Rattache un nom de dimension libre (proposé par le LLM, ou lu depuis
+    l'index d'embeddings pour une question candidate) à une vraie
+    ``Dimension`` -- correspondance approchée (difflib), le LLM ne recopie
+    pas toujours le nom exact."""
+    if not name_hint.strip():
+        return None
+    dimensions = (
+        await db.scalars(select(Dimension).where(Dimension.is_active.is_(True)))
+    ).all()
+    best: Dimension | None = None
+    best_ratio = 0.0
+    for dim in dimensions:
+        ratio = difflib.SequenceMatcher(None, name_hint.lower(), dim.name.lower()).ratio()
+        if ratio > best_ratio:
+            best_ratio, best = ratio, dim
+    return best if best_ratio >= 0.5 else None
 
+
+async def compute_weight_recalc(db: AsyncSession, dimension: Dimension, delta: int) -> dict[str, Any]:
+    """Calcule (sans rien écrire) l'effet d'un ajout (delta=+1) ou d'une
+    désactivation (delta=-1) de question sur le poids intra-dimension des
+    questions actives -- signalé dans la proposition pour que l'admin en
+    ait conscience avant de valider, jamais appliqué automatiquement."""
+    current = await db.scalar(
+        select(func.count())
+        .select_from(Question)
+        .where(Question.dimension_id == dimension.id, Question.is_active.is_(True))
+    ) or 0
+    after = max(current + delta, 1)
     return {
-        "reference": extracted["reference"],
-        "theme": extracted["theme"],
-        "publication_date": publication_date,
-        "raw_text": text[:50_000],  # cap what we store, not what we analyze
-        "source_filename": filename or (source_filename if not url else None),
-        "source_url": url,
-        "impacts": extracted["impacts"],
+        "dimension": dimension.name,
+        "questions_actives_avant": current,
+        "questions_actives_apres": after,
+        "poids_avant": round(1 / current, 4) if current else None,
+        "poids_apres": round(1 / after, 4),
     }
+
+
+# Libellés génériques pour les 4 paliers d'une question (1->2 ... 4->5) --
+# le LLM ne les rédige pas (trop de structure imbriquée pour un petit
+# modèle local, voir Task 7) : ce sont des ébauches ("is_placeholder") que
+# l'admin complète/reformule pendant la revue humaine, jamais publiées
+# telles quelles.
+_PALIER_TRANSITIONS = ((1, 2), (2, 3), (3, 4), (4, 5))
+
+
+def _placeholder_associated_recommendations() -> list[dict[str, Any]]:
+    return [
+        {
+            "trigger_level": trigger,
+            "title": f"Recommandation à définir (niveau {trigger} → {target})",
+            "recommendation_text": "",
+            "category": "Conformité",
+            "effort": 2,
+            "is_placeholder": True,
+        }
+        for trigger, target in _PALIER_TRANSITIONS
+    ]
+
+
+async def _fetch_question_context(db: AsyncSession, question_code: str) -> dict[str, str] | None:
+    """Résout un code de question SYNTHÉTIQUE ("D4Q4", non persisté --
+    voir ``regulatory_index._synthesize_question_codes``) vers son texte
+    et sa dimension réels, via l'index RAG qui l'a déjà indexé sous ce
+    même code (``RegulatoryEmbedding``) -- évite de re-dériver
+    l'énumération dimension/question à chaque fois."""
+    if not question_code:
+        return None
+    row = await db.scalar(
+        select(RegulatoryEmbedding).where(
+            RegulatoryEmbedding.entity_type == "question",
+            RegulatoryEmbedding.entity_code == question_code,
+        )
+    )
+    if row is None:
+        return None
+    return {"title": row.title, "dimension": row.dimension or ""}
+
+
+async def _fetch_recommendation_context(db: AsyncSession, reco_code: str) -> dict[str, Any] | None:
+    """Résout un code de recommandation vers son contenu RÉEL ACTUEL --
+    directement depuis la table ``Recommendation`` (contrairement aux
+    questions, son ``code`` est une vraie colonne persistée, pas besoin de
+    passer par l'index RAG pour ce cas)."""
+    if not reco_code:
+        return None
+    reco = await db.scalar(select(Recommendation).where(Recommendation.code == reco_code))
+    if reco is None:
+        return None
+    question_ctx = None
+    question = await db.get(Question, reco.question_id)
+    if question is not None:
+        dim = await db.get(Dimension, question.dimension_id)
+        question_ctx = {"title": question.text, "dimension": dim.name if dim else ""}
+    return {
+        "title": reco.title,
+        "text": reco.recommendation_text,
+        "category": reco.category,
+        "question": question_ctx,
+    }
+
+
+async def _enrich_impact(db: AsyncSession, exigence: dict[str, Any]) -> dict[str, Any]:
+    """Complète CHAQUE proposition avec le CONTEXTE réel actuel du
+    catalogue -- l'admin ne doit jamais avoir à deviner ce qu'un code seul
+    ("D4Q4-1") désigne. Puise toujours dans les tables réelles (jamais ce
+    que le LLM a proposé), donc reflète l'état ACTUEL du référentiel même
+    s'il a changé depuis l'analyse.
+
+    Ajoute, selon (entity_type, proposed_action) :
+    - "reco_title"/"reco_text"/"reco_category" + "question_title"/
+      "question_dimension" pour une recommandation modifiée/désactivée/
+      activée (le contexte de LA recommandation existante visée) ;
+    - "question_title"/"question_dimension" pour une nouvelle
+      recommandation (la question EXISTANTE à laquelle elle sera
+      rattachée) ou une question modifiée/désactivée (la question
+      existante visée) ;
+    - "weight_recalc" (ajouter/desactiver une question, voir
+      ``compute_weight_recalc``) et "associated_recommendations" (4
+      ébauches par palier, ajouter uniquement, voir
+      ``_placeholder_associated_recommendations``).
+
+    Best-effort partout : un code qui ne résout à rien (référentiel
+    changé entretemps, incohérence) laisse simplement le champ absent
+    plutôt que d'échouer -- l'admin voit alors juste moins de contexte,
+    jamais une erreur."""
+    entity_type = exigence["entity_type"]
+    action = exigence["proposed_action"]
+    proposed = exigence["proposed"]
+
+    if entity_type == "recommandation":
+        if action == "ajouter":
+            q_ctx = await _fetch_question_context(db, proposed.get("question_code") or "")
+            if q_ctx:
+                proposed["question_title"] = q_ctx["title"]
+                proposed["question_dimension"] = q_ctx["dimension"]
+        else:  # modifier | desactiver | activer_flag -- reco_code = recommandation EXISTANTE
+            reco_ctx = await _fetch_recommendation_context(db, proposed.get("reco_code") or "")
+            if reco_ctx:
+                proposed["reco_title"] = reco_ctx["title"]
+                proposed["reco_text"] = reco_ctx["text"]
+                proposed["reco_category"] = reco_ctx["category"]
+                if reco_ctx["question"]:
+                    proposed["question_title"] = reco_ctx["question"]["title"]
+                    proposed["question_dimension"] = reco_ctx["question"]["dimension"]
+        return exigence
+
+    # entity_type == "question"
+    if action in ("modifier", "desactiver"):
+        q_ctx = await _fetch_question_context(db, proposed.get("question_code") or "")
+        if q_ctx:
+            proposed["question_title"] = q_ctx["title"]
+            proposed["question_dimension"] = q_ctx["dimension"]
+
+    if action not in ("ajouter", "desactiver"):
+        return exigence
+
+    if action == "ajouter":
+        proposed["associated_recommendations"] = _placeholder_associated_recommendations()
+        dim = await _resolve_dimension_by_name(db, proposed.get("dimension_hint", ""))
+        delta = 1
+    else:  # desactiver -- reuse the dimension just resolved above
+        dim = await _resolve_dimension_by_name(db, proposed.get("question_dimension", ""))
+        delta = -1
+
+    if dim is not None:
+        proposed["weight_recalc"] = await compute_weight_recalc(db, dim, delta)
+        if action == "ajouter":
+            proposed["dimension"] = dim.name
+    return exigence
+
+
+def _normalize_display_text(text: str) -> str:
+    """Nettoie un texte avant de le stocker pour affichage (``raw_text``/
+    ``raw_text_original``) : réduit les longues suites de lignes vides à
+    au plus une (paragraphe) -- l'extraction PDF, en particulier l'OCR sur
+    une circulaire arabe scannée, produit parfois beaucoup de lignes vides
+    consécutives (mise en page, artefacts de reconnaissance) qui, combinées
+    à un rendu ``white-space: pre-wrap`` côté front, créaient un grand
+    espace blanc au lieu du texte. N'affecte que l'affichage : le texte
+    envoyé au LLM pour l'analyse n'est pas modifié par cette fonction."""
+    return re.sub(r"\n{3,}", "\n\n", text.strip())
+
+
+def _extract_text_and_language(raw_bytes: bytes) -> tuple[str, str]:
+    if _looks_like_pdf(raw_bytes):
+        result = extract_text(raw_bytes)
+        return result.text, result.language
+    # Source non-PDF (ex. page web texte) : pas d'OCR à faire, on décode
+    # tel quel -- la détection de langue vit dans pdf_extract pour rester
+    # cohérente entre les deux chemins.
+    from llm.pdf_extract import detect_language
+
+    text = raw_bytes.decode("utf-8", errors="ignore")
+    return text, detect_language(text)
+
+
+async def run_circular_analysis(circular_id: int, raw_bytes: bytes) -> None:
+    """Tâche d'arrière-plan : extrait le texte de la circulaire puis lance
+    l'analyse réglementaire ancrée sur le catalogue, et persiste le
+    résultat -- des PROPOSITIONS uniquement (``RegulatoryImpact.action``
+    reste ``None``, à valider par un humain).
+
+    Utilise sa propre session DB (la requête qui a déclenché cette tâche a
+    déjà répondu et fermé la sienne). Toute erreur est capturée et
+    consignée sur la circulaire elle-même (``analysis_status="erreur"``,
+    ``analysis_error``) plutôt que de se perdre silencieusement dans les
+    logs uniquement -- l'admin doit pouvoir voir que ça a échoué.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            circular = await db.get(RegulatoryCircular, circular_id)
+            if circular is None:
+                return
+
+            try:
+                text, language = await asyncio.to_thread(_extract_text_and_language, raw_bytes)
+                if not text.strip():
+                    circular.analysis_status = "erreur"
+                    circular.analysis_error = "Aucun texte n'a pu être extrait de ce document."
+                    await db.commit()
+                    return
+
+                # Traduction UNE SEULE FOIS pour tout le document (pas par
+                # chunk) si la circulaire est en arabe -- tout le reste
+                # (extraction reference/theme, retrieval, analyse) travaille
+                # ensuite en français. `blocks` est vide pour une circulaire
+                # déjà en français : `analysis_text` == `text` sans appel LLM
+                # supplémentaire.
+                if language == "ar":
+                    analysis_text, translation_blocks = await asyncio.to_thread(
+                        translate_document_to_french, text
+                    )
+                else:
+                    analysis_text, translation_blocks = text, []
+
+                ref_theme = await asyncio.to_thread(extract_reference_theme, analysis_text)
+                if ref_theme["reference"]:
+                    circular.reference = ref_theme["reference"][:200]
+                if ref_theme["theme"]:
+                    circular.theme = ref_theme["theme"][:300]
+
+                all_exigences: list[dict[str, Any]] = []
+                for chunk in chunk_text(analysis_text):
+                    query_text = await asyncio.to_thread(build_retrieval_query, chunk, "fr")
+                    candidates = await retrieve(db, query_text)
+                    chunk_exigences = await asyncio.to_thread(
+                        analyze_chunk_with_candidates, chunk, "fr", candidates
+                    )
+                    if translation_blocks:
+                        # Tracabilite : le chunk (donc l'excerpt que le LLM
+                        # en tire) est en francais -- retrouve le passage
+                        # ORIGINAL (arabe) correspondant, best-effort au
+                        # niveau du bloc de traduction (voir
+                        # find_original_context).
+                        original_context = find_original_context(chunk, analysis_text, translation_blocks)
+                        for exigence in chunk_exigences:
+                            exigence["excerpt_original"] = original_context
+                    all_exigences.extend(chunk_exigences)
+
+                # `raw_text` garde le texte ANALYSÉ (français) pour
+                # l'affichage -- l'admin doit pouvoir lire le document quelle
+                # que soit sa langue source, donc la traduction si la
+                # circulaire était en arabe. `raw_text_original` garde alors
+                # le texte langue SOURCE à part (traçabilité), plutôt vide
+                # pour une circulaire déjà en français (rien de différent à
+                # garder). `_normalize_display_text` évite les longues
+                # suites de lignes vides que l'extraction PDF (surtout OCR
+                # arabe) produit parfois.
+                circular.raw_text = _normalize_display_text(analysis_text)[:_RAW_TEXT_STORE_CHARS]
+                circular.raw_text_original = (
+                    _normalize_display_text(text)[:_RAW_TEXT_STORE_CHARS] if translation_blocks else None
+                )
+                circular.detected_language = language
+                circular.analysis_status = "terminee"
+                for exigence in all_exigences:
+                    exigence = await _enrich_impact(db, exigence)
+                    db.add(
+                        RegulatoryImpact(
+                            circular_id=circular.id,
+                            excerpt=exigence["excerpt"],
+                            excerpt_original=exigence.get("excerpt_original"),
+                            requirement_text=exigence["requirement_text"],
+                            entity_type=exigence["entity_type"],
+                            proposed_action=exigence["proposed_action"],
+                            proposed_data=exigence["proposed"],
+                        )
+                    )
+                await db.commit()
+            except Exception as exc:
+                logger.exception("Regulatory circular analysis failed for id=%s", circular_id)
+                await db.rollback()
+                circular = await db.get(RegulatoryCircular, circular_id)
+                if circular is not None:
+                    circular.analysis_status = "erreur"
+                    circular.analysis_error = str(exc)[:500]
+                    await db.commit()
+    except Exception:
+        logger.exception("Regulatory circular analysis: DB session failure for id=%s", circular_id)

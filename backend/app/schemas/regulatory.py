@@ -1,20 +1,26 @@
 """Schemas for the "Veille réglementaire" admin endpoints -- importing
-regulatory circulars, reviewing their AI-extracted impacts, and publishing.
+regulatory circulars, polling their (background) AI analysis, reviewing
+the proposed impacts, and publishing.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
 
 class ImpactRead(BaseModel):
     id: int
+    excerpt: str
+    # Texte original (langue source) correspondant à `excerpt`, si la
+    # circulaire a été traduite (arabe -> français) -- None sinon.
+    excerpt_original: Optional[str] = None
     requirement_text: str
-    target_type: str
-    target_description: str
+    entity_type: str
+    proposed_action: str
+    proposed_data: dict[str, Any]
     action: Optional[str] = None
     edited_text: Optional[str] = None
 
@@ -30,6 +36,9 @@ class CircularRead(BaseModel):
     version: str
     source_filename: Optional[str] = None
     source_url: Optional[str] = None
+    detected_language: Optional[str] = None
+    analysis_status: str
+    analysis_error: Optional[str] = None
     is_published: bool
     created_at: datetime
     impact_count: int
@@ -39,7 +48,11 @@ class CircularRead(BaseModel):
 
 
 class CircularDetailRead(CircularRead):
+    # Texte ANALYSÉ (français) -- ce qu'affiche l'admin par défaut, même
+    # pour une circulaire arabe (voir services/regulatory.py).
     raw_text: Optional[str] = None
+    # Texte langue SOURCE, uniquement renseigné si une traduction a eu lieu.
+    raw_text_original: Optional[str] = None
     impacts: list[ImpactRead] = []
 
 

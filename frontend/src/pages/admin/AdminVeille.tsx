@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Upload, FileText, ChevronRight, Check, Edit2, XCircle,
   BookOpen, ExternalLink, RefreshCw, CheckCircle2,
-  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle,
+  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle, Scale, ListPlus, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -37,14 +37,255 @@ function StatutBadge({ statut }: { statut: string }) {
   );
 }
 
-function TypeBadge({ type }: { type: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    "réglementaire":     { bg: "#EEF2FF", color: "#3730A3" },
-    "nouvelle question": { bg: "#FDF4FF", color: "#6B21A8" },
-    "recommandation":    { bg: "#FFF7ED", color: "#9A3412" },
-  };
-  const c = map[type] ?? { bg: "#F5F5F5", color: "#6B6B6B" };
-  return <span style={{ backgroundColor: c.bg, color: c.color, borderRadius: 4, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>{type}</span>;
+const IMPACT_LABEL: Record<string, string> = {
+  "question:ajouter": "Nouvelle question",
+  "question:modifier": "Question à modifier",
+  "question:desactiver": "Question à rendre obsolète",
+  "recommandation:ajouter": "Nouvelle recommandation",
+  "recommandation:modifier": "Recommandation à modifier",
+  "recommandation:desactiver": "Recommandation à rendre obsolète",
+  "recommandation:activer_flag": "Activation indicateur réglementaire",
+};
+
+const IMPACT_COLOR: Record<string, { bg: string; color: string }> = {
+  "question:ajouter":                  { bg: "#EEF2FF", color: "#3730A3" },
+  "question:modifier":                 { bg: "#EEF2FF", color: "#3730A3" },
+  "question:desactiver":               { bg: "#FFEBEE", color: "#B91C1C" },
+  "recommandation:ajouter":            { bg: "#F0FDF4", color: "#166534" },
+  "recommandation:modifier":           { bg: "#FFF7ED", color: "#9A3412" },
+  "recommandation:desactiver":         { bg: "#FFEBEE", color: "#B91C1C" },
+  "recommandation:activer_flag":       { bg: "#FDF4FF", color: "#6B21A8" },
+};
+
+function impactKey(impact: Impact): string {
+  return `${impact.entityType}:${impact.proposedAction}`;
+}
+
+function TypeBadge({ impact }: { impact: Impact }) {
+  const key = impactKey(impact);
+  const c = IMPACT_COLOR[key] ?? { bg: "#F5F5F5", color: "#6B6B6B" };
+  return <span style={{ backgroundColor: c.bg, color: c.color, borderRadius: 4, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>{IMPACT_LABEL[key] ?? key}</span>;
+}
+
+function EffortDots({ effort }: { effort: number }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }} title={`Effort estimé : ${effort}/3`}>
+      {[1, 2, 3].map(n => (
+        <span key={n} style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: n <= effort ? "#6B6B6B" : "#E0E0E0" }} />
+      ))}
+    </span>
+  );
+}
+
+function WeightRecalcNote({ impact }: { impact: Impact }) {
+  const w = impact.proposedData.weight_recalc;
+  if (!w) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 11, color: "#92400E" }}>
+      <Scale size={12} style={{ flexShrink: 0 }} />
+      <span>
+        Recalcul du poids intra-dimension ({w.dimension}) : {w.questions_actives_avant} → {w.questions_actives_apres} question{w.questions_actives_apres !== 1 ? "s" : ""} actives,
+        {" "}poids {w.poids_avant != null ? `${w.poids_avant} → ` : ""}{w.poids_apres}.
+      </span>
+    </div>
+  );
+}
+
+function AssociatedRecommendations({ impact }: { impact: Impact }) {
+  const list = impact.proposedData.associated_recommendations;
+  if (!list || list.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#4A4A4A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        Recommandations par palier ({list.length})
+      </div>
+      {list.map((r, i) => (
+        <div key={i} style={{ padding: "8px 10px", backgroundColor: "#F7F7F7", borderRadius: 6, border: r.is_placeholder ? "1px dashed rgba(0,0,0,0.15)" : "1px solid rgba(0,0,0,0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B" }}>Palier {r.trigger_level} → {r.trigger_level + 1}</span>
+            {r.is_placeholder && <span style={{ fontSize: 9, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "1px 6px", borderRadius: 3 }}>À rédiger</span>}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A" }}>{r.title}</div>
+          {r.recommendation_text && <p style={{ fontSize: 11, color: "#6B6B6B", margin: "3px 0 0" }}>{r.recommendation_text}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Reference box for an EXISTING catalog element (question or
+ * recommandation) that a proposal targets by code -- always shows what
+ * the code actually IS (title, and dimension/category context), never
+ * just the bare code alone. Falls back to the bare code if the backend
+ * couldn't resolve it (referential changed since the analysis ran). */
+function CatalogRefBox({ kind, code, title, subtitle, text }: {
+  kind: "question" | "recommandation";
+  code?: string;
+  title?: string;
+  subtitle?: string;
+  text?: string;
+}) {
+  if (!title) {
+    return code ? (
+      <span style={{ fontSize: 11, fontWeight: 700, color: "#6B6B6B", backgroundColor: "#F5F5F5", padding: "2px 8px", borderRadius: 4, alignSelf: "flex-start" }}>{code}</span>
+    ) : null;
+  }
+  const c = kind === "question" ? { bg: "#EEF2FF", border: "#C7D2FE", text: "#3730A3" } : { bg: "#FFF7ED", border: "#FED7AA", text: "#9A3412" };
+  return (
+    <div style={{ padding: "9px 11px", backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: c.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {kind === "question" ? "Question existante" : "Recommandation existante"}
+        </span>
+        {code && <span style={{ fontSize: 9, fontWeight: 600, color: c.text, opacity: 0.65 }}>· {code}</span>}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 10, color: "#6B6B6B", marginTop: 2 }}>{subtitle}</div>}
+      {text && <p style={{ fontSize: 11, color: "#4A4A4A", margin: "5px 0 0", lineHeight: 1.5 }}>{text}</p>}
+    </div>
+  );
+}
+
+/** Renders the (entityType, proposedAction)-specific fields of a proposed
+ * impact (see llm/regulatory_analysis.py for what proposedData carries per
+ * combination). Existing-element references (reco_title, question_title,
+ * etc.) come from the backend's own catalog lookup at analysis time (see
+ * app/services/regulatory.py::_enrich_impact) -- never invented by the LLM,
+ * always the real current content, so a bare code is never shown alone. */
+function ProposedDetails({ impact }: { impact: Impact }) {
+  const p = impact.proposedData;
+  const key = impactKey(impact);
+
+  if (key === "question:ajouter") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ padding: "10px 12px", backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#3730A3", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Nouvelle question proposée
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{p.title}</div>
+          {p.dimension && (
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#3730A3", marginTop: 4 }}>Dimension : {p.dimension}</div>
+          )}
+        </div>
+
+        {p.level_labels && p.level_labels.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 5 }}>
+              Échelle de maturité proposée (réponses possibles)
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {p.level_labels.map((lbl, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, width: 18, height: 18, marginTop: 1, borderRadius: "50%", backgroundColor: "#1A1A1A", color: "#FFE600", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.5 }}>{lbl}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <WeightRecalcNote impact={impact} />
+        <AssociatedRecommendations impact={impact} />
+      </div>
+    );
+  }
+
+  if (key === "question:modifier" || key === "recommandation:modifier") {
+    const isQuestion = key === "question:modifier";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <CatalogRefBox
+          kind={isQuestion ? "question" : "recommandation"}
+          code={isQuestion ? p.question_code : p.reco_code}
+          title={isQuestion ? p.question_title : p.reco_title}
+          subtitle={isQuestion ? p.question_dimension : [p.reco_category, p.question_title].filter(Boolean).join(" · ")}
+          text={isQuestion ? undefined : p.reco_text}
+        />
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#9A3412", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
+            Modification proposée
+          </div>
+          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{p.modification}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (key === "question:desactiver" || key === "recommandation:desactiver") {
+    const isQuestion = key === "question:desactiver";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <CatalogRefBox
+          kind={isQuestion ? "question" : "recommandation"}
+          code={isQuestion ? p.question_code : p.reco_code}
+          title={isQuestion ? p.question_title : p.reco_title}
+          subtitle={isQuestion ? p.question_dimension : [p.reco_category, p.question_title].filter(Boolean).join(" · ")}
+          text={isQuestion ? undefined : p.reco_text}
+        />
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#B91C1C", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
+            Motif de désactivation
+          </div>
+          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{p.justification}</p>
+        </div>
+        <span style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic" }}>Passera au statut « obsolète » (jamais supprimé) à la publication.</span>
+        <WeightRecalcNote impact={impact} />
+      </div>
+    );
+  }
+
+  if (key === "recommandation:ajouter") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: "10px 12px", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Nouvelle recommandation proposée
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", lineHeight: 1.4 }}>{p.title}</div>
+          <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: "5px 0 0" }}>{p.recommendation_text}</p>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {p.category && <span style={{ fontSize: 11, color: "#6B6B6B", backgroundColor: "#F5F5F5", padding: "2px 8px", borderRadius: 4 }}>{p.category}</span>}
+          {typeof p.effort === "number" && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#6B6B6B" }}>Effort <EffortDots effort={p.effort} /></span>
+          )}
+          {typeof p.trigger_level === "number" && (
+            <span style={{ fontSize: 11, color: "#6B6B6B" }}>Palier {p.trigger_level} → {p.trigger_level + 1}</span>
+          )}
+        </div>
+
+        {(p.question_title || p.question_code) && (
+          <div style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.5 }}>
+            Rattachée à la question <strong style={{ color: "#1A1A1A" }}>{p.question_title || p.question_code}</strong>
+            {p.question_dimension && <> — dimension <strong style={{ color: "#1A1A1A" }}>{p.question_dimension}</strong></>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // recommandation:activer_flag
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <CatalogRefBox
+        kind="recommandation"
+        code={p.reco_code}
+        title={p.reco_title}
+        subtitle={[p.reco_category, p.question_title].filter(Boolean).join(" · ")}
+        text={p.reco_text}
+      />
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "8px 10px", backgroundColor: "#FDF4FF", border: "1px solid #F3E8FF", borderRadius: 6 }}>
+        <ShieldCheck size={13} style={{ color: "#6B21A8", flexShrink: 0, marginTop: 1 }} />
+        <span style={{ fontSize: 12, color: "#6B21A8", lineHeight: 1.5 }}>
+          Cette recommandation existante couvre déjà l'exigence de la circulaire — elle sera marquée comme <strong>obligation réglementaire</strong> (indicateur activé), sans changer son contenu.
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // ── PDF Icon SVG (3D-style) ───────────────────────────────────────────────────
@@ -86,7 +327,7 @@ function SpinnerIcon({ size = 100 }: { size?: number }) {
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 
 function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circular: CircularDetail) => void }) {
-  const [step, setStep] = useState<"drop" | "loading" | "done" | "error">("drop");
+  const [step, setStep] = useState<"form" | "analyzing" | "done" | "error">("form");
   const [tab, setTab] = useState<"file" | "link">("file");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -95,15 +336,44 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
   const [errorMsg, setErrorMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  async function afterSubmit(circular: CircularDetail) {
+    if (circular.analysisStatus !== "en_cours") {
+      finishWith(circular);
+      return;
+    }
+    setStep("analyzing");
+    const resolved = await regulatoryApi.pollCircular(circular.id);
+    finishWith(resolved);
+  }
+
+  function finishWith(circular: CircularDetail) {
+    if (circular.analysisStatus === "en_cours") {
+      // Polling gave up (maxAttempts reached) but the analysis is still
+      // running server-side -- must NOT report this as "done" with
+      // whatever impact_count happens to exist yet (0), or the admin sees
+      // a false "0 exigences détectées" even though the real result shows
+      // up later in the list (which polls its own live status).
+      toast.info("L'analyse prend plus de temps que prévu — elle continue en arrière-plan. Retrouvez cette circulaire dans la liste une fois terminée.");
+      onClose();
+      return;
+    }
+    if (circular.analysisStatus === "erreur") {
+      setErrorMsg(circular.analysisError || "Échec de l'analyse du document.");
+      setStep("error");
+      return;
+    }
+    setResult(circular);
+    setStep("done");
+  }
+
   async function handleFile(file: File) {
     setFileName(file.name);
-    setStep("loading");
+    setStep("analyzing");
     try {
       const circular = await regulatoryApi.importFile(file);
-      setResult(circular);
-      setStep("done");
+      await afterSubmit(circular);
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Échec de l'analyse du document.");
+      setErrorMsg(e instanceof Error ? e.message : "Échec de l'import du document.");
       setStep("error");
     }
   }
@@ -111,13 +381,12 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
   async function handleLink() {
     if (!linkValue.trim()) return;
     setFileName(linkValue.trim());
-    setStep("loading");
+    setStep("analyzing");
     try {
       const circular = await regulatoryApi.importUrl(linkValue.trim());
-      setResult(circular);
-      setStep("done");
+      await afterSubmit(circular);
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Échec de l'analyse du document.");
+      setErrorMsg(e instanceof Error ? e.message : "Échec de l'import du document.");
       setStep("error");
     }
   }
@@ -132,14 +401,14 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
 
         <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>
-            {step === "drop" ? "Importer une circulaire" : step === "loading" ? "Analyse IA en cours…" : step === "error" ? "Échec de l'analyse" : "Extraction terminée"}
+            {step === "form" ? "Importer une circulaire" : step === "analyzing" ? "Analyse IA en cours…" : step === "error" ? "Échec de l'analyse" : "Analyse terminée"}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B", padding: 4, borderRadius: 6 }}><X size={18} /></button>
         </div>
 
         <div style={{ padding: "20px 24px 24px" }}>
 
-          {step === "drop" && (
+          {step === "form" && (
             <>
               <div style={{ display: "flex", gap: 0, backgroundColor: "#F5F5F5", borderRadius: 8, padding: 3, marginBottom: 20 }}>
                 {(["file", "link"] as const).map(t => (
@@ -224,7 +493,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
             </>
           )}
 
-          {step === "loading" && (
+          {step === "analyzing" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "16px 0 8px", animation: "fade-in 0.2s ease" }}>
               <SpinnerIcon size={88} />
               <div style={{ textAlign: "center" }}>
@@ -232,7 +501,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                   Lecture du document…
                 </div>
                 <div style={{ fontSize: 12, color: "#9B9B9B", maxWidth: 320 }}>
-                  L'IA analyse le contenu et identifie les exigences réglementaires. Cela peut prendre une à deux minutes sur ce modèle local.
+                  L'IA analyse le contenu (texte ou OCR, français ou arabe) et identifie les exigences réglementaires en arrière-plan. Cela peut prendre une à quelques minutes sur ce modèle local — vous pouvez fermer cette fenêtre, l'analyse continue.
                 </div>
               </div>
               <div style={{ width: "100%", height: 4, backgroundColor: "#F0F0F0", borderRadius: 2, overflow: "hidden", position: "relative" }}>
@@ -248,7 +517,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                 <AlertTriangle size={28} style={{ color: "#CC0000" }} />
               </div>
               <div style={{ fontSize: 13, color: "#6B6B6B", textAlign: "center", maxWidth: 340 }}>{errorMsg}</div>
-              <button onClick={() => setStep("drop")} style={{ padding: "8px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A" }}>
+              <button onClick={() => setStep("form")} style={{ padding: "8px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A" }}>
                 Réessayer
               </button>
             </div>
@@ -259,15 +528,18 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", backgroundColor: "#E8F5E9", borderRadius: 10, border: "1px solid #C8E6C9" }}>
                 <CheckCircle2 size={22} style={{ color: "#2E7D32", flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1B5E20" }}>Extraction réussie</div>
-                  <div style={{ fontSize: 12, color: "#2E7D32" }}>{result.impactCount} exigence{result.impactCount !== 1 ? "s" : ""} détectée{result.impactCount !== 1 ? "s" : ""}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1B5E20" }}>Analyse terminée</div>
+                  <div style={{ fontSize: 12, color: "#2E7D32" }}>
+                    {result.impactCount} exigence{result.impactCount !== 1 ? "s" : ""} détectée{result.impactCount !== 1 ? "s" : ""}
+                    {result.detectedLanguage && result.detectedLanguage !== "unknown" ? ` · document en ${result.detectedLanguage === "ar" ? "arabe" : "français"}` : ""}
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {[
                   { label: "Référence", value: result.reference },
-                  { label: "Date de publication", value: formatDate(result.publicationDate) },
-                  { label: "Thème détecté", value: result.theme },
+                  { label: "Date d'import", value: formatDate(result.publicationDate) },
+                  { label: "Thème", value: result.theme || "—" },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", backgroundColor: "#F7F7F7", borderRadius: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.04em", width: 130, flexShrink: 0 }}>{label}</span>
@@ -430,6 +702,11 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
             <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8 }}>
               <BookOpen size={13} style={{ color: "#6B6B6B" }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A" }}>Document source</span>
+              {circular.detectedLanguage && circular.detectedLanguage !== "unknown" && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#6B6B6B", backgroundColor: "#F5F5F5", padding: "1px 6px", borderRadius: 4 }}>
+                  {circular.detectedLanguage === "ar" ? "AR" : "FR"}
+                </span>
+              )}
               {circular.sourceUrl && (
                 <a href={circular.sourceUrl} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#6B6B6B", textDecoration: "none" }}>
                   <ExternalLink size={11} /> Ouvrir
@@ -467,13 +744,29 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                 opacity: c.action === "rejeté" ? 0.55 : 1,
                 transition: "all 0.18s",
               }}>
-                <p style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.55, margin: "0 0 10px" }}>
+                <p style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.55, margin: "0 0 6px", fontWeight: 600 }}>
                   {c.editedText || c.requirementText}
                 </p>
+                {c.excerpt && (
+                  <p style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic", lineHeight: 1.5, margin: c.excerptOriginal ? "0 0 4px" : "0 0 10px", borderLeft: "2px solid #E0E0E0", paddingLeft: 8 }}>
+                    « {c.excerpt} »
+                  </p>
+                )}
+                {c.excerptOriginal && (
+                  <p
+                    dir="rtl"
+                    title="Texte original de la circulaire (avant traduction)"
+                    style={{ fontSize: 11, color: "#B0B0B0", fontStyle: "italic", lineHeight: 1.6, margin: "0 0 10px", borderLeft: "2px solid #E0E0E0", paddingLeft: 8, textAlign: "right" }}
+                  >
+                    « {c.excerptOriginal} »
+                  </p>
+                )}
 
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14, flexWrap: "wrap" }}>
-                  <TypeBadge type={c.targetType} />
-                  <span style={{ fontSize: 11, color: "#6B6B6B", backgroundColor: "#F5F5F5", padding: "2px 8px", borderRadius: 4 }}>{c.targetDescription}</span>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <TypeBadge impact={c} />
+                  </div>
+                  <ProposedDetails impact={c} />
                 </div>
 
                 {editingId === c.id ? (
@@ -567,6 +860,20 @@ export function VeilleReglementaire() {
   const [selected, setSelected] = useState<CircularDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<number | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  async function reindex() {
+    setReindexing(true);
+    try {
+      const result = await regulatoryApi.reindexCatalog();
+      toast.success(`Index mis à jour : ${result.questions} question(s), ${result.recommandations} recommandation(s).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Échec de la réindexation");
+    } finally {
+      setReindexing(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -586,11 +893,30 @@ export function VeilleReglementaire() {
   async function openCircular(id: number) {
     setLoadingDetail(id);
     try {
-      setSelected(await regulatoryApi.getCircular(id));
+      let circular = await regulatoryApi.getCircular(id);
+      if (circular.analysisStatus === "en_cours") {
+        toast.info("Analyse encore en cours pour cette circulaire — patientez…");
+        circular = await regulatoryApi.pollCircular(id);
+      }
+      setSelected(circular);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Échec du chargement de la circulaire");
     } finally {
       setLoadingDetail(null);
+    }
+  }
+
+  async function handleDelete(c: Circular) {
+    if (!window.confirm(`Supprimer la circulaire « ${c.reference} » ? Cette action est irréversible.`)) return;
+    setDeletingId(c.id);
+    try {
+      await regulatoryApi.deleteCircular(c.id);
+      setCirculars(prev => prev.filter(x => x.id !== c.id));
+      toast.success("Circulaire supprimée.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Échec de la suppression");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -624,14 +950,24 @@ export function VeilleReglementaire() {
               {circulars.length} circulaire{circulars.length !== 1 ? "s" : ""} importée{circulars.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <button
-            onClick={() => setShowUpload(true)}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, marginLeft: 24 }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#2D2D2D"}
-            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#1A1A1A"}
-          >
-            <Upload size={14} /> Importer une circulaire
-          </button>
+          <div style={{ display: "flex", gap: 10, flexShrink: 0, marginLeft: 24 }}>
+            <button
+              onClick={reindex}
+              disabled={reindexing}
+              title="Ré-encode le référentiel (questions + recommandations) pour la recherche RAG"
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", color: "#4A4A4A", cursor: reindexing ? "wait" : "pointer", whiteSpace: "nowrap" }}
+            >
+              {reindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Réindexer le référentiel
+            </button>
+            <button
+              onClick={() => setShowUpload(true)}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer", whiteSpace: "nowrap" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#2D2D2D"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#1A1A1A"}
+            >
+              <Upload size={14} /> Importer une circulaire
+            </button>
+          </div>
         </div>
 
         {circulars.length > 0 && (
@@ -694,6 +1030,16 @@ export function VeilleReglementaire() {
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{c.reference}</span>
                   <StatutBadge statut={c.status} />
                   <span style={{ fontSize: 10, fontWeight: 700, color: "#3730A3", backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 4 }}>{c.version}</span>
+                  {c.analysisStatus === "en_cours" && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#6366F1", backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 4 }}>
+                      <Loader2 size={10} className="animate-spin" /> Analyse en cours
+                    </span>
+                  )}
+                  {c.analysisStatus === "erreur" && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#CC0000", backgroundColor: "#FFEBEE", padding: "2px 7px", borderRadius: 4 }}>
+                      <AlertTriangle size={10} /> Échec de l'analyse
+                    </span>
+                  )}
                   {c.pendingCount > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "2px 7px", borderRadius: 4 }}>{c.pendingCount} en attente</span>
                   )}
@@ -709,15 +1055,27 @@ export function VeilleReglementaire() {
                 </div>
               </div>
 
-              <button
-                onClick={() => openCircular(c.id)}
-                disabled={loadingDetail === c.id}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: loadingDetail === c.id ? "wait" : "pointer", color: "#4A4A4A", flexShrink: 0, transition: "all 0.12s", whiteSpace: "nowrap" }}
-                onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#1A1A1A"; b.style.color = "#FFE600"; b.style.borderColor = "#1A1A1A"; }}
-                onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#4A4A4A"; b.style.borderColor = "rgba(0,0,0,0.10)"; }}
-              >
-                {loadingDetail === c.id ? <Loader2 size={13} className="animate-spin" /> : <>Voir l'analyse <ArrowUpRight size={13} /></>}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => openCircular(c.id)}
+                  disabled={loadingDetail === c.id}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: loadingDetail === c.id ? "wait" : "pointer", color: "#4A4A4A", transition: "all 0.12s", whiteSpace: "nowrap" }}
+                  onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#1A1A1A"; b.style.color = "#FFE600"; b.style.borderColor = "#1A1A1A"; }}
+                  onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#4A4A4A"; b.style.borderColor = "rgba(0,0,0,0.10)"; }}
+                >
+                  {loadingDetail === c.id ? <Loader2 size={13} className="animate-spin" /> : <>Voir l'analyse <ArrowUpRight size={13} /></>}
+                </button>
+                <button
+                  onClick={() => handleDelete(c)}
+                  disabled={deletingId === c.id}
+                  title={c.isPublished ? "Circulaire publiée : suppression impossible" : "Supprimer"}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 6, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: deletingId === c.id ? "wait" : "pointer", color: "#9B9B9B", transition: "all 0.12s" }}
+                  onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#FFEBEE"; b.style.color = "#CC0000"; b.style.borderColor = "#FFCDD2"; }}
+                  onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#fff"; b.style.color = "#9B9B9B"; b.style.borderColor = "rgba(0,0,0,0.10)"; }}
+                >
+                  {deletingId === c.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                </button>
+              </div>
             </div>
           ))}
         </div>

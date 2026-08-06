@@ -1,18 +1,31 @@
 """Generative layer: LLM-powered reformulation and results narration.
 
-Two things, both grounded -- the LLM never invents content, it only
-rephrases what is already computed elsewhere in the pipeline:
+Grounded -- the LLM never invents content, it only rephrases or narrates
+what is already computed elsewhere in the pipeline:
 
 1. reformulate_recommendation -- rewrites one catalog recommendation's
    existing text for a specific bank's context, and writes a short
    justification from the real SHAP factors computed in explain.py.
-2. explain_results -- a short narrative of a bank's maturity profile,
-   built only from scores already computed by scoring.py.
+2. explain_results / explain_comparison -- short narratives of a bank's
+   maturity profile, built only from scores already computed by scoring.py.
+
+These bank-side features always use the LOCAL model (LLM_* below, Ollama)
+-- never sent anywhere else, which matters for real bank records.
+
+Regulatory-circular analysis ("Veille réglementaire") lives in
+llm/regulatory_analysis.py, not here -- it uses ``call_regulatory_llm``
+(REG_LLM_* below), a separate, cloud-first configuration (Gemini, via its
+OpenAI-compatible endpoint) with automatic fallback to the same local
+model as everything else if the cloud call fails or REG_LLM_API_KEY is
+unset. Only this one feature's GENERATION step ever leaves the machine;
+its retrieval step (embeddings/RAG) stays local regardless (see
+llm/embeddings.py) -- and regulatory source text/candidates sent to
+Gemini contain referential metadata (catalog codes/titles, circular
+excerpts), never bank-identifying data.
 
 Calls a local Ollama server through its OpenAI-compatible API (the
 `openai` SDK is used purely as an HTTP client here -- no request ever
-reaches the public OpenAI API). That keeps every bank record on the
-machine, which matters in this banking context. Configurable via
+reaches the public OpenAI API for bank-side features). Configurable via
 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL, defaulting to a local Ollama
 server, so a fresh checkout works with no .env changes as long as Ollama
 is running with the expected model pulled.
@@ -32,22 +45,45 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
-import unicodedata
+import time
 from typing import Any
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+# ── Modele LOCAL (Ollama) -- fonctionnalites cote banque (reformulation,
+# narrative) ET repli de secours pour la veille reglementaire ci-dessous ──
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 # Ollama does not check this value at all -- any non-empty string works.
 # Set explicitly to "" (empty) to force the non-LLM fallback, e.g. in
 # tests or a deployment with no Ollama server.
 LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama32cpu")
+# Combien de temps Ollama garde le modele charge en memoire apres un appel
+# -- evite de repayer un rechargement a froid entre deux appels rapproches
+# (typiquement les chunks successifs d'une meme analyse de circulaire).
+LLM_KEEP_ALIVE = os.getenv("LLM_KEEP_ALIVE", "30m")
+# Optionnel : fixe le nombre de threads CPU utilises par Ollama pour
+# l'inference. Laisse Ollama deviner (comportement par defaut) si absent.
+LLM_NUM_THREAD = int(os.getenv("LLM_NUM_THREAD", "0")) or None
+
+# ── Modele DEDIE a la veille reglementaire -- Gemini (cloud) par defaut,
+# nettement plus rapide/fiable qu'un petit modele local pour l'extraction
+# et la reformulation de questions/recommandations. Distinct des LLM_*
+# ci-dessus : les fonctionnalites cote banque restent 100% locales. Si
+# REG_LLM_API_KEY est vide, la veille reglementaire utilise directement le
+# modele local (meme repli qu'en cas d'echec de l'appel Gemini) --------------
+REG_LLM_PROVIDER = os.getenv("REG_LLM_PROVIDER", "")
+REG_LLM_BASE_URL = os.getenv("REG_LLM_BASE_URL", "")
+REG_LLM_API_KEY = os.getenv("REG_LLM_API_KEY", "")
+REG_LLM_MODEL = os.getenv("REG_LLM_MODEL", "")
 
 # Low temperature (stable output) and a small output cap, per spec. Kept
 # tight since generation time on CPU scales with tokens produced -- this
@@ -57,8 +93,29 @@ _TEMPERATURE = 0.2
 _MAX_OUTPUT_TOKENS = 250
 # Generous timeout: local CPU inference (e.g. a small model on Ollama) is
 # much slower than a cloud API, but a request must still fail eventually
-# rather than hang the caller forever.
-_TIMEOUT_SECONDS = 90.0
+# rather than hang the caller forever. 90s was too tight for
+# regulatory_analysis's RAG prompts (system prompt + k candidates +
+# section text) -- measured up to ~166s on this machine under normal load.
+_TIMEOUT_SECONDS = 240.0
+# Cloud API: fails fast if unreachable/slow, so the fallback to the local
+# model kicks in quickly rather than waiting out the local timeout above.
+_REG_TIMEOUT_SECONDS = 45.0
+# Gemini 3.5 (and other "thinking" models) spend an unpredictable, often
+# large number of tokens on internal reasoning BEFORE any visible output --
+# those count against max_tokens too. Verified empirically: max_tokens=100
+# on a trivial one-line prompt already truncated (finish_reason="length")
+# with the reasoning alone; max_tokens=2000 completed cleanly. Generous
+# fixed ceiling, decoupled from the caller's own max_output_tokens (tuned
+# for local CPU latency, not relevant to a cloud API's reasoning budget).
+_REG_GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("REG_LLM_MAX_OUTPUT_TOKENS", "8000"))
+# Nombre max de tentatives Gemini avant repli local, et base du backoff
+# exponentiel entre deux tentatives (delais ~1s, 2s, 4s avec les valeurs
+# par defaut) -- uniquement pour les erreurs TRANSITOIRES (429, timeout,
+# 5xx), voir ``_is_transient_llm_error``. Une erreur PERSISTANTE (cle
+# invalide, modele inconnu...) tombe sur le repli local des la 1re tentative,
+# reessayer ne changerait rien.
+_REG_LLM_MAX_RETRIES = int(os.getenv("REG_LLM_MAX_RETRIES", "3"))
+_REG_LLM_BACKOFF_BASE_SECONDS = float(os.getenv("REG_LLM_BACKOFF_BASE", "1.0"))
 
 # System prompts are in French: the LLM reformulates French bank content
 # for French-speaking bank staff, and the grounding rules read most
@@ -129,40 +186,66 @@ def _lock_for_key(key: str) -> threading.Lock:
         return lock
 
 
-def _call_llm(
+def _call_llm_raw(
     system_prompt: str,
     user_prompt: str,
-    json_schema: dict[str, Any] | None = None,
-    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout: float,
+    json_schema: dict[str, Any] | None,
+    max_output_tokens: int,
+    ollama_extras: bool,
 ) -> str:
-    """Calls the local Ollama server via its OpenAI-compatible API and
-    returns the raw text response.
+    """Calls an OpenAI-compatible chat completions endpoint (local Ollama
+    or a cloud provider) and returns the raw text response.
 
     Raises on any failure (missing key, server unreachable, network
-    error, API error) so callers can catch it and fall back to the
-    non-LLM path -- never lets an exception escape to the API layer.
+    error, API error, empty content) so callers can catch it and fall
+    back -- never lets an exception escape to the API layer.
     """
-    if not LLM_API_KEY:
-        raise RuntimeError("LLM_API_KEY is not configured")
+    if not api_key:
+        raise RuntimeError("API key is not configured")
 
     import openai  # lazy import: not needed on the pure-fallback path
 
-    client = openai.OpenAI(
-        api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=_TIMEOUT_SECONDS
-    )
+    client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
     kwargs: dict[str, Any] = {}
     if json_schema is not None:
-        kwargs["response_format"] = {"type": "json_object"}
+        # "json_schema" (not the generic "json_object") makes the server
+        # actually constrain decoding to this schema, so required fields
+        # are reliably present -- verified empirically on Ollama:
+        # {"type": "json_object"} alone only guarantees *some* valid JSON,
+        # a small local model then routinely omits fields the prompt asked
+        # for but didn't grammar-enforce (e.g. dropping "excerpt" and
+        # "requirement_text" from every item in regulatory_analysis).
+        kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": json_schema, "strict": True},
+        }
+
+    extra_body: dict[str, Any] = {}
+    if ollama_extras:
+        # keep_alive et options.num_thread sont des extensions specifiques
+        # a Ollama, absentes du schema OpenAI standard (et rejetees ou
+        # ignorees par un vrai fournisseur cloud) -- extra_body les injecte
+        # tels quels dans le corps JSON envoye, sans que le SDK openai les
+        # valide (il les ignorerait sinon).
+        extra_body["keep_alive"] = LLM_KEEP_ALIVE
+        if LLM_NUM_THREAD:
+            extra_body["options"] = {"num_thread": LLM_NUM_THREAD}
 
     try:
         response = client.chat.completions.create(
-            model=LLM_MODEL,
+            model=model,
             max_tokens=max_output_tokens,
             temperature=_TEMPERATURE,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            extra_body=extra_body or None,
             **kwargs,
         )
     except Exception as exc:
@@ -172,6 +255,189 @@ def _call_llm(
     if not content:
         raise RuntimeError("LLM response had no content")
     return content
+
+
+def _call_llm(
+    system_prompt: str,
+    user_prompt: str,
+    json_schema: dict[str, Any] | None = None,
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+) -> str:
+    """Calls the LOCAL Ollama server (LLM_*) -- used by every bank-side
+    feature (reformulation, narrative), and as the automatic fallback for
+    ``call_regulatory_llm`` below. See ``_call_llm_raw`` for behavior."""
+    return _call_llm_raw(
+        system_prompt,
+        user_prompt,
+        base_url=LLM_BASE_URL,
+        api_key=LLM_API_KEY,
+        model=LLM_MODEL,
+        timeout=_TIMEOUT_SECONDS,
+        json_schema=json_schema,
+        max_output_tokens=max_output_tokens,
+        ollama_extras=True,
+    )
+
+
+def _is_transient_llm_error(exc: BaseException) -> bool:
+    """Distingue une erreur TRANSITOIRE (429 rate limit, timeout, 5xx --
+    vaut la peine de reessayer) d'une erreur PERSISTANTE/dure (cle
+    invalide, requete malformee, modele inconnu -- reessayer ne changera
+    rien, autant tomber sur le repli local tout de suite).
+
+    Inspecte la cause d'origine (``exc.__cause__``, wrappee par
+    ``_call_llm_raw`` en ``RuntimeError``) plutot que ``exc`` lui-meme.
+    Se base sur ``status_code`` (present sur toutes les ``APIStatusError``
+    du SDK openai : RateLimitError=429, InternalServerError=5xx...) plutot
+    que sur des ``isinstance`` nommes explicitement, pour rester correct
+    meme si le SDK ajoute de nouvelles sous-classes. Les erreurs de
+    connexion/timeout (pas de reponse HTTP, donc pas de status_code) sont
+    identifiees par leur nom de type."""
+    cause = exc.__cause__ or exc
+    status_code = getattr(cause, "status_code", None)
+    if status_code is not None:
+        return status_code == 429 or status_code >= 500
+    return type(cause).__name__ in (
+        "APITimeoutError", "APIConnectionError", "Timeout", "ConnectError", "ReadTimeout",
+    )
+
+
+def _is_quota_exhaustion(exc: BaseException) -> bool:
+    """Quota EPUISE (typiquement journalier, palier gratuit Gemini) --
+    distinct d'un simple pic de charge (429 générique) ou d'une erreur 5xx
+    ponctuelle : réessayer dans la foulée (quelques secondes de backoff)
+    ne sert à rien, le quota ne va pas se régénérer entretemps. Vérifié
+    empiriquement sur ce projet : Gemini renvoie précisément
+    "RESOURCE_EXHAUSTED" pour ce cas, avec un ``retryDelay`` suggéré de
+    plusieurs dizaines de secondes -- bien au-delà de notre fenêtre de
+    backoff normale (voir ``_REG_LLM_BACKOFF_BASE_SECONDS``)."""
+    return "RESOURCE_EXHAUSTED" in str(exc)
+
+
+def _is_daily_quota_exhaustion(exc: BaseException) -> bool:
+    """Sous-cas de ``_is_quota_exhaustion`` : le quota épuisé est
+    spécifiquement le palier JOURNALIER (le message Gemini précise
+    "PerDay" dans son ``quotaId``, ex. "GenerateRequestsPerDayPer...").
+    Ce quota ne se régénère typiquement pas avant plusieurs heures --
+    contrairement à un quota par minute, qui peut se régénérer vite --
+    donc mérite un délai avant nouvel essai beaucoup plus long (voir
+    ``_REG_QUOTA_COOLDOWN_DAILY_SECONDS``)."""
+    return "PerDay" in str(exc)
+
+
+# Une fois un quota épuisé détecté, on arrête d'essayer Gemini pendant ce
+# délai plutôt que de re-découvrir le même échec (avec son aller-retour
+# réseau) à CHAQUE chunk d'une même circulaire -- sur un document à
+# plusieurs sections, ça economise potentiellement des dizaines de
+# secondes par chunk. Deux durées : un quota JOURNALIER (constaté sur ce
+# projet, palier gratuit -- 20 requêtes/jour) ne se régénère pas avant des
+# heures, donc mérite un délai bien plus long que le cas générique (qui
+# pourrait n'être qu'un pic de charge minute par minute). État en mémoire
+# du process (pas persisté) : un redémarrage du serveur retente Gemini une
+# fois au prochain appel avant de se remettre en pause -- acceptable, le
+# coût est un seul appel qui échoue vite (pas 3 tentatives avec backoff).
+_REG_QUOTA_COOLDOWN_SECONDS = float(os.getenv("REG_LLM_QUOTA_COOLDOWN_SECONDS", "300"))
+_REG_QUOTA_COOLDOWN_DAILY_SECONDS = float(os.getenv("REG_LLM_QUOTA_COOLDOWN_DAILY_SECONDS", "3600"))
+_quota_exhausted_until = 0.0
+
+
+def call_regulatory_llm(
+    system_prompt: str,
+    user_prompt: str,
+    json_schema: dict[str, Any] | None = None,
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+) -> str:
+    """Appel LLM pour la generation de « Veille reglementaire » (extraction
+    et reformulation des questions/recommandations/traductions proposees) :
+    tente d'abord le fournisseur cloud dedie (REG_LLM_*, Gemini par
+    defaut) -- nettement plus rapide et fiable qu'un petit modele local
+    pour cette tache. Sur une erreur TRANSITOIRE (429, timeout, 5xx),
+    reessaie Gemini jusqu'a ``_REG_LLM_MAX_RETRIES`` fois avec un backoff
+    exponentiel (``_REG_LLM_BACKOFF_BASE_SECONDS`` * 2^tentative), pour
+    respecter la limite de debit du palier gratuit sans abandonner trop
+    vite. Une erreur PERSISTANTE (ou les tentatives epuisees) fait
+    retomber sur le modele local (LLM_*, meme chemin que les
+    fonctionnalites cote banque) -- ou si REG_LLM_API_KEY est vide.
+
+    ``max_output_tokens`` ne s'applique qu'au repli local : l'appel Gemini
+    utilise son propre plafond, plus genereux (voir
+    ``_REG_GEMINI_MAX_OUTPUT_TOKENS``), car ce modele consomme une part
+    imprevisible de son budget de tokens en raisonnement interne avant
+    meme de produire la sortie visible.
+
+    Si un quota EPUISE (typiquement journalier) a été détecté récemment,
+    saute même la première tentative Gemini pendant
+    ``_REG_QUOTA_COOLDOWN_SECONDS`` -- inutile de repayer l'aller-retour
+    réseau pour re-découvrir le même échec à chaque chunk d'une même
+    circulaire (voir ``_is_quota_exhaustion``).
+
+    Ne leve que si Gemini (avec ses tentatives) ET le repli local echouent
+    tous les deux -- l'appelant (regulatory_analysis.py) capture deja
+    largement pour retomber sur une liste vide plutot que de planter ou
+    d'inventer, conformement a la regle du human-in-the-loop."""
+    global _quota_exhausted_until
+    now = time.time()
+    if REG_LLM_API_KEY and now < _quota_exhausted_until:
+        logger.info(
+            "Veille reglementaire : Gemini en pause (quota épuisé), encore "
+            "%.0fs avant nouvel essai -- repli direct sur le modele local.",
+            _quota_exhausted_until - now,
+        )
+    elif REG_LLM_API_KEY:
+        for attempt in range(1, _REG_LLM_MAX_RETRIES + 1):
+            try:
+                result = _call_llm_raw(
+                    system_prompt,
+                    user_prompt,
+                    base_url=REG_LLM_BASE_URL,
+                    api_key=REG_LLM_API_KEY,
+                    model=REG_LLM_MODEL,
+                    timeout=_REG_TIMEOUT_SECONDS,
+                    json_schema=json_schema,
+                    max_output_tokens=_REG_GEMINI_MAX_OUTPUT_TOKENS,
+                    ollama_extras=False,
+                )
+                logger.info(
+                    "Veille reglementaire : appel Gemini reussi (tentative %d/%d).",
+                    attempt, _REG_LLM_MAX_RETRIES,
+                )
+                return result
+            except Exception as exc:
+                if _is_quota_exhaustion(exc):
+                    cooldown = (
+                        _REG_QUOTA_COOLDOWN_DAILY_SECONDS
+                        if _is_daily_quota_exhaustion(exc)
+                        else _REG_QUOTA_COOLDOWN_SECONDS
+                    )
+                    _quota_exhausted_until = time.time() + cooldown
+                    logger.warning(
+                        "Veille reglementaire : quota Gemini épuisé -- pas de "
+                        "nouvelle tentative Gemini avant %.0fs (%.1f min), "
+                        "repli sur le modele local (%s).",
+                        cooldown, cooldown / 60, exc,
+                    )
+                    break
+                transient = _is_transient_llm_error(exc)
+                if transient and attempt < _REG_LLM_MAX_RETRIES:
+                    delay = _REG_LLM_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Veille reglementaire : erreur transitoire Gemini "
+                        "(tentative %d/%d) : %s -- nouvel essai dans %.1fs.",
+                        attempt, _REG_LLM_MAX_RETRIES, exc, delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                # Erreur persistante (ou plus de tentatives) : on arrete
+                # d'essayer Gemini et on tombe sur le repli local.
+                logger.warning(
+                    "Veille reglementaire : Gemini indisponible apres %d "
+                    "tentative(s) (%s, %s) -- repli sur le modele local.",
+                    attempt, "transitoire" if transient else "persistante", exc,
+                )
+                break
+    result = _call_llm(system_prompt, user_prompt, json_schema, max_output_tokens)
+    logger.info("Veille reglementaire : modele local (%s) utilise.", LLM_MODEL)
+    return result
 
 
 def _cache_key(
@@ -453,177 +719,3 @@ def explain_comparison(comparison_result: dict[str, Any]) -> str:
     except Exception:
         return fallback
 
-
-# ── Regulatory circular extraction (Veille reglementaire) ───────────────────
-
-_SYSTEM_PROMPT_CIRCULAR = """\
-Tu es un assistant qui analyse des circulaires reglementaires bancaires
-(ex. Banque Centrale de Tunisie) pour en extraire les exigences concretes.
-Tu ne dois JAMAIS inventer d'exigence absente du texte fourni : chaque
-impact doit correspondre a une phrase ou obligation reellement presente
-dans le texte. Si le texte ne contient aucune exigence exploitable,
-renvoie une liste d'impacts vide plutot que d'en inventer.
-Pour chaque exigence, choisis target_type parmi exactement ces trois
-valeurs : "reglementaire" (contrainte de conformite), "nouvelle question"
-(suggere une nouvelle question d'evaluation), "recommandation"
-(bonne pratique non obligatoire).
-Si une date de publication est indiquee dans le texte, convertis-la au
-format ISO AAAA-MM-JJ ; sinon renvoie une chaine vide.
-Ton : professionnel, concis. Reponds uniquement en JSON strict conforme
-au schema demande, en francais."""
-
-_CIRCULAR_JSON_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "reference": {"type": "string"},
-        "theme": {"type": "string"},
-        "publication_date": {"type": "string"},
-        "impacts": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "requirement_text": {"type": "string"},
-                    "target_type": {"type": "string"},
-                    "target_description": {"type": "string"},
-                },
-                "required": ["requirement_text"],
-            },
-        },
-    },
-    "required": ["reference", "theme", "impacts"],
-    "additionalProperties": False,
-}
-
-# Generous output cap: unlike the other calls here, this one returns a list
-# of several impact items, not one short sentence -- 250 tokens would
-# truncate the JSON mid-array on anything but a trivial circular.
-_CIRCULAR_MAX_OUTPUT_TOKENS = 1200
-# Local small-model inference is slow; keep the prompt itself bounded so a
-# multi-page circular doesn't balloon latency further. Most circulars make
-# their substantive points in the first couple of pages.
-_CIRCULAR_TEXT_CHARS = 6000
-
-_TARGET_TYPE_DISPLAY = {
-    "reglementaire": "réglementaire",
-    "nouvelle question": "nouvelle question",
-    "recommandation": "recommandation",
-}
-
-
-def _strip_accents(value: str) -> str:
-    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
-
-
-def _fallback_circular_extraction(text: str, filename: str) -> dict[str, Any]:
-    """No-LLM fallback: splits the text on "Article N" markers so the admin
-    still gets one impact candidate per article to triage manually, instead
-    of an empty result. Reference/theme default to the filename since
-    there's no reliable way to identify them without the LLM."""
-    articles = re.findall(
-        r"(Art(?:icle)?\.?\s*\d+)\s*[:.\-]?\s*(.{20,400}?)"
-        r"(?=Art(?:icle)?\.?\s*\d+|\Z)",
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    impacts = [
-        {
-            "requirement_text": re.sub(r"\s+", " ", f"{art} : {body}").strip()[:500],
-            "target_type": "réglementaire",
-            "target_description": "À qualifier manuellement",
-        }
-        for art, body in articles[:10]
-    ]
-    reference = re.sub(r"\.[a-zA-Z0-9]+$", "", filename).strip()[:200] or "Circulaire"
-    return {
-        "reference": reference,
-        "theme": "À qualifier",
-        "publication_date": None,
-        "impacts": impacts,
-    }
-
-
-def _build_circular_user_prompt(text: str) -> str:
-    truncated = text[:_CIRCULAR_TEXT_CHARS]
-    return f"""Texte de la circulaire :
----
-{truncated}
----
-
-Extrait de ce texte : une reference courte du document (ex. "BCT n°2024-03"
-si presente, sinon un intitule court), un theme en quelques mots, sa date de
-publication (publication_date, format AAAA-MM-JJ, chaine vide si absente),
-et la liste des exigences concretes qu'il impose (maximum 8). Pour chaque
-exigence : le texte de l'obligation (requirement_text, fidele au texte
-source), son type (target_type), et une courte description de l'element du
-referentiel qu'elle concerne ou justifie (target_description, ex. "Chiffrement
-des donnees sensibles").
-
-Reponds en JSON avec exactement ces cles : reference, theme, publication_date,
-impacts (liste d'objets avec requirement_text, target_type, target_description)."""
-
-
-def _parse_iso_date(value: Any) -> str | None:
-    text = str(value or "").strip()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        return text
-    return None
-
-
-def extract_circular(text: str, filename: str) -> dict[str, Any]:
-    """Extracts a short reference/theme/date and a list of candidate
-    requirement impacts from a regulatory circular's raw text, for an admin
-    to review (accept/modify/reject) before any of it is applied to the
-    framework -- this function never writes to the framework itself, it
-    only proposes. ``publication_date`` is an ISO "YYYY-MM-DD" string or
-    ``None`` if the model couldn't find one.
-
-    Falls back to a naive "Article N" split (no reference/theme/date,
-    generic target descriptions) if the LLM call fails, returns invalid
-    JSON, or ``LLM_API_KEY`` is unset -- the caller always gets something
-    to review, never an empty result silently.
-    """
-    fallback = _fallback_circular_extraction(text, filename)
-
-    if not LLM_API_KEY or not text.strip():
-        return fallback
-
-    user_prompt = _build_circular_user_prompt(text)
-    try:
-        raw = _call_llm(
-            _SYSTEM_PROMPT_CIRCULAR,
-            user_prompt,
-            _CIRCULAR_JSON_SCHEMA,
-            max_output_tokens=_CIRCULAR_MAX_OUTPUT_TOKENS,
-        )
-        parsed = json.loads(raw)
-        impacts = []
-        for item in parsed.get("impacts", []):
-            requirement_text = str(item.get("requirement_text") or "").strip()
-            if not requirement_text:
-                continue
-            raw_type = _strip_accents(str(item.get("target_type") or "")).strip().lower()
-            target_type = _TARGET_TYPE_DISPLAY.get(raw_type, "réglementaire")
-            impacts.append({
-                "requirement_text": requirement_text,
-                "target_type": target_type,
-                "target_description": str(
-                    item.get("target_description") or "À qualifier manuellement"
-                ).strip(),
-            })
-
-        reference = str(parsed.get("reference") or "").strip() or fallback["reference"]
-        theme = str(parsed.get("theme") or "").strip() or fallback["theme"]
-        publication_date = _parse_iso_date(parsed.get("publication_date"))
-
-        if _contains_garbage_token(reference, theme) or not impacts:
-            return fallback
-
-        return {
-            "reference": reference,
-            "theme": theme,
-            "publication_date": publication_date,
-            "impacts": impacts,
-        }
-    except Exception:
-        return fallback

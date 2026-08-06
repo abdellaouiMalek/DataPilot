@@ -12,6 +12,7 @@ from app.models.assessment import (
     DimensionScore,
 )
 from app.models.dimension import Dimension
+from app.models.embedding import RegulatoryEmbedding
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
 from app.models.question import Question
@@ -34,4 +35,5 @@ __all__ = [
     "AssessmentRecommendationPlan",
     "RegulatoryCircular",
     "RegulatoryImpact",
+    "RegulatoryEmbedding",
 ]

@@ -157,27 +157,65 @@ uvicorn app.main:app --reload
 ### AI features (local LLM via Ollama)
 
 Results narratives, recommendation reformulation, and the "Veille réglementaire"
-circular extraction all call a local **Ollama** server through its
+circular analysis all call a local **Ollama** server through its
 OpenAI-compatible API — no data ever reaches a public LLM API, which matters
 for real bank records. Every one of these features degrades gracefully (a
-templated sentence, the catalog text as-is, a regex-based article split) if
+templated sentence, the catalog text as-is, an empty proposal list) if
 Ollama isn't running, so a fresh checkout works with no `.env` changes — you
 only need this if you want the *actual* AI output instead of the fallback:
 
 ```bash
 # https://ollama.com/download
-ollama pull llama3.2:3b
-ollama run llama3.2:3b   # first run pulls/warms the model; Ctrl+D to exit once ready
+ollama pull qwen2.5:3b
+ollama run qwen2.5:3b   # first run pulls/warms the model; Ctrl+D to exit once ready
 ```
 
-The backend expects the model name `llama32cpu` by default (`LLM_MODEL` env
-var) — either `ollama cp llama3.2:3b llama32cpu` to alias it, or set
-`LLM_MODEL=llama3.2:3b` in `backend/.env`. `LLM_BASE_URL` defaults to
-`http://localhost:11434/v1` (Ollama's default port).
+`LLM_MODEL` (`backend/.env`) defaults to `qwen2.5:3b` — unlike Llama 3.2 it was
+trained on meaningful Arabic data, which matters for "Veille réglementaire"
+since BCT circulars can be French **or** Arabic (see
+`llm/regulatory_analysis.py`). For higher-quality extraction at the cost of
+slower CPU inference, `ollama pull qwen2.5:7b` and set `LLM_MODEL=qwen2.5:7b`
+instead. `LLM_BASE_URL` defaults to `http://localhost:11434/v1` (Ollama's
+default port).
 
 > **Heads up on speed:** this is CPU inference on a small model — a single
 > "Veille réglementaire" import (extracting requirements from a whole
-> circular) can take one to a few minutes. That's expected, not a hang.
+> circular, chunk by chunk) can take one to a few minutes. That's expected,
+> not a hang; the import returns immediately and the analysis runs in the
+> background (see `app/routers/regulatory.py`).
+
+### OCR for scanned circulars (Tesseract, French + Arabic)
+
+BCT circulars uploaded to "Veille réglementaire" can be scanned images rather
+than text PDFs, and can be in Arabic — `llm/pdf_extract.py` falls back to
+**Tesseract OCR** (packs `fra`+`ara`) whenever a PDF has no usable native text
+layer. Skip this section if you only ever test with text-based French PDFs;
+extraction from those never touches Tesseract.
+
+```bash
+# https://github.com/UB-Mannheim/tesseract/wiki -- Windows installer
+# (already present on this machine at C:\Program Files\Tesseract-OCR)
+```
+
+The installer's default `tessdata` directory only ships `eng`+`osd`, and
+adding language packs there requires admin rights. Instead, drop the
+`fra`/`ara` (+ a copy of `eng`) `.traineddata` files into a user-writable
+directory and point Tesseract at it via `TESSDATA_PREFIX`:
+
+```bash
+mkdir -p ~/AppData/Local/tessdata
+cd ~/AppData/Local/tessdata
+curl -LO https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata
+curl -LO https://github.com/tesseract-ocr/tessdata_fast/raw/main/ara.traineddata
+curl -LO https://github.com/tesseract-ocr/tessdata_fast/raw/main/osd.traineddata
+cp "/c/Program Files/Tesseract-OCR/tessdata/eng.traineddata" .
+```
+
+`pdf_extract.py` picks this up automatically (`TESSDATA_DIR` env var, defaults
+to `C:\Users\<you>\AppData\Local\tessdata` — override in `.env` if yours lives
+elsewhere). No further config needed; OCR only runs on pages without a native
+text layer, and both languages are loaded together so Tesseract picks the
+right alphabet per page on its own.
 
 ### PDF reports (Jinja2 + WeasyPrint) — Windows only
 
