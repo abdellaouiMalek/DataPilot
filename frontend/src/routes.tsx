@@ -18,9 +18,11 @@ import { AdminDashboard } from './pages/superAdmin/AdminDashboard';
 import { VeilleReglementaire } from './pages/superAdmin/AdminVeille';
 import { UserManagement } from './pages/superAdmin/AdminUsers';
 import { BankManagement } from './pages/superAdmin/AdminBanks';
-import { DimensionsManagement } from './pages/superAdmin/AdminDimensions';
+import { DimensionsManagement, FrameworkConsultation } from './pages/superAdmin/AdminDimensions';
+import { RecommendationCatalog } from './pages/superAdmin/AdminRecommendations';
 import { ScoringReferential } from './pages/superAdmin/AdminScoring';
 import { QuestionnaireVersions } from './pages/superAdmin/AdminVersions';
+import { VersionDetailRoute } from './pages/superAdmin/VersionDetailRoute';
 import { AuditLogs } from './pages/superAdmin/AdminLogs';
 import { Settings } from './pages/superAdmin/AdminSettings';
 
@@ -46,6 +48,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true,   Component: RestrictedAdminDashboard },
       { path: 'users', Component: UserManagement },
+      { path: 'dimensions', Component: FrameworkConsultation },
+      { path: 'scoring', Component: ScoringReferential },
+      { path: 'versions', Component: QuestionnaireVersions },
+      { path: 'versions/:circularId', Component: VersionDetailRoute },
     ],
   },
 
@@ -59,8 +65,10 @@ export const router = createBrowserRouter([
       { path: 'users',      Component: UserManagement },
       { path: 'banks',      Component: BankManagement },
       { path: 'dimensions', Component: DimensionsManagement },
+      { path: 'recommendations', Component: RecommendationCatalog },
       { path: 'scoring',    Component: ScoringReferential },
       { path: 'versions',   Component: QuestionnaireVersions },
+      { path: 'versions/:circularId', Component: VersionDetailRoute },
       { path: 'logs',       Component: AuditLogs },
       { path: 'settings',   Component: Settings },
     ],

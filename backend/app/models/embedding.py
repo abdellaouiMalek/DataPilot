@@ -3,11 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, LargeBinary, String, Text, UniqueConstraint
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.database import Base
+
+# bge-m3's embedding size (see llm/embeddings.py::EMBEDDING_DIM) -- fixed
+# per pgvector column, so it has to be a plain constant here too, not
+# imported from llm/embeddings.py (would pull the whole LLM stack into
+# every module that just needs the model layer).
+EMBEDDING_DIM = 1024
 
 
 class RegulatoryEmbedding(Base):
@@ -15,12 +22,17 @@ class RegulatoryEmbedding(Base):
     une ligne par question ou recommandation active, avec son embedding
     bge-m3 -- voir ``llm/embeddings.py`` et ``app/services/regulatory_index.py``.
 
-    Pas d'extension pgvector ici (indisponible sans droits admin sur cette
-    installation Postgres native Windows) : l'embedding est stocké en
-    ``bytea`` (float32 packé, déjà normalisé L2) et la recherche par
-    similarité se fait en mémoire via numpy, au moment de la requête --
-    largement suffisant à l'échelle du catalogue (une centaine
-    d'éléments), pas besoin d'un index ANN dédié.
+    Stocké avec l'extension **pgvector** (colonne ``vector(1024)``) : la
+    recherche par similarité se fait dans PostgreSQL (``ORDER BY embedding
+    <#> :query LIMIT k``), pas en mémoire via numpy comme avant -- même
+    logique de recherche (produit scalaire sur des vecteurs déjà
+    normalisés L2, équivalent à la similarité cosinus), juste exécutée
+    côté base. Voir ``app/services/regulatory_index.py::retrieve``.
+
+    Pas d'index ANN (ivfflat/hnsw) pour l'instant : à cette échelle (une
+    centaine d'éléments), un scan séquentiel exact est déjà rapide et
+    reste exact (pas d'approximation) -- à reconsidérer si le catalogue
+    grossit d'un ordre de grandeur.
 
     Reconstruit entièrement à chaque réindexation (pas de mise à jour
     incrémentale) : le catalogue est petit, ré-encoder tout est simple et
@@ -47,7 +59,15 @@ class RegulatoryEmbedding(Base):
     regulatory_flag: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # Renseigné seulement pour entity_type="question".
     dimension: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    # Renseigné seulement pour entity_type="question", si la question a une
+    # sous-dimension (nullable côté Question aussi -- voir son modèle).
+    # Montré au LLM parmi les candidats (voir
+    # llm.regulatory_analysis._build_candidates_text) pour qu'une nouvelle
+    # question proposée puisse être rattachée à une sous-dimension
+    # EXISTANTE plutôt que d'en créer une par défaut -- voir
+    # app.services.regulatory.resolve_or_create_subdimension.
+    subdimension: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

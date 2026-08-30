@@ -9,11 +9,20 @@
 #   - keycloak   (Keycloak's internal schema: users, roles, credentials)
 # Host port 5434 (5433 is taken by another project's container).
 #
+# pgvector/pgvector:pg18 instead of the plain postgres:18 image -- same
+# official Postgres 18 base, just with the `vector` extension compiled in
+# (needed by the Veille réglementaire RAG index, see
+# app/models/embedding.py). This is THE app database: the backend's
+# DATABASE_URL points here, not at any natively-installed Postgres --
+# pgvector can't be installed into a native Windows Postgres without an
+# elevated terminal (confirmed: writing into its Program Files extension
+# directory is denied), so the Docker instance is the real one.
+#
 # The realm import file (keycloak/import/) is a FULL export including users;
 # import runs only when the keycloak database is empty.
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     container_name: datapilot-postgres
     environment:
       POSTGRES_USER: postgres

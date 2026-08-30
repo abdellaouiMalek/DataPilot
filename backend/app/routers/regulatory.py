@@ -1,11 +1,14 @@
 """Admin "Veille réglementaire" endpoints: import a circular (file or URL),
 poll its AI analysis (runs in the background, see ``services.regulatory``),
 review the proposed impacts, and publish once every impact has been
-triaged. Admin-only, like admin.py.
+triaged. Super-admin only (see ``app.core.auth.require_super_admin``) --
+publishing fans out an in-app notification to every ``admin``-role user
+(see ``app.services.notifications.notify_admins_of_publication``).
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
@@ -13,11 +16,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_super_admin
+from app.core.auth import require_super_admin, verify_token
 from app.db.database import get_db
 from app.models import RegulatoryCircular, RegulatoryImpact
 from app.schemas.regulatory import ArticleRead, CircularDetailRead, CircularRead, ImpactRead, ImpactUpdate
+from app.services.notifications import notify_admins_of_publication
 from app.services.regulatory import (
+    apply_impacts_to_catalog,
     compute_source_hash,
     create_pending_circular,
     fetch_source,
@@ -26,6 +31,8 @@ from app.services.regulatory import (
     split_into_articles,
 )
 from app.services.regulatory_index import reindex_catalog
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/super-admin/regulatory",
@@ -202,7 +209,11 @@ async def update_impact(
 
 
 @router.post("/circulars/{circular_id}/publish", response_model=CircularRead)
-async def publish_circular(circular_id: int, db: AsyncSession = Depends(get_db)):
+async def publish_circular(
+    circular_id: int,
+    claims: dict = Depends(verify_token),
+    db: AsyncSession = Depends(get_db),
+):
     circular = await _get_circular_or_404(db, circular_id)
     if circular.analysis_status != "terminee":
         raise HTTPException(
@@ -231,10 +242,38 @@ async def publish_circular(circular_id: int, db: AsyncSession = Depends(get_db))
         .where(RegulatoryCircular.is_published.is_(True))
     ) or 0
 
+    # Écrit réellement chaque impact accepté/modifié dans le référentiel
+    # (questions/recommendations) -- SANS ceci, "publier" ne faisait que
+    # marquer la circulaire elle-même comme publiée, sans jamais toucher
+    # au catalogue réel : tout le travail de revue humaine (accepter/
+    # modifier chaque exigence) restait sans effet. Voir
+    # apply_impacts_to_catalog pour le détail par type d'impact.
+    stats = await apply_impacts_to_catalog(db, circular)
+    logger.info(
+        "Publication circular id=%s : %s question(s) créée(s), %s modifiée(s), "
+        "%s désactivée(s) ; %s recommandation(s) créée(s), %s modifiée(s), "
+        "%s désactivée(s), %s activée(s) (indicateur réglementaire) ; "
+        "%s impact(s) ignoré(s).",
+        circular.id,
+        stats["questions_created"], stats["questions_updated"], stats["questions_deactivated"],
+        stats["recommendations_created"], stats["recommendations_updated"],
+        stats["recommendations_deactivated"], stats["recommendations_flagged"],
+        stats["skipped"],
+    )
+
     circular.is_published = True
     circular.status = "En vigueur"
     circular.version = f"v{published_count + 1}"
     circular.published_at = func.now()
+    # Toujours "superadmin" -- pas le nom réel du compte Keycloak qui a
+    # cliqué "Publier" (peu importe lequel des super admins publie, seul
+    # le rôle compte pour "Versions du questionnaire").
+    circular.published_by = "superadmin"
+    # Fanned out to every "admin"-role user (see notify_admins_of_publication)
+    # in the SAME transaction as the publication itself -- either both
+    # commit or neither does, no risk of a publication silently going
+    # unnotified. Never raises on its own (best-effort Keycloak lookup).
+    await notify_admins_of_publication(db, circular)
     await db.commit()
     await db.refresh(circular)
     return circular

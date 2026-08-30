@@ -10,8 +10,8 @@ Follow these steps to run DataPilot locally for the first time.
 | -------------- | ------------------------------------------------------------------------------- |
 | **Node.js**    | 22.x (Vite 8)                                                                   |
 | **Python**     | 3.11 or 3.12 recommended (some DB driver wheels lag on newer versions)          |
-| **PostgreSQL** | Running locally; the **`datapilot`** database is auto-created by `init_db` (step 3) — or create it yourself if seeding manually |
-| **Docker**     | Docker Desktop (or Engine + Compose v2) — used to run Keycloak                   |
+| **PostgreSQL** | Provided via Docker (`pgvector/pgvector:pg18`, step 2) — needed for the `vector` extension the Veille réglementaire RAG index relies on; a natively-installed Postgres won't have it. The **`datapilot`** database itself is auto-created by `init_db` (step 3). |
+| **Docker**     | Docker Desktop (or Engine + Compose v2) — used to run Postgres **and** Keycloak   |
 | **JDK + Maven**| JDK 17+ and Maven (only needed to build the custom Keycloak theme)              |
 | **Keycloak**   | Provided via Docker (step 2). Realm `datapilot`, public client `datapilot-frontend` (PKCE `S256`); the bundled realm import handles client + token **audience** config. |
 
@@ -122,6 +122,12 @@ Common page ids: `login.ftl`, `register.ftl`, `login-reset-password.ftl`, `login
 > After a theme rebuild, hard-refresh the login page (**Ctrl+F5**) to bypass cached assets.
 
 ## 3. Backend (FastAPI)
+
+Postgres runs in Docker (same `docker-compose.yml` as Keycloak, step 2) — start it if it isn't already:
+
+```bash
+docker compose up -d postgres
+```
 
 ```bash
 cd backend

@@ -55,6 +55,22 @@ export interface ProposedData {
   dimension_hint?: string;
   dimension?: string;
   associated_recommendations?: AssociatedRecommendation[];
+  // question/ajouter -- sous-dimension proposée par le LLM (voir
+  // llm/regulatory_analysis.py::_SYSTEM_PROMPT) : reprend le nom d'une
+  // sous-dimension existante si elle correspond, sinon en propose une
+  // nouvelle. subdimension_status/_name (calculés côté backend, lecture
+  // seule -- voir app/services/regulatory.py::preview_subdimension_status)
+  // indiquent lequel des deux cas s'appliquera à la publication.
+  subdimension_hint?: string;
+  subdimension_status?: "existante" | "nouvelle";
+  subdimension_name?: string;
+  // question/ajouter -- alerte "doublon probable" (filet de sécurité,
+  // voir llm/regulatory_analysis.py::_QUESTION_DUPLICATE_WARNING_THRESHOLD) :
+  // renseigné quand la question proposée ressemble fortement à une
+  // question CANDIDATE déjà au référentiel. Jamais un rejet automatique --
+  // juste un signal pour que l'admin vérifie avant d'accepter.
+  similar_existing_code?: string;
+  similar_existing_title?: string;
   // question/modifier | question/desactiver | recommandation/modifier | recommandation/desactiver | recommandation/activer_flag
   question_code?: string;
   reco_code?: string;
@@ -117,6 +133,10 @@ export interface Circular {
   analysisError: string | null;
   isPublished: boolean;
   createdAt: string;
+  publishedAt: string | null;
+  /** Display name of the super-admin who published this circular -- null
+   * if never published, or published before this field existed. */
+  publishedBy: string | null;
   impactCount: number;
   pendingCount: number;
 }
@@ -147,7 +167,11 @@ export interface ReindexResult {
   recommandations: number;
 }
 
-interface ApiImpact {
+// Exported (not just module-private) so lib/versions.ts -- a read-only
+// "published circulars" view backed by the same underlying data, see
+// backend/app/routers/versions.py -- can reuse the exact same
+// snake_case<->camelCase mapping instead of duplicating it.
+export interface ApiImpact {
   id: number;
   excerpt: string;
   excerpt_original: string | null;
@@ -158,7 +182,7 @@ interface ApiImpact {
   action: ImpactAction;
   edited_text: string | null;
 }
-interface ApiCircular {
+export interface ApiCircular {
   id: number;
   reference: string;
   publication_date: string | null;
@@ -173,21 +197,23 @@ interface ApiCircular {
   analysis_error: string | null;
   is_published: boolean;
   created_at: string;
+  published_at: string | null;
+  published_by: string | null;
   impact_count: number;
   pending_count: number;
 }
-interface ApiArticle {
+export interface ApiArticle {
   label: string;
   text: string;
 }
-interface ApiCircularDetail extends ApiCircular {
+export interface ApiCircularDetail extends ApiCircular {
   raw_text: string | null;
   raw_text_original: string | null;
   articles: ApiArticle[];
   impacts: ApiImpact[];
 }
 
-function mapImpact(i: ApiImpact): Impact {
+export function mapImpact(i: ApiImpact): Impact {
   return {
     id: i.id,
     excerpt: i.excerpt,
@@ -200,7 +226,7 @@ function mapImpact(i: ApiImpact): Impact {
     editedText: i.edited_text,
   };
 }
-function mapCircular(c: ApiCircular): Circular {
+export function mapCircular(c: ApiCircular): Circular {
   return {
     id: c.id,
     reference: c.reference,
@@ -216,11 +242,13 @@ function mapCircular(c: ApiCircular): Circular {
     analysisError: c.analysis_error,
     isPublished: c.is_published,
     createdAt: c.created_at,
+    publishedAt: c.published_at,
+    publishedBy: c.published_by,
     impactCount: c.impact_count,
     pendingCount: c.pending_count,
   };
 }
-function mapCircularDetail(c: ApiCircularDetail): CircularDetail {
+export function mapCircularDetail(c: ApiCircularDetail): CircularDetail {
   return {
     ...mapCircular(c),
     rawText: c.raw_text,

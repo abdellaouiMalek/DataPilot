@@ -1,18 +1,24 @@
 import { Outlet } from 'react-router-dom';
-import { LayoutDashboard, Users } from 'lucide-react';
+import { LayoutDashboard, Users, Layers, BarChart3, GitBranch } from 'lucide-react';
 import { AdminSidebar } from '../superAdmin/AdminSidebar';
 import type { NavItem } from '../superAdmin/AdminSidebar';
 import { AdminTopbar } from '../superAdmin/AdminTopbar';
 
 /**
  * Espace admin : même châssis que le back-office super admin, mais réduit
- * aux deux seules sections autorisées. La barre latérale est partagée
+ * aux sections autorisées. La barre latérale est partagée
  * (`superAdmin/AdminSidebar`) et paramétrée par `items`, de sorte qu'un
- * changement de style profite aux deux espaces.
+ * changement de style profite aux deux espaces. "Versions du
+ * questionnaire" reprend exactement le même path/label/icône que dans
+ * `AdminSidebar`'s `navItems` par défaut (super admin) -- même entrée,
+ * juste préfixée `/admin`.
  */
 const navItems: NavItem[] = [
-  { path: "/admin",       label: "Tableau de bord",          icon: LayoutDashboard },
-  { path: "/admin/users", label: "Gestion des utilisateurs", icon: Users },
+  { path: "/admin",            label: "Tableau de bord",          icon: LayoutDashboard },
+  { path: "/admin/users",      label: "Gestion des utilisateurs", icon: Users },
+  { path: "/admin/dimensions", label: "Gestion du framework",     icon: Layers },
+  { path: "/admin/scoring",    label: "Référentiel de scoring",   icon: BarChart3 },
+  { path: "/admin/versions",   label: "Versions du questionnaire",icon: GitBranch },
 ];
 
 export function AdminLayout() {

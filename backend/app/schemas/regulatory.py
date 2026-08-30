@@ -44,6 +44,11 @@ class CircularRead(BaseModel):
     analysis_error: Optional[str] = None
     is_published: bool
     created_at: datetime
+    published_at: Optional[datetime] = None
+    # Nom d'affichage du super-admin qui a publié -- voir
+    # routers/regulatory.py::publish_circular. None pour une circulaire
+    # jamais publiée.
+    published_by: Optional[str] = None
     impact_count: int
     pending_count: int
 

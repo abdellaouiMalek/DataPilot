@@ -1,23 +1,63 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Bell, Search, ChevronDown, LogOut, Settings, User, Shield } from "lucide-react";
 import { logout, getCurrentUser } from "../../lib/keycloak";
+import { notificationsApi, type AppNotification } from "../../lib/notifications";
+import { NotificationsPanel } from "./NotificationsPanel";
+
+// Intervalle de rafraîchissement des notifications -- pas de WebSocket/SSE
+// dans cette app (voir le polling déjà utilisé partout ailleurs, ex.
+// pollCircular côté veille réglementaire) : un simple polling suffit à ce
+// volume, et évite d'ajouter une dépendance temps-réel pour une seule
+// fonctionnalité.
+const NOTIFICATIONS_POLL_MS = 30_000;
 
 export function AdminTopbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const user = getCurrentUser();
   const initials = user?.name ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : 'AD';
+  const unreadCount = notifications.filter(n => !n.read).length;
+  // AdminTopbar est monté à la fois sous /admin (rôle `admin`, back-office
+  // réduit) et /super-admin (rôle `super_admin`) -- une notification
+  // "nouvelle version publiée" doit amener l'utilisateur sur le détail
+  // dans SON espace, pas systématiquement celui du super-admin.
+  const basePath = location.pathname.startsWith("/admin") ? "/admin" : "/super-admin";
+  const openCircular = (circularId: number) => {
+    setNotifOpen(false);
+    navigate(`${basePath}/versions/${circularId}`);
+  };
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      notificationsApi.list().then(items => { if (!cancelled) setNotifications(items); }).catch(() => {
+        // Silencieux : un échec de chargement des notifications ne doit
+        // jamais perturber le reste du back-office (bandeau, navigation) --
+        // le prochain sondage (30s) réessaiera de lui-même.
+      });
+    }
+    load();
+    const interval = setInterval(load, NOTIFICATIONS_POLL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   return (
@@ -54,25 +94,39 @@ export function AdminTopbar() {
       </div>
 
       {/* Notifications */}
-      <button
-        style={{
-          width: 38, height: 38, borderRadius: 10,
-          backgroundColor: "#F7F7F7",
-          border: "1px solid rgba(0,0,0,0.08)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", color: "#6B6B6B", position: "relative", flexShrink: 0,
-        }}
-        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#EFEFEF"}
-        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#F7F7F7"}
-      >
-        <Bell size={16} />
-        <span style={{
-          position: "absolute", top: 8, right: 8,
-          width: 7, height: 7, borderRadius: "50%",
-          backgroundColor: "#FFE600",
-          border: "1.5px solid #fff",
-        }} />
-      </button>
+      <div style={{ position: "relative" }} ref={notifRef}>
+        <button
+          onClick={() => setNotifOpen(v => !v)}
+          style={{
+            width: 38, height: 38, borderRadius: 10,
+            backgroundColor: "#F7F7F7",
+            border: "1px solid rgba(0,0,0,0.08)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", color: "#6B6B6B", position: "relative", flexShrink: 0,
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#EFEFEF"}
+          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#F7F7F7"}
+        >
+          <Bell size={16} />
+          {unreadCount > 0 && (
+            <span style={{
+              position: "absolute", top: 8, right: 8,
+              width: 7, height: 7, borderRadius: "50%",
+              backgroundColor: "#FFE600",
+              border: "1.5px solid #fff",
+            }} />
+          )}
+        </button>
+
+        {notifOpen && (
+          <NotificationsPanel
+            items={notifications}
+            setItems={setNotifications}
+            onClose={() => setNotifOpen(false)}
+            onNavigateToCircular={openCircular}
+          />
+        )}
+      </div>
 
       {/* User dropdown */}
       <div style={{ position: "relative" }} ref={menuRef}>

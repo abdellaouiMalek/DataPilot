@@ -25,17 +25,36 @@ const card: React.CSSProperties = {
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
 };
 
+// Texte + puce, sans fond -- statut de PUBLICATION uniquement (Brouillon /
+// En vigueur / Abrogée). Ce que la ligne doit faire d'urgent (analyse en
+// panne, en cours, éléments en attente) n'est plus une rangée de pastilles
+// séparées : c'est la couleur de la bordure gauche de la ligne (voir
+// `urgencyColor` ci-dessous) et une simple mention dans la ligne de
+// métadonnées -- un seul signal de couleur par ligne, pas cinq badges qui
+// se disputent l'attention. Standard qu'on attend d'un back-office bancaire :
+// dense, lisible, pas décoratif.
 function StatutBadge({ statut }: { statut: string }) {
   const active = statut === "En vigueur";
   const draft = statut === "Brouillon";
-  const color = active ? "#2E7D32" : draft ? "#E65100" : "#9B9B9B";
-  const bg = active ? "#E8F5E9" : draft ? "#FFF3E0" : "#F5F5F5";
+  const color = active ? "#2E7D32" : draft ? "#8A6A1A" : "#6B6B6B";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, backgroundColor: bg, color, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>
-      <span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color }} />
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color, flexShrink: 0 }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color, flexShrink: 0 }} />
       {statut}
     </span>
   );
+}
+
+// Priorité : ce qui a le plus besoin d'un coup d'œil de l'admin l'emporte.
+// Une seule couleur par ligne (la bordure gauche), plutôt qu'un badge par
+// état possible -- erreur > analyse en cours > éléments en attente ou
+// analyse partielle > publiée (réglée) > brouillon neutre.
+function urgencyColor(c: { status: string; analysisStatus: string; analysisError: string | null; pendingCount: number }): string {
+  if (c.analysisStatus === "erreur") return "#B91C1C";
+  if (c.analysisStatus === "en_cours") return "#4F46E5";
+  if (c.pendingCount > 0 || (c.analysisStatus === "terminee" && c.analysisError)) return "#8A6A1A";
+  if (c.status === "En vigueur") return "#2E7D32";
+  return "#D0D0D0";
 }
 
 // Libellés + couleurs EXACTEMENT ceux de la maquette ImpactsProposes.tsx
@@ -273,7 +292,34 @@ function ProposedDetails({
               <p style={{ fontSize: 13, fontWeight: 400, color: "#1A1A1A", lineHeight: 1.7, margin: 0 }}>{questionValue}</p>
             )}
           </div>
+          {p.subdimension_name && (
+            <div style={{ fontSize: 11, color: "#6B6B6B", marginTop: 6 }}>
+              Sous-dimension : <strong style={{ color: "#1A1A1A" }}>{p.subdimension_name}</strong>
+              {p.subdimension_status === "nouvelle" ? (
+                <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#166534", backgroundColor: "#F0FDF4", padding: "1px 6px", borderRadius: 3 }}>NOUVELLE</span>
+              ) : (
+                <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#3730A3", backgroundColor: "#EEF2FF", padding: "1px 6px", borderRadius: 3 }}>EXISTANTE</span>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Alerte doublon probable -- filet de sécurité qui ne dépend pas
+            du jugement du LLM (voir llm/regulatory_analysis.py::
+            _QUESTION_DUPLICATE_WARNING_THRESHOLD) : jamais un rejet
+            automatique, juste un signal clair pour vérifier avant
+            d'accepter. */}
+        {p.similar_existing_title && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", backgroundColor: "#FFF3E0", border: "1px solid #FFCC80", borderRadius: 8 }}>
+            <AlertTriangle size={14} style={{ color: "#9A5B00", flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 12, color: "#7A4A00", lineHeight: 1.5 }}>
+              <strong>Doublon probable</strong> — une question très proche existe déjà au référentiel
+              {p.similar_existing_code && <> (<span style={{ fontFamily: "monospace" }}>{p.similar_existing_code}</span>)</>} :
+              <div style={{ marginTop: 4, fontStyle: "italic" }}>« {p.similar_existing_title} »</div>
+              Vérifiez qu'il ne s'agit pas d'un doublon avant d'accepter — envisagez plutôt de rejeter cette proposition et, si besoin, de reformuler la question existante séparément.
+            </div>
+          </div>
+        )}
 
         {levels.length > 0 && (
           // Vue par palier (onglets colorés, mêmes libellés/couleurs que le
@@ -504,6 +550,27 @@ function PdfIcon3D({ size = 100 }: { size?: number }) {
   );
 }
 
+// Icône dédiée "lien" -- de gros maillons de chaîne bien identifiables au
+// premier coup d'œil (pas juste un petit accent sur une silhouette de
+// document, qui se confondait avec PdfIcon3D). Volontairement plus
+// compacte en hauteur (viewBox 100x86 contre 100x120 pour PdfIcon3D) :
+// l'onglet "Lien URL" doit aussi loger le champ + le bouton sous
+// l'illustration, et le contenu total des deux onglets doit occuper à peu
+// près la même hauteur pour que la fenêtre ne change pas de taille quand
+// on bascule d'onglet.
+function LinkIcon3D({ size = 100 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 0.86} viewBox="0 0 100 86" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="50" cy="80" rx="30" ry="5" fill="rgba(0,0,0,0.08)" />
+      <rect x="6" y="6" width="88" height="62" rx="14" fill="#F0F0F0" />
+      <g transform="translate(50,37) rotate(-38)">
+        <rect x="-30" y="-12" width="36" height="24" rx="12" fill="none" stroke="#CC0000" strokeWidth="8" />
+        <rect x="-6" y="-12" width="36" height="24" rx="12" fill="none" stroke="#1A1A1A" strokeWidth="8" />
+      </g>
+    </svg>
+  );
+}
+
 function SpinnerIcon({ size = 100 }: { size?: number }) {
   return (
     <svg width={size} height={size * 1.2} viewBox="0 0 100 120" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -655,15 +722,31 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                   <div style={{ fontSize: 11, color: "#C0C0C0", marginTop: 8 }}>Formats supportés : .pdf</div>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 0 4px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "28px 0 20px" }}>
-                    <div style={{ width: 60, height: 60, borderRadius: 14, backgroundColor: "#F5F5F5", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <ExternalLink size={26} style={{ color: "#9B9B9B" }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {/* Même habillage que la zone de dépôt de l'onglet "Fichier
+                      PDF" (bordure pointillée, mêmes couleurs) mais plus
+                      compacte : pas de drag&drop ici (un lien ne se dépose
+                      pas), donc non cliquable -- et il faut aussi loger le
+                      champ + le bouton en dessous sans que la fenêtre change
+                      de hauteur en changeant d'onglet. */}
+                  <div style={{
+                    border: "2px dashed rgba(0,0,0,0.13)",
+                    borderRadius: 14,
+                    padding: "20px 24px 16px",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 0,
+                    backgroundColor: "#FAFAFA",
+                  }}>
+                    <div style={{ marginBottom: 6 }}>
+                      <LinkIcon3D size={60} />
                     </div>
-                    <div style={{ fontSize: 13, color: "#6B6B6B", textAlign: "center", lineHeight: 1.5 }}>
-                      Collez le lien vers la circulaire publiée sur le site de la BCT ou autre source officielle.
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", marginBottom: 6, textAlign: "center" }}>
+                      Collez le lien de votre circulaire
+                    </div>
+                    <div style={{ fontSize: 13, color: "#9B9B9B", textAlign: "center", lineHeight: 1.5 }}>
+                      Lien direct vers le document, publié sur le site de la BCT ou une autre source officielle.
                     </div>
                   </div>
+
                   <input
                     value={linkValue}
                     onChange={e => setLinkValue(e.target.value)}
@@ -684,8 +767,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
               )}
 
               <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", marginTop: 16 }}>
-                <Sparkles size={12} style={{ color: "#6366F1" }} />
-                <span style={{ fontSize: 11, color: "#9B9B9B" }}>Données extraites automatiquement par intelligence artificielle</span>
+                <span style={{ fontSize: 11, color: "#9B9B9B" }}></span>
               </div>
             </>
           )}
@@ -1222,6 +1304,63 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
   );
 }
 
+// ── Delete confirmation ──────────────────────────────────────────────────────
+// Remplace le window.confirm() natif du navigateur (moche, non stylable, pas
+// cohérent avec le reste de l'app) par un dialogue habillé dans le même
+// langage visuel que UploadModal/ImpactAnalysis ci-dessus.
+
+function DeleteCircularDialog({ circular, deleting, onCancel, onConfirm }: {
+  circular: Circular; deleting: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 2100, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <style>{`@keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <div style={{ backgroundColor: "#fff", borderRadius: 16, width: 440, maxWidth: "94vw", overflow: "hidden", boxShadow: "0 32px 80px rgba(0,0,0,0.22)", animation: "fade-in 0.18s ease-out" }}>
+        <div style={{ padding: "28px 26px 20px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", backgroundColor: "#FFEBEE", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, flexShrink: 0 }}>
+            <AlertTriangle size={24} style={{ color: "#CC0000" }} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1A1A", marginBottom: 8 }}>
+            Supprimer cette circulaire ?
+          </div>
+          <div style={{ fontSize: 13, color: "#6B6B6B", lineHeight: 1.55 }}>
+            Vous êtes sur le point de supprimer{" "}
+            <span style={{ fontWeight: 600, color: "#1A1A1A" }}>« {circular.reference} »</span>
+            {circular.theme && <> — {circular.theme}</>}.
+          </div>
+          <div style={{ marginTop: 14, width: "100%", display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", backgroundColor: "#FFF8E1", border: "1px solid #FFE082", borderRadius: 8, textAlign: "left" }}>
+            <AlertTriangle size={13} style={{ color: "#9A7300", marginTop: 2, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: "#7A5C00", lineHeight: 1.5 }}>
+              Cette action est irréversible. L'analyse, les exigences et les propositions d'impact associées seront définitivement perdues.
+            </span>
+          </div>
+        </div>
+        <div style={{ padding: "16px 26px 24px", display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "1px solid rgba(0,0,0,0.13)", backgroundColor: "#fff", color: "#4A4A4A", cursor: deleting ? "not-allowed" : "pointer", transition: "background 0.15s" }}
+            onMouseEnter={e => { if (!deleting) (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#F7F7F7"; }}
+            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#fff"}
+          >
+            Annuler
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 0", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#CC0000", color: "#fff", cursor: deleting ? "wait" : "pointer", opacity: deleting ? 0.75 : 1, transition: "background 0.15s" }}
+            onMouseEnter={e => { if (!deleting) (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#A30000"; }}
+            onMouseLeave={e => { if (!deleting) (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#CC0000"; }}
+          >
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            {deleting ? "Suppression…" : "Supprimer définitivement"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function VeilleReglementaire() {
@@ -1233,6 +1372,7 @@ export function VeilleReglementaire() {
   const [showUpload, setShowUpload] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Circular | null>(null);
 
   async function reindex() {
     setReindexing(true);
@@ -1278,7 +1418,6 @@ export function VeilleReglementaire() {
   }
 
   async function handleDelete(c: Circular) {
-    if (!window.confirm(`Supprimer la circulaire « ${c.reference} » ? Cette action est irréversible.`)) return;
     setDeletingId(c.id);
     try {
       await regulatoryApi.deleteCircular(c.id);
@@ -1288,6 +1427,7 @@ export function VeilleReglementaire() {
       toast.error(e instanceof Error ? e.message : "Échec de la suppression");
     } finally {
       setDeletingId(null);
+      setConfirmDelete(null);
     }
   }
 
@@ -1382,13 +1522,21 @@ export function VeilleReglementaire() {
 
       {!loading && !loadError && circulars.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {circulars.map(c => (
-            <div key={c.id} style={{
-              ...card, padding: "16px 20px",
-              display: "flex", alignItems: "center", gap: 16,
-              borderLeft: `3px solid ${c.status === "En vigueur" ? "#2E7D32" : c.status === "Brouillon" ? "#E65100" : "#D0D0D0"}`,
-              transition: "box-shadow 0.15s",
-            }}
+          {circulars.map(c => {
+            const accent = urgencyColor(c);
+            return (
+            <div key={c.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => { if (loadingDetail !== c.id) openCircular(c.id); }}
+              onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && loadingDetail !== c.id) { e.preventDefault(); openCircular(c.id); } }}
+              style={{
+                ...card, padding: "16px 20px",
+                display: "flex", alignItems: "center", gap: 16,
+                borderLeft: `3px solid ${accent}`,
+                transition: "box-shadow 0.15s",
+                cursor: loadingDetail === c.id ? "wait" : "pointer",
+              }}
               onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 16px rgba(0,0,0,0.08)"}
               onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"}
             >
@@ -1397,47 +1545,67 @@ export function VeilleReglementaire() {
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{c.reference}</span>
                   <StatutBadge statut={c.status} />
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#3730A3", backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 4 }}>{c.version}</span>
-                  {c.analysisStatus === "en_cours" && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#6366F1", backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 4 }}>
-                      <Loader2 size={10} className="animate-spin" /> Analyse en cours
+                  {/* "Brouillon" comme version n'est qu'un défaut tant qu'il
+                      n'y a pas eu de publication (voir models/regulatory.py) --
+                      l'afficher répéterait le statut juste à côté au lieu
+                      d'apporter une info neuve. */}
+                  {c.version !== "Brouillon" && (
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#4A4A4A", border: "1px solid rgba(0,0,0,0.12)", padding: "1px 8px", borderRadius: 4, fontFamily: "monospace", flexShrink: 0 }}>
+                      {c.version}
                     </span>
                   )}
+                </div>
+                {/* Analyse en cours/en échec/partielle et éléments en attente
+                    ne sont plus des badges séparés : une mention discrète
+                    dans la ligne de métadonnées, dans la couleur de la
+                    bordure -- le même signal, pas un deuxième. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B6B6B", flexWrap: "wrap", rowGap: 3 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Clock size={11} /> {formatDate(c.publicationDate)}
+                  </span>
+                  <span style={{ color: "#D0D0D0" }}>·</span>
+                  <span>{c.theme || "Thème non qualifié"}</span>
+                  <span style={{ color: "#D0D0D0" }}>·</span>
+                  <span>{c.impactCount} exigence{c.impactCount !== 1 ? "s" : ""}</span>
+                  {c.analysisStatus === "en_cours" && (
+                    <>
+                      <span style={{ color: "#D0D0D0" }}>·</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, color: accent, fontWeight: 600 }}>
+                        <Loader2 size={11} className="animate-spin" /> Analyse en cours
+                      </span>
+                    </>
+                  )}
                   {c.analysisStatus === "erreur" && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#CC0000", backgroundColor: "#FFEBEE", padding: "2px 7px", borderRadius: 4 }}>
-                      <AlertTriangle size={10} /> Échec de l'analyse
-                    </span>
+                    <>
+                      <span style={{ color: "#D0D0D0" }}>·</span>
+                      <span style={{ color: accent, fontWeight: 600 }}>Échec de l&apos;analyse</span>
+                    </>
                   )}
                   {/* analysisStatus "terminee" + analysisError renseigne :
                       resultat PARTIEL (une ou plusieurs sections en echec,
                       voir services/regulatory.py run_circular_analysis) --
                       distinct de "erreur" ci-dessus (echec total). */}
                   {c.analysisStatus === "terminee" && c.analysisError && (
-                    <span title={c.analysisError} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "2px 7px", borderRadius: 4 }}>
-                      <AlertTriangle size={10} /> Analyse partielle
-                    </span>
+                    <>
+                      <span style={{ color: "#D0D0D0" }}>·</span>
+                      <span title={c.analysisError} style={{ color: accent, fontWeight: 600 }}>Analyse partielle</span>
+                    </>
                   )}
                   {c.pendingCount > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#9A5B00", backgroundColor: "#FFF3E0", padding: "2px 7px", borderRadius: 4 }}>{c.pendingCount} en attente</span>
+                    <>
+                      <span style={{ color: "#D0D0D0" }}>·</span>
+                      <span style={{ color: accent, fontWeight: 600 }}>{c.pendingCount} en attente</span>
+                    </>
                   )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#6B6B6B" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <Clock size={11} /> {formatDate(c.publicationDate)}
-                  </span>
-                  <span>·</span>
-                  <span>{c.theme || "Thème non qualifié"}</span>
-                  <span>·</span>
-                  <span>{c.impactCount} exigence{c.impactCount !== 1 ? "s" : ""}</span>
                 </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <button
-                  onClick={() => openCircular(c.id)}
+                  onClick={e => { e.stopPropagation(); openCircular(c.id); }}
                   disabled={loadingDetail === c.id}
                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: loadingDetail === c.id ? "wait" : "pointer", color: "#4A4A4A", transition: "all 0.12s", whiteSpace: "nowrap" }}
                   onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#1A1A1A"; b.style.color = "#FFE600"; b.style.borderColor = "#1A1A1A"; }}
@@ -1446,7 +1614,7 @@ export function VeilleReglementaire() {
                   {loadingDetail === c.id ? <Loader2 size={13} className="animate-spin" /> : <>Voir l'analyse <ArrowUpRight size={13} /></>}
                 </button>
                 <button
-                  onClick={() => handleDelete(c)}
+                  onClick={e => { e.stopPropagation(); setConfirmDelete(c); }}
                   disabled={deletingId === c.id}
                   title={c.isPublished ? "Circulaire publiée : suppression impossible" : "Supprimer"}
                   style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 6, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: deletingId === c.id ? "wait" : "pointer", color: "#9B9B9B", transition: "all 0.12s" }}
@@ -1457,7 +1625,8 @@ export function VeilleReglementaire() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1469,6 +1638,15 @@ export function VeilleReglementaire() {
         <UploadModal
           onClose={() => setShowUpload(false)}
           onDone={(circular) => { setShowUpload(false); setSelected(circular); load(); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <DeleteCircularDialog
+          circular={confirmDelete}
+          deleting={deletingId === confirmDelete.id}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => handleDelete(confirmDelete)}
         />
       )}
     </div>

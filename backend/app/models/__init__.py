@@ -15,6 +15,7 @@ from app.models.dimension import Dimension
 from app.models.embedding import RegulatoryEmbedding
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
+from app.models.notification import Notification
 from app.models.question import Question
 from app.models.recommendation import Recommendation
 from app.models.regulatory import RegulatoryCircular, RegulatoryImpact
@@ -36,4 +37,5 @@ __all__ = [
     "RegulatoryCircular",
     "RegulatoryImpact",
     "RegulatoryEmbedding",
+    "Notification",
 ]

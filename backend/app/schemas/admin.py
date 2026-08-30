@@ -147,3 +147,62 @@ class QuestionUpdate(BaseModel):
     choice_options: Optional[list[ChoiceOption]] = None
     is_active: Optional[bool] = None
     sub_dimension_id: Optional[int] = None  # move to another sub-dimension
+
+
+# ── Recommendation ────────────────────────────────────────────────────────────
+# One atomic recommendation moves a single question's answer from
+# trigger_level to trigger_level + 1 (see app/models/recommendation.py) --
+# there is no "multi-level" recommendation at the DB level, so a wizard that
+# targets several trigger levels at once creates one row per level, all
+# sharing the same title/text/category/effort/regulatory_flag.
+
+class RecommendationAdminRead(BaseModel):
+    id: int
+    code: str
+    question_id: int
+    trigger_level: int
+    target_level: int
+    title: str
+    recommendation_text: str
+    category: str
+    regulatory_flag: bool
+    effort: int
+    prerequisite_id: Optional[int] = None
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class RecommendationCreate(BaseModel):
+    question_id: int
+    # One row is created per level (1-4 each, see chk_trigger_level_range) --
+    # the endpoint reports per-level success/conflict rather than failing the
+    # whole request over one already-occupied level.
+    trigger_levels: list[int] = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=200)
+    recommendation_text: str = Field(min_length=1)
+    category: str = Field(min_length=1, max_length=50)
+    effort: int = Field(ge=1, le=3)
+    regulatory_flag: bool = False
+    is_active: bool = True
+
+
+class RecommendationUpdate(BaseModel):
+    # question_id / trigger_level / code are immutable once created (moving a
+    # recommendation to another question or level risks colliding with the
+    # uq_question_trigger constraint) -- only the content fields are editable.
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    recommendation_text: Optional[str] = Field(default=None, min_length=1)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    effort: Optional[int] = Field(default=None, ge=1, le=3)
+    regulatory_flag: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class RecommendationBatchCreateResult(BaseModel):
+    """One POST can target several trigger levels at once (one DB row each) --
+    reports which were actually created vs. already occupied for that
+    question, instead of failing the whole request over one conflict."""
+
+    created: list[RecommendationAdminRead]
+    skipped_levels: list[int]

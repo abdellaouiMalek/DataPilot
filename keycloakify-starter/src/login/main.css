@@ -38,8 +38,16 @@ html {
     animation: fade-in 0.35s ease-out;
 }
 
+/* Same entrance, fired a beat after .fade-in -- the brand headline settles
+   just after the logo instead of everything landing on the same frame, so
+   the page-load reads as one small sequence rather than a single pop. */
+.fade-in-delayed {
+    animation: fade-in 0.4s ease-out 0.1s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .fade-in {
+    .fade-in,
+    .fade-in-delayed {
         animation: none;
     }
 }

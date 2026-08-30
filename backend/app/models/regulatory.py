@@ -66,6 +66,13 @@ class RegulatoryCircular(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Nom d'affichage du super-admin qui a publié cette circulaire (voir
+    # routers/regulatory.py::publish_circular) -- pas un id Keycloak :
+    # l'identité vit entièrement dans Keycloak (pas de table users locale,
+    # voir app.routers.admin_users), donc rien à joindre plus tard ; un nom
+    # figé au moment de la publication est la trace d'audit qui compte,
+    # même si ce compte est ensuite renommé/désactivé dans Keycloak.
+    published_by: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     impacts: Mapped[List["RegulatoryImpact"]] = relationship(
         back_populates="circular",

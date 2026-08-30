@@ -90,7 +90,14 @@ choisis un impact_kind parmi exactement ces 7 valeurs :
   toute nouvelle question d'evaluation est necessaire. title (libelle de
   la question, reformule), level_labels (jusqu'a 5 libelles courts, du
   niveau le plus faible au plus fort), dimension_hint = le nom de la
-  dimension candidate la plus proche thematiquement (ou vide si aucune).
+  dimension candidate la plus proche thematiquement (ou vide si aucune) ;
+  subdimension_hint = la sous-dimension a laquelle rattacher cette
+  question -- chaque question candidate est listee avec SA sous-dimension
+  ci-dessous : si l'une d'elles correspond au theme precis de la nouvelle
+  question, reprends EXACTEMENT son nom (meme orthographe) ; sinon,
+  propose un NOUVEAU libelle court (2 a 5 mots, meme style que les noms
+  de sous-dimension existants, ex. "Tracabilite / lignage") pour une
+  sous-dimension qui n'existe pas encore.
 
 Ne propose JAMAIS un "ajouter" qui ferait doublon avec un candidat deja
 liste -- dans ce cas utilise "modifier" ou "activer_flag" a la place. Ne
@@ -118,6 +125,7 @@ _JSON_SCHEMA: dict[str, Any] = {
                     "trigger_level": {"type": "integer"},
                     "level_labels": {"type": "array", "items": {"type": "string"}},
                     "dimension_hint": {"type": "string"},
+                    "subdimension_hint": {"type": "string"},
                     "modification": {"type": "string"},
                     "justification": {"type": "string"},
                 },
@@ -513,7 +521,13 @@ Redige les 4 recommandations de progression (niveau 1->2, 2->3, 3->4,
 def _build_candidates_text(candidates: dict[str, list[dict[str, Any]]]) -> str:
     lines = ["QUESTIONS CANDIDATES (les plus proches de cet extrait) :"]
     for q in candidates.get("questions", []):
-        lines.append(f"- {q['code']} [{q.get('dimension', '')}] {q['title']}")
+        # Sous-dimension affichée entre crochets avec la dimension --
+        # c'est le signal qui permet à "question_ajouter" de rattacher une
+        # nouvelle question à une sous-dimension EXISTANTE (subdimension_hint)
+        # plutôt que d'en proposer systématiquement une nouvelle.
+        subdim = q.get("subdimension") or ""
+        location = f"{q.get('dimension', '')} / {subdim}" if subdim else q.get("dimension", "")
+        lines.append(f"- {q['code']} [{location}] {q['title']}")
     lines.append("")
     lines.append("RECOMMANDATIONS CANDIDATES (les plus proches de cet extrait) :")
     for r in candidates.get("recommandations", []):
@@ -546,17 +560,50 @@ def _similar(a: str, b: str) -> bool:
     return difflib.SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio() >= _SIMILARITY_THRESHOLD
 
 
+# Un doublon de QUESTION (contrairement à une recommandation, voir
+# ``existing_titles``/le rejet strict à 0.82 ci-dessous) n'est jamais
+# silencieusement écarté : une nouvelle question change la structure même
+# du référentiel d'évaluation, une décision plus lourde qu'ajouter une
+# recommandation -- l'admin doit voir l'alerte et trancher, jamais perdre
+# une proposition potentiellement légitime sur un faux positif. Calibré
+# empiriquement : un vrai doublon constaté (même sujet, formulation très
+# différente -- "traçabilité et lignage des données" vs "traçabilité des
+# données (sources, transformations, lignage)") atteint 0.634 ; la paire
+# la plus proche parmi des questions réellement distinctes de la même
+# dimension n'atteint que 0.538. 0.55 sépare proprement les deux avec une
+# marge de chaque côté.
+_QUESTION_DUPLICATE_WARNING_THRESHOLD = 0.55
+
+
+def _best_title_match(title: str, candidates: list[tuple[str, str]]) -> tuple[str, str, float] | None:
+    """Meilleur candidat (code, titre) par similarité de texte avec
+    ``title`` -- retourne ``(code, titre, ratio)`` du meilleur, ou None si
+    la liste de candidats est vide."""
+    best: tuple[str, str, float] | None = None
+    for code, cand_title in candidates:
+        ratio = difflib.SequenceMatcher(None, title.lower().strip(), cand_title.lower().strip()).ratio()
+        if best is None or ratio > best[2]:
+            best = (code, cand_title, ratio)
+    return best
+
+
 def _validate_and_normalize(
     raw_item: dict[str, Any],
     reco_codes: set[str],
     question_codes: set[str],
     existing_titles: list[str],
+    existing_questions: list[tuple[str, str]],
 ) -> Exigence | None:
     """Verifie et normalise une exigence brute renvoyee par le LLM.
     Retourne None si l'item est inexploitable (champs manquants, ou
     reference a un code absent des CANDIDATS retournes par la recherche --
     un code hors de cette liste est forcement invente ou hors-sujet, donc
-    ecarte plutot que persiste a moitie faux)."""
+    ecarte plutot que persiste a moitie faux).
+
+    Pour "question:ajouter" (voir ``_QUESTION_DUPLICATE_WARNING_THRESHOLD``),
+    un doublon probable d'une question CANDIDATE n'est jamais ecarte
+    silencieusement -- juste signale (``proposed["similar_existing_..."]``)
+    pour que l'admin tranche en connaissance de cause."""
     excerpt = str(raw_item.get("excerpt") or "").strip()
     requirement_text = str(raw_item.get("requirement_text") or "").strip()
     impact_kind = str(raw_item.get("impact_kind") or "").strip()
@@ -635,17 +682,25 @@ def _validate_and_normalize(
             return None
         levels = [str(lbl).strip() for lbl in (raw_item.get("level_labels") or []) if str(lbl).strip()]
         levels = levels[:_DEFAULT_LEVEL_LABELS]
-        return Exigence(
-            excerpt,
-            requirement_text,
-            entity_type,
-            proposed_action,
-            {
-                "title": title,
-                "level_labels": levels,
-                "dimension_hint": str(raw_item.get("dimension_hint") or "").strip(),
-            },
-        )
+        proposed: dict[str, Any] = {
+            "title": title,
+            "level_labels": levels,
+            "dimension_hint": str(raw_item.get("dimension_hint") or "").strip(),
+            "subdimension_hint": str(raw_item.get("subdimension_hint") or "").strip(),
+        }
+        # Filet de securite anti-doublon (voir la note sur
+        # _QUESTION_DUPLICATE_WARNING_THRESHOLD) : contrairement au rejet
+        # strict et silencieux des recommandations ci-dessus, une question
+        # probablement redondante est SIGNALEE, jamais ecartee -- le LLM
+        # voit deja les memes candidats dans le prompt (consigne "rien
+        # dans les candidats ne couvre le sujet") mais peut manquer un
+        # recouvrement semantique formule differemment ; ce filet ne
+        # depend pas de son jugement.
+        match = _best_title_match(title, existing_questions)
+        if match is not None and match[2] >= _QUESTION_DUPLICATE_WARNING_THRESHOLD:
+            proposed["similar_existing_code"] = match[0]
+            proposed["similar_existing_title"] = match[1]
+        return Exigence(excerpt, requirement_text, entity_type, proposed_action, proposed)
 
     return None
 
@@ -717,6 +772,7 @@ def analyze_chunk_with_candidates(
     reco_codes = {r["code"] for r in candidates.get("recommandations", [])}
     question_codes = {q["code"] for q in candidates.get("questions", [])}
     existing_titles = [r["title"] for r in candidates.get("recommandations", [])]
+    existing_questions = [(q["code"], q["title"]) for q in candidates.get("questions", [])]
 
     candidates_text = _build_candidates_text(candidates)
     user_prompt = _build_user_prompt(chunk, langue, candidates_text)
@@ -738,7 +794,7 @@ def analyze_chunk_with_candidates(
             str(raw_item.get("requirement_text") or ""), str(raw_item.get("title") or "")
         ):
             continue
-        normalized = _validate_and_normalize(raw_item, reco_codes, question_codes, existing_titles)
+        normalized = _validate_and_normalize(raw_item, reco_codes, question_codes, existing_titles, existing_questions)
         if normalized is not None:
             items.append(normalized)
 

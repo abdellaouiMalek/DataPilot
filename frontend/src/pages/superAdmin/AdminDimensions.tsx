@@ -823,9 +823,9 @@ function NewSubDimensionWizard({ dim, onClose, onSaved }: { dim: Dimension; onCl
 
 // ── Questions list ──────────────────────────────────────────────────────────
 
-function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
+function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
   dim: Dimension; sub: SubDimension; onChanged: () => Promise<void>;
-  onEdit: (q: Question) => void; onAdd: () => void;
+  onEdit: (q: Question) => void; onAdd: () => void; readOnly?: boolean;
 }) {
   const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
 
@@ -879,22 +879,26 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
               <span style={{ fontSize: 11, fontWeight: 700, color: dim.color }}>{q.weight}</span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
-            <button title="Modifier" onClick={() => onEdit(q)} style={iconBtn}><Edit2 size={13} /></button>
-            <button title={q.status === "Active" ? "Désactiver" : "Activer"} onClick={() => toggle(q)}
-              style={{ ...iconBtn, border: q.status === "Active" ? "1px solid #1A1A1A" : iconBtn.border, backgroundColor: q.status === "Active" ? "#1A1A1A" : "#F7F7F7", color: q.status === "Active" ? "#FFE600" : "#9B9B9B" }}>
-              <Eye size={13} />
-            </button>
-            <button title="Supprimer" onClick={() => remove(q)} style={{ ...iconBtn, color: "#CC0000" }}><Trash2 size={13} /></button>
-          </div>
+          {!readOnly && (
+            <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+              <button title="Modifier" onClick={() => onEdit(q)} style={iconBtn}><Edit2 size={13} /></button>
+              <button title={q.status === "Active" ? "Désactiver" : "Activer"} onClick={() => toggle(q)}
+                style={{ ...iconBtn, border: q.status === "Active" ? "1px solid #1A1A1A" : iconBtn.border, backgroundColor: q.status === "Active" ? "#1A1A1A" : "#F7F7F7", color: q.status === "Active" ? "#FFE600" : "#9B9B9B" }}>
+                <Eye size={13} />
+              </button>
+              <button title="Supprimer" onClick={() => remove(q)} style={{ ...iconBtn, color: "#CC0000" }}><Trash2 size={13} /></button>
+            </div>
+          )}
         </div>
       ))}
       {sub.questions.length === 0 && (
         <div style={{ fontSize: 12, color: "#9B9B9B", padding: "6px 2px" }}>Aucune question dans cette sous-dimension.</div>
       )}
-      <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
-        <Plus size={13} /> Ajouter une question
-      </button>
+      {!readOnly && (
+        <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
+          <Plus size={13} /> Ajouter une question
+        </button>
+      )}
       {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
     </div>
   );
@@ -902,6 +906,75 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd }: {
 
 const iconBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 7, border: "1px solid rgba(0,0,0,0.09)", backgroundColor: "#F7F7F7", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4A4A4A" };
 const smallIconBtn: React.CSSProperties = { width: 28, height: 28, borderRadius: 5, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6B6B6B" };
+
+// ── Read-only question preview (admin "consult only" view) ──────────────────
+// Same visual structure as QuestionModal's "Prévisualisation" tab, but with
+// no editable state and no save action at all -- reads straight off the
+// stored question, nothing else. Used only from QuestionsTable's read-only
+// mode (see `readOnly` below), never from the super-admin's own editable
+// QuestionModal.
+
+function QuestionPreviewModal({ q, onClose }: { q: FlatQuestion; onClose: () => void }) {
+  const isChoiceType = q.type === "Choix unique" || q.type === "Choix multiple";
+  return (
+    <ModalShell
+      title="Aperçu de la question"
+      subtitle={`${q.dimensionName} › ${q.subDimensionName}`}
+      onClose={onClose}
+      footer={<button style={btnGhost} onClick={onClose}>Fermer</button>}
+    >
+      <div style={{ backgroundColor: "#F7F7F7", borderRadius: 8, padding: 22 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
+          {q.dimensionName} · {q.subDimensionName}
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", marginBottom: 12, lineHeight: 1.5 }}>
+          {q.label}
+        </div>
+        {q.description && (
+          <div style={{ fontSize: 12, color: "#4A4A4A", marginBottom: 16, padding: "10px 14px", backgroundColor: "#EFF6FF", borderRadius: 6, borderLeft: "3px solid #3B82F6" }}>
+            {q.description}
+          </div>
+        )}
+        {q.type === "Échelle de maturité" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {LEVEL_NAMES.map((name, i) => (
+              <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800 }}>{i + 1}</span>
+                </div>
+                <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{q.levelResponses?.[i]?.label || name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{q.levelResponses?.[i]?.score ?? i + 1} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {q.type === "Oui/Non" && (
+          <div style={{ display: "flex", gap: 10 }}>
+            {["Oui", "Non"].map(opt => (
+              <div key={opt} style={{ flex: 1, padding: "12px 16px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)", textAlign: "center", fontSize: 13, fontWeight: 600, color: "#1A1A1A" }}>{opt}</div>
+            ))}
+          </div>
+        )}
+        {isChoiceType && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(q.choiceOptions ?? []).map((opt, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+                <div style={{ width: 18, height: 18, flexShrink: 0, borderRadius: q.type === "Choix unique" ? "50%" : 4, border: "2px solid rgba(0,0,0,0.2)" }} />
+                <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{opt.label || `Option ${String.fromCharCode(65 + i)}`}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#9B9B9B" }}>{opt.score} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {q.type === "Texte libre" && (
+          <div style={{ padding: "12px 14px", backgroundColor: "#fff", borderRadius: 6, border: "1px dashed rgba(0,0,0,0.15)", fontSize: 12, color: "#B0B0B0", fontStyle: "italic" }}>
+            Zone de texte libre pour la réponse…
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
 
 // ── Flat questions table (all questions across every dimension, filterable) ─
 
@@ -923,12 +996,13 @@ function flattenQuestions(dimensions: Dimension[]): FlatQuestion[] {
   return rows;
 }
 
-function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
+function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readOnly }: {
   dimensions: Dimension[];
   onEdit: (q: FlatQuestion) => void;
   onPreview: (q: FlatQuestion) => void;
   onAdd: () => void;
   onChanged: () => Promise<void>;
+  readOnly?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [dimFilter, setDimFilter] = useState("Toutes les dimensions");
@@ -936,6 +1010,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
   const [statusFilter, setStatusFilter] = useState("Tous les statuts");
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
+  const [previewQ, setPreviewQ] = useState<FlatQuestion | null>(null);
 
   const dimNames = ["Toutes les dimensions", ...dimensions.map(d => d.name)];
   const typeNames = ["Tous les types", ...RESPONSE_TYPES];
@@ -1019,9 +1094,11 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
           </div>
         ))}
         <span style={{ fontSize: 12, color: "#9B9B9B" }}>{filtered.length} résultat{filtered.length !== 1 ? "s" : ""}</span>
-        <button onClick={onAdd} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, fontSize: 12, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer" }}>
-          <Plus size={13} /> Ajouter une question
-        </button>
+        {!readOnly && (
+          <button onClick={onAdd} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, fontSize: 12, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer" }}>
+            <Plus size={13} /> Ajouter une question
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -1066,12 +1143,18 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
                 <td style={{ padding: "11px 14px" }}><StatusBadge status={q.status} /></td>
                 <td style={{ padding: "11px 14px" }}>
                   <div style={{ display: "flex", gap: 4 }}>
-                    <button title="Modifier" onClick={() => onEdit(q)} style={smallIconBtn}><Edit2 size={12} /></button>
-                    <button title="Prévisualiser" onClick={() => onPreview(q)} style={smallIconBtn}><Eye size={12} /></button>
-                    <button title="Dupliquer" onClick={() => duplicate(q)} disabled={duplicating === q.id} style={{ ...smallIconBtn, cursor: duplicating === q.id ? "wait" : "pointer" }}>
-                      {duplicating === q.id ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
-                    </button>
-                    <button title="Supprimer" onClick={() => remove(q)} style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
+                    {readOnly ? (
+                      <button title="Consulter" onClick={() => setPreviewQ(q)} style={smallIconBtn}><Eye size={12} /></button>
+                    ) : (
+                      <>
+                        <button title="Modifier" onClick={() => onEdit(q)} style={smallIconBtn}><Edit2 size={12} /></button>
+                        <button title="Prévisualiser" onClick={() => onPreview(q)} style={smallIconBtn}><Eye size={12} /></button>
+                        <button title="Dupliquer" onClick={() => duplicate(q)} disabled={duplicating === q.id} style={{ ...smallIconBtn, cursor: duplicating === q.id ? "wait" : "pointer" }}>
+                          {duplicating === q.id ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+                        </button>
+                        <button title="Supprimer" onClick={() => remove(q)} style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -1083,13 +1166,14 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged }: {
         </table>
       </div>
       {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
+      {previewQ && <QuestionPreviewModal q={previewQ} onClose={() => setPreviewQ(null)} />}
     </>
   );
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-export function DimensionsManagement() {
+export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -1190,9 +1274,11 @@ export function DimensionsManagement() {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowNewDim(true)} style={{ ...btnPrimary, padding: "9px 18px", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
-            <Plus size={15} /> Nouvelle dimension
-          </button>
+          {!readOnly && (
+            <button onClick={() => setShowNewDim(true)} style={{ ...btnPrimary, padding: "9px 18px", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
+              <Plus size={15} /> Nouvelle dimension
+            </button>
+          )}
         </div>
       </div>
 
@@ -1216,6 +1302,7 @@ export function DimensionsManagement() {
           onEdit={q => setQModal({ initial: q })}
           onPreview={q => setQModal({ initial: q, initialTab: "preview" })}
           onChanged={load}
+          readOnly={readOnly}
         />
       )}
 
@@ -1277,11 +1364,13 @@ export function DimensionsManagement() {
                           <div style={{ fontSize: 10, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.l}</div>
                         </div>
                       ))}
-                      <div style={{ display: "flex", gap: 5 }}>
-                        <button onClick={e => { e.stopPropagation(); setDimModal({ initial: dim }); }} title="Modifier" style={smallIconBtn}><Edit2 size={12} /></button>
-                        <button onClick={e => { e.stopPropagation(); setNewSubWizard({ dim }); }} title="Ajouter une sous-dimension" style={smallIconBtn}><Plus size={12} /></button>
-                        <button onClick={e => { e.stopPropagation(); deleteDim(dim); }} title="Supprimer" style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
-                      </div>
+                      {!readOnly && (
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button onClick={e => { e.stopPropagation(); setDimModal({ initial: dim }); }} title="Modifier" style={smallIconBtn}><Edit2 size={12} /></button>
+                          <button onClick={e => { e.stopPropagation(); setNewSubWizard({ dim }); }} title="Ajouter une sous-dimension" style={smallIconBtn}><Plus size={12} /></button>
+                          <button onClick={e => { e.stopPropagation(); deleteDim(dim); }} title="Supprimer" style={{ ...smallIconBtn, color: "#CC0000" }}><Trash2 size={12} /></button>
+                        </div>
+                      )}
                       {isOpenDim ? <ChevronDown size={16} style={{ color: "#9B9B9B" }} /> : <ChevronRight size={16} style={{ color: "#9B9B9B" }} />}
                     </div>
                   </div>
@@ -1301,10 +1390,12 @@ export function DimensionsManagement() {
                                 {sub.questions.length} question{sub.questions.length !== 1 ? "s" : ""}
                               </span>
                               <StatusBadge status={sub.status} />
-                              <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
-                                <button onClick={e => { e.stopPropagation(); setSubModal({ dim, initial: sub }); }} title="Modifier" style={{ ...smallIconBtn, width: 26, height: 26 }}><Edit2 size={11} /></button>
-                                <button onClick={e => { e.stopPropagation(); deleteSub(sub); }} title="Supprimer" style={{ ...smallIconBtn, width: 26, height: 26, color: "#CC0000" }}><Trash2 size={11} /></button>
-                              </div>
+                              {!readOnly && (
+                                <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+                                  <button onClick={e => { e.stopPropagation(); setSubModal({ dim, initial: sub }); }} title="Modifier" style={{ ...smallIconBtn, width: 26, height: 26 }}><Edit2 size={11} /></button>
+                                  <button onClick={e => { e.stopPropagation(); deleteSub(sub); }} title="Supprimer" style={{ ...smallIconBtn, width: 26, height: 26, color: "#CC0000" }}><Trash2 size={11} /></button>
+                                </div>
+                              )}
                               <div style={{ width: 26, height: 26, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: isOpenSub ? dim.color : "transparent" }}>
                                 {isOpenSub ? <ChevronDown size={14} style={{ color: "#fff" }} /> : <ChevronRight size={14} style={{ color: "#9B9B9B" }} />}
                               </div>
@@ -1315,6 +1406,7 @@ export function DimensionsManagement() {
                                   dim={dim} sub={sub} onChanged={load}
                                   onEdit={q => setQModal({ dim, sub, initial: q })}
                                   onAdd={() => setQModal({ dim, sub })}
+                                  readOnly={readOnly}
                                 />
                               </div>
                             )}
@@ -1324,11 +1416,13 @@ export function DimensionsManagement() {
                       {dim.subDimensions.length === 0 && (
                         <div style={{ padding: "10px 18px 4px 56px", fontSize: 12, color: "#9B9B9B" }}>Aucune sous-dimension.</div>
                       )}
-                      <div style={{ padding: "8px 18px 14px 56px" }}>
-                        <button onClick={() => setNewSubWizard({ dim })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#4A4A4A" }}>
-                          <Plus size={12} /> Ajouter une sous-dimension
-                        </button>
-                      </div>
+                      {!readOnly && (
+                        <div style={{ padding: "8px 18px 14px 56px" }}>
+                          <button onClick={() => setNewSubWizard({ dim })} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#4A4A4A" }}>
+                            <Plus size={12} /> Ajouter une sous-dimension
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1362,4 +1456,16 @@ export function DimensionsManagement() {
       {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
     </div>
   );
+}
+
+// ── Admin (rôle réduit) : même page, même design, lecture seule ─────────────
+// L'espace admin (voir pages/admin/AdminLayout.tsx) doit pouvoir consulter
+// le framework exactement comme le super admin le voit, sans jamais pouvoir
+// le modifier -- `readOnly` retire chaque bouton de création/modification/
+// suppression (voir chaque `{!readOnly && (...)}` ci-dessus) plutôt que de
+// dupliquer ce fichier, pour qu'un changement de design ne puisse jamais
+// diverger entre les deux espaces.
+
+export function FrameworkConsultation() {
+  return <DimensionsManagement readOnly />;
 }

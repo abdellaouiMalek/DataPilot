@@ -1,28 +1,62 @@
 /**
- * EY-branded login page (login.ftl).
+ * EY-branded login page (login.ftl) — split-screen redesign.
  *
- * A deliberately different visual mode from the rest of DataPilot's light,
- * functional in-app pages: full-bleed EY black, a single glass panel with a
- * yellow edge, restrained "vault door" framing -- this is the one moment
- * that should feel like stepping into something restricted, not another
- * screen of the app. An earlier draft leaned on fabricated security theater
- * (fake protocol readouts, a simulated connection delay, a background grid)
- * -- removed, since none of it was real and a banking audience reads
- * fabricated technical detail as a credibility problem, not a trust signal.
- * This is a screen bank staff open every day, so it still renders instantly.
+ * Replaces the earlier full-black "vault" concept with a two-panel layout:
+ * a dark brand panel built around EY's own beam mark (blown up to real
+ * scale rather than left as a small logo lockup — that's the one signature
+ * move this page is built around), and a clean form panel. The form panel
+ * is deliberately bright, not dark-on-dark: this is a screen bank staff
+ * and EY consultants open every single day, so daily-use comfort
+ * (contrast, input size, a calm ground) matters more than atmosphere here.
+ * Both panels share the same three-zone rhythm (small mark at top, main
+ * content centered, a footer line at the bottom) so the two sides read as
+ * one considered page rather than a graphic bolted onto a bare form — the
+ * form itself sits on a true white card lifted slightly off the panel's
+ * off-white ground, instead of floating directly on the same flat surface.
+ * On narrow viewports the brand panel collapses to a compact top band
+ * instead of disappearing, so the identity never fully drops out.
  *
  * All form behaviour is wired to Keycloak: the form posts to `url.loginAction`,
  * inputs use the `username` / `password` / `rememberMe` field names Keycloak
  * expects, and validation/error messages come from `kcContext` (no client-side
- * fake auth).
+ * fake auth) — unchanged from the previous version, only the visual layer
+ * was rebuilt.
  */
 import { useState } from "react";
 import { kcSanitize } from "keycloakify/lib/kcSanitize";
-import { Mail, Lock, ArrowRight, Eye, EyeOff, Check, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff, Check, Loader2, AlertCircle } from "lucide-react";
 import type { PageProps } from "keycloakify/login/pages/PageProps";
 import type { KcContext } from "../KcContext";
 import type { I18n } from "../i18n";
 import EyLogoLight from "../assets/ey-logo.png";
+import EyLogoDark from "../assets/EY_logo2.png";
+
+/** The EY beam, blown up: three tapers at slightly diverging angles (not
+ * parallel copies) so it reads as light fanning out rather than a stencil
+ * repeated three times, plus a soft radial glow anchored at the point they
+ * all converge from. Not a trace of the trademark's exact multi-facet path
+ * (that reads as a blocky artifact at this scale) — the same gesture,
+ * redrawn clean for a large graphic instead of a small lockup. */
+function BeamMark() {
+    return (
+        <svg viewBox="0 0 640 520" className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="beam-gold" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#F4D400" />
+                    <stop offset="100%" stopColor="#FFEE55" />
+                </linearGradient>
+                <radialGradient id="beam-glow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#FFE600" stopOpacity="0.5" />
+                    <stop offset="100%" stopColor="#FFE600" stopOpacity="0" />
+                </radialGradient>
+            </defs>
+            <circle cx="30" cy="500" r="260" fill="url(#beam-glow)" opacity="0.35" />
+            <polygon points="-60,455 420,-10 420,95 10,520" fill="#FFE600" opacity="0.07" />
+            <polygon points="-30,485 520,50 520,130 40,540" fill="#FFE600" opacity="0.14" />
+            <polygon points="10,505 600,90 600,165 90,545" fill="url(#beam-gold)" />
+        </svg>
+    );
+}
 
 export default function Login(props: PageProps<Extract<KcContext, { pageId: "login.ftl" }>, I18n>) {
     const { kcContext, i18n, Template, doUseDefaultCss, classes } = props;
@@ -40,63 +74,77 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
           ? { type: message.type === "error" ? "error" : "success", html: kcSanitize(message.summary) }
           : null;
 
+    const inputBase =
+        "w-full h-12 pl-11 pr-4 bg-[#F7F7F5] border border-black/10 text-[15px] text-[#1A1A1A] placeholder-black/30 " +
+        "focus:outline-none focus:border-[#1A1A1A] focus:bg-white focus:ring-2 focus:ring-[#1A1A1A]/10 transition-colors";
+
     return (
         <Template kcContext={kcContext} i18n={i18n} doUseDefaultCss={doUseDefaultCss} classes={classes} headerNode={null}>
-            <div className="relative h-screen overflow-y-auto bg-[#1A1A1A] text-white font-sans flex flex-col items-center justify-center px-4 py-5 selection:bg-[#FFE600] selection:text-black">
-                <div className="grain" />
-                {/* A second, fainter glow top-right keeps the field from
-                    reading as one flat gradient without adding a second
-                    focal point. */}
-                <div className="pointer-events-none absolute -top-24 -right-24 w-[420px] h-[420px] bg-[#FFE600]/[0.04] rounded-full blur-[140px]" />
+            <div className="min-h-screen w-full flex flex-col md:flex-row font-sans selection:bg-[#FFE600] selection:text-black">
+                {/* ── Brand panel — the thesis: EY's beam, at real scale ── */}
+                <div className="relative shrink-0 h-[34vh] min-h-[220px] md:h-auto md:min-h-screen md:w-[46%] lg:w-[42%] bg-[#1A1A1A] overflow-hidden flex flex-col">
+                    <BeamMark />
+                    <div className="grain" />
 
-                <div className="relative w-full max-w-[420px] fade-in">
-                    {/* Brand mark — horizontal, to keep the whole page
-                        inside one viewport with no scroll on normal screens. */}
-                    <div className="flex items-center justify-center gap-3 mb-5">
-                        <img src={EyLogoLight} alt="EY" className="h-6 w-auto object-contain select-none pointer-events-none" />
-                        <div className="h-6 w-px bg-white/15" />
-                        <div className="text-left">
-                            <div className="text-[10px] font-bold tracking-[0.3em] text-white/90 uppercase leading-none">DataPilot</div>
-                            <div className="text-[8px] tracking-[0.2em] text-white/35 uppercase mt-1">
-                                Évaluation de maturité data
+                    <div className="relative z-10 flex flex-col h-full px-8 py-8 md:px-14 md:py-12">
+                        <img src={EyLogoLight} alt="EY" className="h-7 md:h-8 w-auto object-contain select-none pointer-events-none fade-in" />
+
+                        {/* Centered in the space between the logo and the footer
+                            line, not bottom-anchored against it — gives the
+                            headline the same "resting in the middle" weight as
+                            the form card has on the other panel. */}
+                        <div className="flex-1 flex flex-col justify-center">
+                            <div className="max-w-md fade-in-delayed">
+                                <h1 className="text-[26px] leading-[1.15] md:text-[40px] md:leading-[1.12] font-bold text-white tracking-tight text-balance">
+                                    Évaluer. Comparer.
+                                    <br className="hidden md:block" /> Simuler. <span className="text-[#FFE600]">Accélérer.</span>
+                                </h1>
+                                <p className="hidden md:block mt-5 text-[15px] leading-relaxed text-white/55 max-w-[38ch]">
+                                    DataPilot est la plateforme EY d&apos;évaluation de la maturité data et d&apos;accélération de la transformation
+                                    digitale pour les banques tunisiennes.
+                                </p>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Vault panel — the glow is anchored to the yellow edge,
-                        not centered on the viewport, so the light reads as
-                        coming from the accent itself. */}
-                    <div className="relative">
-                        <div className="pointer-events-none absolute -left-16 top-1/3 w-64 h-64 bg-[#FFE600]/[0.12] rounded-full blur-[100px]" />
-                        <div className="relative bg-white/[0.045] backdrop-blur-sm border-y border-r border-white/10 border-l-4 border-l-[#FFE600] shadow-[0_25px_70px_-25px_rgba(0,0,0,0.6),0_0_60px_-30px_rgba(255,230,0,0.15)]">
-                            <div className="p-6 sm:p-8">
-                                {/* Heading */}
-                                <div className="space-y-1.5 mb-5">
-                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-[0.25em] text-[#FFE600] uppercase">
-                                        <ShieldCheck className="w-3 h-3" />
-                                        Accès professionnel EY
-                                    </span>
-                                    <h1 className="text-xl sm:text-2xl font-light text-white tracking-tight leading-[1.15]">
-                                        Se connecter à <span className="font-semibold">l&apos;Espace Analytique</span>
-                                    </h1>
-                                    <p className="text-xs text-white/45 leading-snug">
-                                        Utilisez l&apos;identifiant fourni par EY Consulting Tunisie.
-                                    </p>
-                                </div>
+                        <div className="hidden md:flex items-center justify-between pt-6 border-t border-white/10 text-[11px] text-white/35 tracking-wide">
+                            <span>EY Consulting Tunisie</span>
+                            <span>DataPilot © 1996–{new Date().getFullYear()} EY</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Form panel — clean and bright: the part used every day ── */}
+                <div className="flex-1 flex flex-col bg-[#FAFAF9] px-6 md:px-10 py-8 md:py-12">
+                    {/* Top zone: a small, quiet brand mark at the same inset as the
+                        beam panel's logo, so the two line up across the seam. */}
+                    <img src={EyLogoDark} alt="EY" className="h-6 md:h-7 w-auto object-contain select-none pointer-events-none fade-in" />
+
+                    {/* Middle zone: the form, on its own white card lifted off the
+                        panel's off-white ground -- gives the eye a surface to land
+                        on instead of text sitting directly on flat white. */}
+                    <div className="flex-1 flex items-center justify-center py-8">
+                        <div className="w-full max-w-[400px] fade-in-delayed bg-white rounded-xl border border-black/[0.06] shadow-[0_1px_2px_rgba(16,16,16,0.03),0_20px_44px_-22px_rgba(16,16,16,0.14)] p-7 md:p-9">
+                            <div className="mb-7">
+                                <h2 className="text-[22px] font-bold text-[#1A1A1A] tracking-tight">Se connecter</h2>
+                                <p className="mt-1.5 text-[13.5px] text-[#6B6B6B]">Utilisez l&apos;identifiant fourni par EY Consulting Tunisie.</p>
+                            </div>
 
                             {/* Alert (from Keycloak) */}
                             {alert && (
                                 <div
-                                    className={`p-3 border-l-4 mb-4 text-xs flex items-start gap-2.5 ${
-                                        alert.type === "success" ? "bg-[#FFE600]/10 border-[#FFE600] text-white" : "bg-red-500/10 border-red-500 text-red-200"
+                                    role="alert"
+                                    className={`mb-5 px-4 py-3 rounded-md border text-[13px] flex items-start gap-2.5 ${
+                                        alert.type === "success"
+                                            ? "bg-[#FFFBE0] border-[#F5DE5C] text-[#5C4E00]"
+                                            : "bg-[#FDEDED] border-[#F3C6C6] text-[#8A1F1F]"
                                     }`}
                                 >
                                     {alert.type === "success" ? (
-                                        <Check className="w-4 h-4 flex-shrink-0 text-[#FFE600] mt-0.5" />
+                                        <Check className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                     ) : (
-                                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-400 mt-0.5" />
+                                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                     )}
-                                    <span className="leading-normal font-semibold" dangerouslySetInnerHTML={{ __html: alert.html }} />
+                                    <span className="leading-normal font-medium" dangerouslySetInnerHTML={{ __html: alert.html }} />
                                 </div>
                             )}
 
@@ -110,17 +158,17 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                         setLoading(true);
                                         return true;
                                     }}
-                                    className="space-y-3.5"
+                                    className="space-y-4"
                                 >
                                     {/* EMAIL / USERNAME */}
                                     {!usernameHidden && (
                                         <div className="space-y-1.5">
-                                            <label htmlFor="username" className="text-white/60 text-[10px] font-bold uppercase tracking-widest block font-mono">
+                                            <label htmlFor="username" className="text-[#1A1A1A] text-[13px] font-semibold block">
                                                 Adresse e-mail professionnelle
                                             </label>
                                             <div className="relative group">
-                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/30 group-focus-within:text-[#FFE600] transition-colors">
-                                                    <Mail className="w-4 h-4" />
+                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-black/30 group-focus-within:text-[#1A1A1A] transition-colors">
+                                                    <Mail className="w-[18px] h-[18px]" />
                                                 </div>
                                                 <input
                                                     id="username"
@@ -132,7 +180,7 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                                     tabIndex={2}
                                                     aria-invalid={fieldErrorExists}
                                                     placeholder="prenom.nom@ey.tn"
-                                                    className="w-full h-11 pl-11 pr-5 bg-white/5 border border-white/15 text-sm font-medium tracking-wide placeholder-white/25 text-white focus:outline-none focus:border-[#FFE600] focus:bg-white/[0.07] focus:ring-2 focus:ring-[#FFE600]/25 transition-colors"
+                                                    className={inputBase}
                                                 />
                                             </div>
                                         </div>
@@ -141,22 +189,22 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                     {/* PASSWORD */}
                                     <div className="space-y-1.5">
                                         <div className="flex justify-between items-center">
-                                            <label htmlFor="password" className="text-white/60 text-[10px] font-bold uppercase tracking-widest block font-mono">
+                                            <label htmlFor="password" className="text-[#1A1A1A] text-[13px] font-semibold block">
                                                 Mot de passe
                                             </label>
                                             {realm.resetPasswordAllowed && (
                                                 <a
                                                     href={url.loginResetCredentialsUrl}
                                                     tabIndex={6}
-                                                    className="text-white/50 text-[10px] font-bold uppercase tracking-widest hover:text-[#FFE600] transition-colors cursor-pointer font-mono"
+                                                    className="text-[#6B6B6B] text-[12.5px] font-medium hover:text-[#1A1A1A] hover:underline underline-offset-2 transition-colors cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A]/30 focus-visible:ring-offset-2"
                                                 >
-                                                    Oublié ?
+                                                    Mot de passe oublié ?
                                                 </a>
                                             )}
                                         </div>
                                         <div className="relative group">
-                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/30 group-focus-within:text-[#FFE600] transition-colors">
-                                                <Lock className="w-4 h-4" />
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-black/30 group-focus-within:text-[#1A1A1A] transition-colors">
+                                                <Lock className="w-[18px] h-[18px]" />
                                             </div>
                                             <input
                                                 id="password"
@@ -166,22 +214,22 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                                 tabIndex={3}
                                                 aria-invalid={fieldErrorExists}
                                                 placeholder="••••••••••••"
-                                                className="w-full h-11 pl-11 pr-11 bg-white/5 border border-white/15 text-sm font-medium tracking-wide placeholder-white/25 text-white focus:outline-none focus:border-[#FFE600] focus:bg-white/[0.07] focus:ring-2 focus:ring-[#FFE600]/25 transition-colors"
+                                                className={`${inputBase} pr-11`}
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-white/30 hover:text-[#FFE600] transition-colors cursor-pointer bg-transparent border-none outline-none"
-                                                aria-label="Afficher le mot de passe"
+                                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-black/30 hover:text-[#1A1A1A] transition-colors cursor-pointer bg-transparent border-none outline-none rounded-r-md focus-visible:ring-2 focus-visible:ring-[#1A1A1A]/25 focus-visible:ring-inset"
+                                                aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                                             >
-                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
                                             </button>
                                         </div>
                                     </div>
 
                                     {/* REMEMBER ME */}
                                     {realm.rememberMe && !usernameHidden && (
-                                        <div className="flex items-center justify-between pt-1">
+                                        <div className="flex items-center pt-0.5">
                                             <label className="flex items-center gap-2.5 cursor-pointer select-none">
                                                 <input
                                                     type="checkbox"
@@ -191,10 +239,10 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                                     defaultChecked={!!login.rememberMe}
                                                     className="sr-only peer"
                                                 />
-                                                <div className="w-4 h-4 border border-white/25 bg-white/5 flex items-center justify-center transition-all peer-checked:bg-[#FFE600] peer-checked:border-[#FFE600]">
-                                                    <Check className="w-3 h-3 text-black font-extrabold stroke-[3] opacity-0 peer-checked:opacity-100" />
+                                                <div className="w-[18px] h-[18px] rounded border border-black/20 bg-white flex items-center justify-center transition-all peer-checked:bg-[#FFE600] peer-checked:border-[#FFE600] peer-focus-visible:ring-2 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-[#1A1A1A]/40">
+                                                    <Check className="w-3 h-3 text-[#1A1A1A] stroke-[3.5] opacity-0 peer-checked:opacity-100" />
                                                 </div>
-                                                <span className="text-[10px] text-white/45 font-bold tracking-wider font-mono uppercase">Rester connecté</span>
+                                                <span className="text-[13px] text-[#4A4A4A] font-medium">Rester connecté</span>
                                             </label>
                                         </div>
                                     )}
@@ -206,7 +254,7 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                                         name="login"
                                         tabIndex={7}
                                         disabled={loading}
-                                        className={`w-full h-11 bg-[#FFE600] text-black hover:bg-white hover:shadow-[0_0_30px_-6px_rgba(255,230,0,0.5)] active:scale-[0.99] tracking-widest text-xs uppercase font-extrabold flex items-center justify-center gap-2.5 transition-all duration-200 mt-4 cursor-pointer ${
+                                        className={`w-full h-12 bg-[#FFE600] text-[#1A1A1A] hover:bg-[#F5DA00] hover:shadow-[0_6px_16px_-4px_rgba(255,230,0,0.55)] hover:-translate-y-px active:scale-[0.99] active:translate-y-0 text-[14px] font-bold flex items-center justify-center gap-2.5 rounded-md transition-all duration-150 mt-2 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A] focus-visible:ring-offset-2 ${
                                             loading ? "opacity-70 cursor-not-allowed" : ""
                                         }`}
                                     >
@@ -227,12 +275,12 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
 
                             {/* Social providers (rendered only if the realm has any) */}
                             {realm.password && social?.providers !== undefined && social.providers.length !== 0 && (
-                                <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
+                                <div className="mt-5 pt-5 border-t border-black/10 space-y-2">
                                     {social.providers.map(p => (
                                         <a
                                             key={p.alias}
                                             href={p.loginUrl}
-                                            className="w-full h-10 flex items-center justify-center gap-2 border border-white/15 text-[11px] font-bold uppercase tracking-widest font-mono text-white/70 hover:border-[#FFE600] hover:text-white transition-colors"
+                                            className="w-full h-11 flex items-center justify-center gap-2 rounded-md border border-black/15 text-[13px] font-medium text-[#4A4A4A] hover:border-[#1A1A1A] hover:text-[#1A1A1A] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A]/30 focus-visible:ring-offset-2"
                                         >
                                             <span dangerouslySetInnerHTML={{ __html: kcSanitize(p.displayName) }} />
                                         </a>
@@ -242,30 +290,31 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
 
                             {/* Register link (only if registration is allowed) */}
                             {realm.password && realm.registrationAllowed && !registrationDisabled && (
-                                <div className="mt-3 text-center text-[10px] text-white/40 font-mono uppercase tracking-wider">
-                                    <a href={url.registrationUrl} className="font-bold text-[#FFE600] hover:underline">
+                                <div className="mt-4 text-center text-[13px] text-[#6B6B6B]">
+                                    <a
+                                        href={url.registrationUrl}
+                                        className="font-semibold text-[#1A1A1A] hover:underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A]/30 focus-visible:ring-offset-2"
+                                    >
                                         Créer un compte
                                     </a>
                                 </div>
                             )}
 
-                            {/* Helpline */}
-                            <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[10px] text-white/30 font-mono uppercase">
-                                <span className="font-medium">Assistance EY Tunisie</span>
-                                <span className="font-bold tracking-wider text-white/70">support@ey-digital.tn</span>
-                            </div>
+                            {/* Support */}
+                            <div className="mt-8 pt-5 border-t border-black/10 flex items-center justify-between text-[12px] text-[#9B9B9B]">
+                                <span>Besoin d&apos;aide ?</span>
+                                <a
+                                    href="mailto:support@ey-digital.tn"
+                                    className="font-semibold text-[#4A4A4A] hover:text-[#1A1A1A] transition-colors rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A]/30 focus-visible:ring-offset-2"
+                                >
+                                    support@ey-digital.tn
+                                </a>
                             </div>
                         </div>
                     </div>
 
-                    <p className="mt-3 text-center text-[9px] uppercase tracking-widest text-white/25 font-mono flex items-center justify-center gap-1.5 font-bold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Accès réservé aux établissements bancaires de la place.
-                    </p>
-                </div>
-
-                {/* Footer — plain, real, anchored to the bottom of the vault */}
-                <div className="relative mt-4 text-center text-[9px] text-white/20 font-mono tracking-widest uppercase">
-                    DataPilot — EY Consulting Tunisie · © 1996 - {new Date().getFullYear()} EY
+                    {/* Bottom zone: mirrors the beam panel's footer line. */}
+                    <div className="text-center text-[11px] text-[#9B9B9B] tracking-wide">DataPilot © 1996–{new Date().getFullYear()} EY</div>
                 </div>
             </div>
         </Template>

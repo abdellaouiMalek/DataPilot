@@ -24,10 +24,12 @@ from app.routers import (
     admin_users,
     assessments,
     config,
+    notifications,
     profile,
     recommendations,
     regulatory,
     reports,
+    versions,
 )
 
 app = FastAPI(
@@ -47,6 +49,8 @@ app.include_router(regulatory.router)
 app.include_router(admin_users.router)
 app.include_router(admin_banks.router)
 app.include_router(profile.router)
+app.include_router(notifications.router)
+app.include_router(versions.router)
 
 
 @app.get("/")

@@ -107,6 +107,45 @@ interface ApiDeleteImpact {
   recommendation_count: number;
 }
 
+// ── Recommendations (consumed by AdminRecommendations.tsx) ──────────────────
+// One row = one atomic (trigger_level -> trigger_level + 1) step, see
+// backend/app/models/recommendation.py -- a UI action that targets several
+// trigger levels at once (e.g. the catalog wizard) creates several rows in
+// one call, see createRecommendations below.
+export interface Recommendation {
+  id: string;
+  code: string;
+  questionId: string;
+  triggerLevel: number;
+  targetLevel: number;
+  title: string;
+  text: string;
+  category: string;
+  regulatoryFlag: boolean;
+  effort: number;
+  status: Status;
+}
+
+interface ApiRecommendation {
+  id: number;
+  code: string;
+  question_id: number;
+  trigger_level: number;
+  target_level: number;
+  title: string;
+  recommendation_text: string;
+  category: string;
+  regulatory_flag: boolean;
+  effort: number;
+  prerequisite_id: number | null;
+  is_active: boolean;
+}
+
+interface ApiRecommendationBatchResult {
+  created: ApiRecommendation[];
+  skipped_levels: number[];
+}
+
 const toStatus = (active: boolean): Status => (active ? "Active" : "Inactive");
 const toActive = (status?: Status) => status !== "Inactive";
 const mapImpact = (i: ApiDeleteImpact): DeleteImpact => ({
@@ -145,6 +184,21 @@ function mapDimension(d: ApiDimension): Dimension {
     subDimensions: d.sub_dimensions.map(mapSub),
   };
 }
+function mapRecommendation(r: ApiRecommendation): Recommendation {
+  return {
+    id: String(r.id),
+    code: r.code,
+    questionId: String(r.question_id),
+    triggerLevel: r.trigger_level,
+    targetLevel: r.target_level,
+    title: r.title,
+    text: r.recommendation_text,
+    category: r.category,
+    regulatoryFlag: r.regulatory_flag,
+    effort: r.effort,
+    status: toStatus(r.is_active),
+  };
+}
 
 // ── Inputs (UI vocabulary) ──────────────────────────────────────────────────
 export interface DimensionInput {
@@ -172,6 +226,25 @@ export interface QuestionInput {
   // (and, transitively, dimension). Ignored by createQuestion, which already
   // takes the target sub-dimension as its own argument.
   subDimensionId?: string;
+}
+export interface RecommendationInput {
+  title?: string;
+  text?: string;
+  category?: string;
+  effort?: number;
+  regulatoryFlag?: boolean;
+  status?: Status;
+}
+// All core fields are required to create a recommendation (unlike the
+// partial RecommendationInput used for PATCH) -- status stays optional,
+// defaulting to Active server-side.
+export interface RecommendationCreateInput {
+  title: string;
+  text: string;
+  category: string;
+  effort: number;
+  regulatoryFlag: boolean;
+  status?: Status;
 }
 
 export const adminApi = {
@@ -248,4 +321,36 @@ export const adminApi = {
     api.del(`/api/super-admin/questions/${id}${force ? "?force=true" : ""}`),
   getQuestionDeleteImpact: async (id: string): Promise<DeleteImpact> =>
     mapImpact(await api.get<ApiDeleteImpact>(`/api/super-admin/questions/${id}/impact`)),
+
+  // Recommendations
+  listRecommendations: async (): Promise<Recommendation[]> =>
+    (await api.get<ApiRecommendation[]>("/api/super-admin/recommendations")).map(mapRecommendation),
+  // Targets one or several trigger levels at once (1-4 each) -- creates one
+  // row per level not already occupied for that question; skippedLevels
+  // reports the rest (see RecommendationBatchCreateResult server-side).
+  createRecommendations: async (
+    questionId: string, triggerLevels: number[], input: RecommendationCreateInput
+  ): Promise<{ created: Recommendation[]; skippedLevels: number[] }> => {
+    const res = await api.post<ApiRecommendationBatchResult>("/api/super-admin/recommendations", {
+      question_id: Number(questionId),
+      trigger_levels: triggerLevels,
+      title: input.title,
+      recommendation_text: input.text,
+      category: input.category,
+      effort: input.effort,
+      regulatory_flag: input.regulatoryFlag,
+      is_active: toActive(input.status),
+    });
+    return { created: res.created.map(mapRecommendation), skippedLevels: res.skipped_levels };
+  },
+  updateRecommendation: (id: string, input: RecommendationInput) =>
+    api.patch(`/api/super-admin/recommendations/${id}`, {
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.text !== undefined && { recommendation_text: input.text }),
+      ...(input.category !== undefined && { category: input.category }),
+      ...(input.effort !== undefined && { effort: input.effort }),
+      ...(input.regulatoryFlag !== undefined && { regulatory_flag: input.regulatoryFlag }),
+      ...(input.status !== undefined && { is_active: toActive(input.status) }),
+    }),
+  deleteRecommendation: (id: string) => api.del(`/api/super-admin/recommendations/${id}`),
 };

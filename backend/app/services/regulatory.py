@@ -33,6 +33,7 @@ import asyncio
 import difflib
 import hashlib
 import ipaddress
+import json
 import logging
 import re
 import socket
@@ -53,6 +54,7 @@ from app.models import (
     RegulatoryCircular,
     RegulatoryEmbedding,
     RegulatoryImpact,
+    SubDimension,
 )
 from app.services.regulatory_index import retrieve
 from llm.pdf_extract import chunk_text, extract_text
@@ -335,7 +337,396 @@ async def _enrich_impact(db: AsyncSession, exigence: dict[str, Any]) -> dict[str
         proposed["weight_recalc"] = await compute_weight_recalc(db, dim, delta)
         if action == "ajouter":
             proposed["dimension"] = dim.name
+            # Aperçu en lecture seule -- indique si subdimension_hint
+            # (proposé par le LLM) réutilisera une sous-dimension
+            # existante ou en créera une nouvelle à la publication (voir
+            # resolve_or_create_subdimension) ; ne crée rien ici.
+            proposed.update(await preview_subdimension_status(db, dim.id, proposed.get("subdimension_hint", "")))
     return exigence
+
+
+# ── Application au référentiel réel (à la publication uniquement) ────────
+
+def _parse_edited_payload(edited_text: str | None) -> dict[str, Any]:
+    """Miroir Python de ``parseEditedPayload`` côté frontend
+    (AdminVeille.tsx) : le contenu RICHE édité par l'expert (recommandation/
+    question/justification/paliers) est sérialisé en JSON dans l'unique
+    colonne ``edited_text`` -- voir EditedFields côté frontend. Retourne
+    ``{}`` si ``edited_text`` est vide, ou si ce n'est pas du JSON structuré
+    (un edit "résumé" fait avant l'éditeur riche -- legacy, ignoré ici :
+    il n'y a pas de champ exploitable à en tirer pour la publication)."""
+    if not edited_text:
+        return {}
+    try:
+        parsed = json.loads(edited_text)
+        return parsed if isinstance(parsed, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+async def _resolve_question_by_code(db: AsyncSession, question_code: str) -> Question | None:
+    """Résout un code de question SYNTHÉTIQUE ("D4Q4", non persisté) vers
+    la VRAIE ligne ``Question`` -- via son texte + sa dimension ACTUELS
+    (``_fetch_question_context``, qui lit l'index RAG), jamais en
+    re-dérivant l'énumération dimension/question (fragile si le
+    référentiel a changé depuis la dernière réindexation).
+
+    Contrairement à ``_fetch_question_context`` (qui n'affiche qu'un
+    contexte informatif), cette fonction doit retrouver la ligne réelle --
+    utilisée UNIQUEMENT à la publication, quand une proposition doit
+    effectivement être écrite en base. Retourne ``None`` si la résolution
+    est absente, introuvable, ou AMBIGUË (plusieurs questions au texte
+    identique dans la même dimension) -- ne jamais deviner laquelle."""
+    ctx = await _fetch_question_context(db, question_code)
+    if ctx is None:
+        return None
+    title = ctx["title"]
+    # RegulatoryEmbedding.title est `question.text[:300]` -- un texte
+    # tronqué à exactement 300 caractères ne peut donc être comparé que
+    # par préfixe, jamais par égalité stricte.
+    text_filter = Question.text.startswith(title) if len(title) == 300 else Question.text == title
+    stmt = select(Question).where(text_filter)
+    if ctx["dimension"]:
+        stmt = stmt.join(Dimension).where(Dimension.name == ctx["dimension"])
+    rows = (await db.scalars(stmt)).all()
+    return rows[0] if len(rows) == 1 else None
+
+
+# Le prompt demande au LLM de RECOPIER EXACTEMENT le nom d'une
+# sous-dimension candidate quand il en réutilise une (voir _SYSTEM_PROMPT
+# dans llm/regulatory_analysis.py) -- le seuil de réutilisation est donc
+# volontairement strict : une correspondance qui ne l'atteint pas signale
+# que le LLM a proposé un libellé réellement NOUVEAU (ou une reformulation
+# trop différente pour être fiable), pas la même sous-dimension mal
+# recopiée. Comparer avec _QUESTION_DUPLICATE_WARNING_THRESHOLD (0.55,
+# volontairement permissif) : les deux vérifications ont des conséquences
+# opposées en cas d'erreur -- rater un vrai doublon de question est corrigé
+# par une simple alerte (voir ce seuil-là), alors qu'ici un faux "match"
+# fusionnerait à tort deux sous-dimensions distinctes.
+_SUBDIMENSION_REUSE_THRESHOLD = 0.75
+
+
+def _best_subdimension_match(subs: list[SubDimension], hint: str) -> tuple[SubDimension, float] | None:
+    """Pure (pas de DB) : le meilleur candidat par similarité de texte
+    entre ``hint`` et chaque nom de sous-dimension -- factorisé pour être
+    réutilisé à la fois par ``resolve_or_create_subdimension`` (qui AGIT
+    sur ce résultat, à la publication) et ``preview_subdimension_status``
+    (qui ne fait que l'AFFICHER pendant la revue, sans rien créer)."""
+    best: SubDimension | None = None
+    best_ratio = 0.0
+    for sub in subs:
+        ratio = difflib.SequenceMatcher(None, hint.lower(), sub.name.lower()).ratio()
+        if ratio > best_ratio:
+            best_ratio, best = ratio, sub
+    return (best, best_ratio) if best is not None else None
+
+
+async def preview_subdimension_status(db: AsyncSession, dimension_id: int, subdimension_hint: str) -> dict[str, Any]:
+    """Aperçu en LECTURE SEULE (jamais d'écriture -- appelé pendant
+    l'analyse, avant toute validation humaine) de ce que
+    ``resolve_or_create_subdimension`` ferait à la publication : indique
+    à l'admin si la sous-dimension proposée sera RÉUTILISÉE (une existante
+    correspond) ou CRÉÉE (aucune ne correspond d'assez près), sans jamais
+    créer quoi que ce soit ici -- voir la règle absolue du module (rien
+    n'est appliqué avant publication)."""
+    hint = subdimension_hint.strip()
+    if not hint:
+        return {}
+    subs = (
+        await db.scalars(
+            select(SubDimension)
+            .where(SubDimension.dimension_id == dimension_id, SubDimension.is_active.is_(True))
+        )
+    ).all()
+    match = _best_subdimension_match(subs, hint)
+    if match is not None and match[1] >= _SUBDIMENSION_REUSE_THRESHOLD:
+        return {"subdimension_status": "existante", "subdimension_name": match[0].name}
+    return {"subdimension_status": "nouvelle", "subdimension_name": hint}
+
+
+async def resolve_or_create_subdimension(
+    db: AsyncSession, dimension_id: int, subdimension_hint: str, fallback_title: str,
+) -> SubDimension | None:
+    """Rattache une question NOUVELLEMENT créée depuis une circulaire à une
+    sous-dimension -- RÉUTILISE une sous-dimension existante si
+    ``subdimension_hint`` (proposé par le LLM, voir le system prompt de
+    ``llm.regulatory_analysis``) lui correspond fortement, sinon en CRÉE
+    une nouvelle avec ce libellé. C'est le LLM qui décide reprendre-ou-créer
+    (il voit la liste des sous-dimensions candidates dans le prompt) ;
+    cette fonction ne fait qu'exécuter ce choix, avec une vérification de
+    similarité comme garde-fou plutôt que de faire confiance aveuglément
+    au nom recopié.
+
+    ``sub_dimension_id`` est nullable sur ``Question``, mais le laisser
+    vide rend la question INVISIBLE sur /super-admin/dimensions : tout son
+    affichage itère dimension -> sous-dimensions -> questions, sans repli
+    pour une question orpheline.
+
+    ``fallback_title`` : repli pour les propositions ANTÉRIEURES à
+    l'introduction de ``subdimension_hint`` (champ vide -- une analyse
+    faite avant cette version) -- correspondance approchée entre le TITRE
+    de la question et les sous-dimensions existantes ; ne crée jamais de
+    nouvelle sous-dimension dans ce cas (aucun libellé n'a été proposé
+    pour elle), retombe sur la première si rien ne correspond."""
+    subs = (
+        await db.scalars(
+            select(SubDimension)
+            .where(SubDimension.dimension_id == dimension_id, SubDimension.is_active.is_(True))
+            .order_by(SubDimension.sort_order)
+        )
+    ).all()
+
+    hint = subdimension_hint.strip()
+    if hint:
+        match = _best_subdimension_match(subs, hint)
+        if match is not None and match[1] >= _SUBDIMENSION_REUSE_THRESHOLD:
+            return match[0]
+        # Aucune sous-dimension existante ne correspond d'assez près : le
+        # LLM a donc proposé un NOUVEAU libellé (consigne du prompt) -- on
+        # la crée, à la suite des sous-dimensions existantes de la dimension.
+        max_sort = await db.scalar(
+            select(func.max(SubDimension.sort_order)).where(SubDimension.dimension_id == dimension_id)
+        )
+        new_sub = SubDimension(
+            dimension_id=dimension_id, name=hint[:200],
+            sort_order=(max_sort or 0) + 1, is_active=True,
+        )
+        db.add(new_sub)
+        await db.flush()  # peuple new_sub.id, nécessaire pour l'affecter à la question
+        return new_sub
+
+    # Repli legacy (proposition antérieure à subdimension_hint) : ne crée
+    # jamais rien, seulement une correspondance approchée par titre.
+    if not subs:
+        return None
+    best = None
+    best_ratio = 0.0
+    for sub in subs:
+        ratio = difflib.SequenceMatcher(None, fallback_title.lower(), sub.name.lower()).ratio()
+        if ratio > best_ratio:
+            best_ratio, best = ratio, sub
+    return best if best_ratio >= 0.2 else subs[0]
+
+
+async def _rebalance_dimension_weights(db: AsyncSession, dimension_id: int) -> None:
+    """Ré-équilibre le poids de TOUTES les questions actives d'une
+    dimension à parts égales (``1 / nombre de questions actives``) --
+    même règle que ``compute_weight_recalc`` (qui ne fait que la PRÉVOIR
+    pendant la revue), appliquée ici pour de vrai après qu'une question a
+    été ajoutée ou désactivée par cette publication. Sans ce
+    rééquilibrage, une question nouvellement ajoutée resterait à
+    ``weight=0`` (défaut du modèle) et ne compterait pour rien dans le
+    score de sa dimension."""
+    questions = (
+        await db.scalars(
+            select(Question).where(Question.dimension_id == dimension_id, Question.is_active.is_(True))
+        )
+    ).all()
+    if not questions:
+        return
+    new_weight = round(1 / len(questions), 6)
+    for q in questions:
+        q.weight = new_weight
+
+
+async def apply_impacts_to_catalog(db: AsyncSession, circular: RegulatoryCircular) -> dict[str, int]:
+    """Applique au référentiel RÉEL (tables ``questions``/``recommendations``)
+    chaque impact ``accepté`` ou ``modifié`` de cette circulaire -- jamais
+    ``rejeté`` ni en attente. Appelée UNE SEULE FOIS, à la publication
+    (voir ``routers/regulatory.py::publish_circular``), jamais avant
+    qu'un humain n'ait explicitement validé chaque impact (règle absolue
+    du module, voir son docstring).
+
+    "accepté" applique la proposition TELLE QUE l'analyse l'a produite
+    (``proposed_data``). "modifié" applique le contenu édité par l'expert
+    (voir ``_parse_edited_payload``) quand il existe, sinon retombe sur la
+    proposition d'origine -- un "modifié" sans édition structurée
+    récupérable (ex. legacy) est donc traité comme un "accepté".
+
+    Best-effort par impact : si un code ne se résout plus à rien (le
+    référentiel a changé depuis l'analyse -- ex. l'admin a supprimé la
+    question entretemps ailleurs dans l'admin), CET impact est ignoré
+    (journalisé) plutôt que de faire échouer toute la publication -- les
+    autres impacts de la même circulaire s'appliquent normalement.
+
+    Retourne un décompte par catégorie (créations/mises à jour/
+    désactivations), pour le message de confirmation et l'audit."""
+    stats = {
+        "questions_created": 0, "questions_updated": 0, "questions_deactivated": 0,
+        "recommendations_created": 0, "recommendations_updated": 0,
+        "recommendations_deactivated": 0, "recommendations_flagged": 0,
+        "skipped": 0,
+    }
+    dimensions_touched: set[int] = set()
+
+    for impact in circular.impacts:
+        if impact.action not in ("accepté", "modifié"):
+            continue  # rejeté, ou jamais tranché (ne devrait pas arriver -- publish_circular l'exige)
+
+        p = impact.proposed_data
+        edited = _parse_edited_payload(impact.edited_text) if impact.action == "modifié" else {}
+        key = f"{impact.entity_type}:{impact.proposed_action}"
+
+        try:
+            if key == "question:ajouter":
+                title = edited.get("question") or p.get("title") or ""
+                dim = await _resolve_dimension_by_name(db, p.get("dimension") or p.get("dimension_hint") or "")
+                if dim is None or not title.strip():
+                    logger.warning("Publication circular id=%s: question:ajouter ignorée (dimension ou titre introuvable).", circular.id)
+                    stats["skipped"] += 1
+                    continue
+                max_sort = await db.scalar(
+                    select(func.max(Question.sort_order)).where(Question.dimension_id == dim.id)
+                ) or 0
+                level_labels = p.get("level_labels") or []
+                edited_levels = edited.get("levels") or {}
+                level_responses = [
+                    {
+                        "label": (edited_levels.get(str(i + 1)) or edited_levels.get(i + 1) or {}).get("answer") or lbl,
+                        "score": i + 1,
+                    }
+                    for i, lbl in enumerate(level_labels[:5])
+                ] or None
+                # JAMAIS None ici (voir resolve_or_create_subdimension) :
+                # une question sans sous-dimension est invisible sur
+                # /super-admin/dimensions, qui n'affiche que
+                # dimension -> sous-dimensions -> questions, sans repli
+                # pour une question orpheline. Le LLM a déjà choisi
+                # reprendre-une-existante ou en-proposer-une-nouvelle
+                # (subdimension_hint) ; fallback_title ne sert que pour une
+                # proposition antérieure à ce champ.
+                sub_dim = await resolve_or_create_subdimension(
+                    db, dim.id, p.get("subdimension_hint", "") or "", title.strip(),
+                )
+
+                question = Question(
+                    dimension_id=dim.id, sub_dimension_id=sub_dim.id if sub_dim else None, text=title.strip(),
+                    weight=0,  # rééquilibré ci-dessous, avec les autres questions actives de la dimension
+                    sort_order=int(max_sort) + 1,
+                    level_responses=level_responses,
+                    is_active=True,
+                )
+                db.add(question)
+                await db.flush()  # peuple question.id, nécessaire pour les codes des recommandations ci-dessous
+                stats["questions_created"] += 1
+                dimensions_touched.add(dim.id)
+
+                # Recommandations par palier déjà rédigées par le LLM (voir
+                # generate_palier_recommendations) -- une ébauche encore
+                # vide ("À rédiger", is_placeholder=True) n'est PAS publiée :
+                # rien d'exploitable à écrire, l'admin devra l'ajouter à la
+                # main plus tard si besoin.
+                for reco in p.get("associated_recommendations") or []:
+                    trigger = reco.get("trigger_level")
+                    text = (reco.get("recommendation_text") or "").strip()
+                    if trigger not in (1, 2, 3, 4) or not text:
+                        continue
+                    db.add(Recommendation(
+                        code=f"{dim.code}Q{question.id}-{trigger}",
+                        question_id=question.id,
+                        trigger_level=trigger, target_level=trigger + 1,
+                        title=(reco.get("title") or "Recommandation")[:200],
+                        recommendation_text=text,
+                        category=reco.get("category") or "gouvernance",
+                        # Née d'une exigence réglementaire par construction.
+                        regulatory_flag=True,
+                        effort=reco.get("effort") if isinstance(reco.get("effort"), int) else 2,
+                        is_active=True,
+                    ))
+                    stats["recommendations_created"] += 1
+
+            elif key == "question:modifier":
+                question = await _resolve_question_by_code(db, p.get("question_code") or "")
+                if question is None:
+                    logger.warning("Publication circular id=%s: question:modifier ignorée (code %r introuvable).", circular.id, p.get("question_code"))
+                    stats["skipped"] += 1
+                    continue
+                new_text = (edited.get("question") or p.get("modification") or "").strip()
+                if new_text:
+                    question.text = new_text
+                    stats["questions_updated"] += 1
+
+            elif key == "question:desactiver":
+                question = await _resolve_question_by_code(db, p.get("question_code") or "")
+                if question is None:
+                    logger.warning("Publication circular id=%s: question:desactiver ignorée (code %r introuvable).", circular.id, p.get("question_code"))
+                    stats["skipped"] += 1
+                    continue
+                question.is_active = False
+                stats["questions_deactivated"] += 1
+                dimensions_touched.add(question.dimension_id)
+
+            elif key == "recommandation:ajouter":
+                question = await _resolve_question_by_code(db, p.get("question_code") or "")
+                trigger = p.get("trigger_level")
+                text = (edited.get("recommandation") or p.get("recommendation_text") or "").strip()
+                if question is None or trigger not in (1, 2, 3, 4) or not text:
+                    logger.warning("Publication circular id=%s: recommandation:ajouter ignorée (question/palier/texte invalide).", circular.id)
+                    stats["skipped"] += 1
+                    continue
+                # Le palier est peut-être déjà occupé (contrainte unique
+                # question_id+trigger_level) -- l'admin doit alors passer
+                # par "activer_flag"/"modifier" plutôt, jamais planter toute
+                # la publication pour cet unique impact.
+                clash = await db.scalar(
+                    select(Recommendation).where(
+                        Recommendation.question_id == question.id, Recommendation.trigger_level == trigger,
+                    )
+                )
+                if clash is not None:
+                    logger.warning("Publication circular id=%s: recommandation:ajouter ignorée (palier %s déjà occupé sur la question).", circular.id, trigger)
+                    stats["skipped"] += 1
+                    continue
+                dim = await db.get(Dimension, question.dimension_id)
+                db.add(Recommendation(
+                    code=f"{dim.code}Q{question.id}-{trigger}",
+                    question_id=question.id, trigger_level=trigger, target_level=trigger + 1,
+                    title=(p.get("title") or "Recommandation")[:200],
+                    recommendation_text=text,
+                    category=p.get("category") or "gouvernance",
+                    regulatory_flag=True,
+                    effort=p.get("effort") if isinstance(p.get("effort"), int) else 2,
+                    is_active=True,
+                ))
+                stats["recommendations_created"] += 1
+
+            elif key == "recommandation:modifier":
+                reco = await db.scalar(select(Recommendation).where(Recommendation.code == (p.get("reco_code") or "")))
+                if reco is None:
+                    logger.warning("Publication circular id=%s: recommandation:modifier ignorée (code %r introuvable).", circular.id, p.get("reco_code"))
+                    stats["skipped"] += 1
+                    continue
+                new_text = (edited.get("recommandation") or p.get("modification") or "").strip()
+                if new_text:
+                    reco.recommendation_text = new_text
+                    stats["recommendations_updated"] += 1
+
+            elif key == "recommandation:desactiver":
+                reco = await db.scalar(select(Recommendation).where(Recommendation.code == (p.get("reco_code") or "")))
+                if reco is None:
+                    logger.warning("Publication circular id=%s: recommandation:desactiver ignorée (code %r introuvable).", circular.id, p.get("reco_code"))
+                    stats["skipped"] += 1
+                    continue
+                reco.is_active = False
+                stats["recommendations_deactivated"] += 1
+
+            elif key == "recommandation:activer_flag":
+                reco = await db.scalar(select(Recommendation).where(Recommendation.code == (p.get("reco_code") or "")))
+                if reco is None:
+                    logger.warning("Publication circular id=%s: recommandation:activer_flag ignorée (code %r introuvable).", circular.id, p.get("reco_code"))
+                    stats["skipped"] += 1
+                    continue
+                reco.regulatory_flag = True
+                stats["recommendations_flagged"] += 1
+        except Exception:
+            logger.exception("Publication circular id=%s: impact id=%s (%s) ignoré après erreur.", circular.id, impact.id, key)
+            stats["skipped"] += 1
+            continue
+
+    for dim_id in dimensions_touched:
+        await _rebalance_dimension_weights(db, dim_id)
+
+    return stats
 
 
 def _normalize_display_text(text: str) -> str:
