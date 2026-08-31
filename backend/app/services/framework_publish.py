@@ -23,7 +23,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Dimension, Question, QuestionnaireVersion, SubDimension
+from app.models import Dimension, Question, QuestionnaireVersion, Recommendation, SubDimension
 
 
 def find_draft_question(
@@ -508,6 +508,69 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> dict[str, 
     # inside this transaction.
     db.expire_all()
     return promoted
+
+
+async def promote_draft_recommendations(db: AsyncSession, promoted: dict[str, int]) -> None:
+    """After ``apply_tree`` has created real rows for temp-id questions,
+    move every draft recommendation staged against one of those temp ids
+    onto the real question -- same code convention as
+    ``app.routers.admin``'s recommendations router and the regulatory
+    auto-publish path (``f"{dim.code}Q{question.id}-{level}"``), so a
+    promoted row looks identical to one created directly against a real
+    question.
+    """
+    if not promoted:
+        return
+
+    rows = (
+        await db.execute(
+            select(Recommendation).where(Recommendation.draft_question_key.in_(promoted.keys()))
+        )
+    ).scalars().all()
+    if not rows:
+        return
+
+    real_ids = set(promoted.values())
+    questions = {
+        q.id: q
+        for q in (await db.execute(select(Question).where(Question.id.in_(real_ids)))).scalars().all()
+    }
+    dimension_ids = {q.dimension_id for q in questions.values()}
+    dimensions = {
+        d.id: d
+        for d in (await db.execute(select(Dimension).where(Dimension.id.in_(dimension_ids)))).scalars().all()
+    }
+
+    for row in rows:
+        real_id = promoted[row.draft_question_key]
+        question = questions[real_id]
+        dim = dimensions[question.dimension_id]
+        row.question_id = real_id
+        row.draft_question_key = None
+        row.code = f"{dim.code}Q{real_id}-{row.trigger_level}"
+
+
+async def delete_orphaned_draft_recommendations(
+    db: AsyncSession, keep_keys: Iterable[str] = ()
+) -> None:
+    """Remove any recommendation still carrying a ``draft_question_key`` not
+    in ``keep_keys`` -- the draft question it was staged for no longer
+    exists (removed from the tree, or the whole draft discarded/published).
+    Never touches a row that already has a real ``question_id``.
+
+    Called with an empty ``keep_keys`` after a publish (anything still
+    draft-flagged at that point is orphaned relative to what was just
+    published) and after a discard (the whole draft is gone); called with
+    the current tree's question ids from ``save_draft`` (the autosave), to
+    reconcile as the admin edits.
+    """
+    keep = set(keep_keys)
+    rows = (
+        await db.execute(select(Recommendation).where(Recommendation.draft_question_key.is_not(None)))
+    ).scalars().all()
+    for row in rows:
+        if row.draft_question_key not in keep:
+            await db.delete(row)
 
 
 def _as_id(value: Any) -> int | None:
