@@ -174,6 +174,9 @@ async def discard_draft(
     draft = await _get_draft(db)
     if draft is not None:
         await db.delete(draft)
+        # The whole draft is gone, so every draft recommendation staged
+        # against a question in it is now orphaned -- delete all of them.
+        await delete_orphaned_draft_recommendations(db)
         await db.commit()
         await audit.record(
             module=MODULE_FRAMEWORK,
