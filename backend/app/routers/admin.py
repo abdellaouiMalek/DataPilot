@@ -646,3 +646,188 @@ async def delete_question(
         before=label,
         after="Supprimée",
     )
+
+
+# ── Recommendations ───────────────────────────────────────────────────────────
+# Catalog consumed by superAdmin/AdminRecommendations.tsx — see
+# app/models/recommendation.py for why one row = one atomic trigger_level ->
+# trigger_level + 1 step, and app/services/regulatory.py for the same
+# code=f"{dim.code}Q{question.id}-{trigger}" scheme used when the regulatory
+# pipeline creates recommendations automatically (kept consistent here so a
+# manually-added row looks no different from an auto-published one).
+
+RECOMMENDATION_FIELD_LABELS = {
+    "title": "Titre",
+    "recommendation_text": "Texte",
+    "category": "Catégorie",
+    "effort": "Effort",
+    "regulatory_flag": "Origine réglementaire",
+    "is_active": "Active",
+}
+
+
+async def _get_recommendation_or_404(db: AsyncSession, recommendation_id: int) -> Recommendation:
+    reco = await db.scalar(select(Recommendation).where(Recommendation.id == recommendation_id))
+    if reco is None:
+        raise HTTPException(status_code=404, detail="Recommandation introuvable")
+    return reco
+
+
+@router.get(
+    "/recommendations",
+    response_model=list[RecommendationAdminRead],
+    dependencies=[Depends(require_super_admin)],
+)
+async def list_recommendations(db: AsyncSession = Depends(get_db)):
+    stmt = select(Recommendation).order_by(Recommendation.question_id, Recommendation.trigger_level)
+    return (await db.execute(stmt)).scalars().all()
+
+
+@router.post(
+    "/recommendations",
+    response_model=RecommendationBatchCreateResult,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_super_admin)],
+)
+async def create_recommendations(
+    payload: RecommendationCreate,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
+):
+    question = await _get_question_or_404(db, payload.question_id)
+    dim = await db.get(Dimension, question.dimension_id)
+
+    levels = sorted(set(payload.trigger_levels))
+    occupied = set(
+        (
+            await db.execute(
+                select(Recommendation.trigger_level).where(
+                    Recommendation.question_id == question.id,
+                    Recommendation.trigger_level.in_(levels),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    created: list[Recommendation] = []
+    skipped: list[int] = []
+    for level in levels:
+        # chk_trigger_level_range / uq_question_trigger: an out-of-range or
+        # already-occupied level is skipped rather than failing the whole
+        # batch — see RecommendationBatchCreateResult docstring.
+        if level not in range(1, 5) or level in occupied:
+            skipped.append(level)
+            continue
+        reco = Recommendation(
+            code=f"{dim.code}Q{question.id}-{level}",
+            question_id=question.id,
+            trigger_level=level,
+            target_level=level + 1,
+            title=payload.title,
+            recommendation_text=payload.recommendation_text,
+            category=payload.category,
+            regulatory_flag=payload.regulatory_flag,
+            effort=payload.effort,
+            is_active=payload.is_active,
+        )
+        db.add(reco)
+        created.append(reco)
+
+    if created:
+        await db.commit()
+        for reco in created:
+            await db.refresh(reco)
+        for reco in created:
+            await audit.record(
+                module=MODULE_FRAMEWORK,
+                action=f"Ajout recommandation {reco.code}",
+                entity_type="recommendation",
+                entity_id=reco.id,
+                entity_label=reco.title,
+                after=reco.title,
+                details={
+                    "question": question.text,
+                    "palier": f"{reco.trigger_level} → {reco.target_level}",
+                },
+            )
+
+    return RecommendationBatchCreateResult(created=created, skipped_levels=skipped)
+
+
+@router.patch(
+    "/recommendations/{recommendation_id}",
+    response_model=RecommendationAdminRead,
+    dependencies=[Depends(require_super_admin)],
+)
+async def update_recommendation(
+    recommendation_id: int,
+    payload: RecommendationUpdate,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
+):
+    reco = await _get_recommendation_or_404(db, recommendation_id)
+    updates = payload.model_dump(exclude_unset=True)
+    previous = {field: getattr(reco, field) for field in RECOMMENDATION_FIELD_LABELS}
+    for field, value in updates.items():
+        setattr(reco, field, value)
+    await db.commit()
+    await db.refresh(reco)
+    before, after, fields = summarize_changes(
+        previous,
+        {field: getattr(reco, field) for field in previous},
+        RECOMMENDATION_FIELD_LABELS,
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Modification recommandation {reco.code}",
+            entity_type="recommendation",
+            entity_id=reco.id,
+            entity_label=reco.title,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
+    return reco
+
+
+@router.delete(
+    "/recommendations/{recommendation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_super_admin)],
+)
+async def delete_recommendation(
+    recommendation_id: int,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
+):
+    reco = await _get_recommendation_or_404(db, recommendation_id)
+    label = reco.title
+    code = reco.code
+    await db.delete(reco)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Suppression recommandation {code}",
+            status=STATUS_FAILURE,
+            entity_type="recommendation",
+            entity_id=recommendation_id,
+            entity_label=label,
+            before=label,
+            after="Refusé — élément référencé",
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Suppression recommandation {code}",
+        entity_type="recommendation",
+        entity_id=recommendation_id,
+        entity_label=label,
+        before=label,
+        after="Supprimée",
+    )
