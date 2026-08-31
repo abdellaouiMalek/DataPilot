@@ -6,7 +6,7 @@ extra attributes the admin UI manages (weight, color, question type).
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.question import DEFAULT_QUESTION_TYPE
 
@@ -159,7 +159,8 @@ class QuestionUpdate(BaseModel):
 class RecommendationAdminRead(BaseModel):
     id: int
     code: str
-    question_id: int
+    question_id: Optional[int] = None
+    draft_question_key: Optional[str] = None
     trigger_level: int
     target_level: int
     title: str
@@ -174,7 +175,13 @@ class RecommendationAdminRead(BaseModel):
 
 
 class RecommendationCreate(BaseModel):
-    question_id: int
+    # Exactly one of the two is set (see _exactly_one_linkage below):
+    # question_id targets an already-published question (today's behavior);
+    # draft_question_key targets a question still sitting in the framework
+    # draft, by the same temp id string the draft's tree uses for it. See
+    # docs/superpowers/specs/2026-08-31-draft-question-recommendations-design.md.
+    question_id: Optional[int] = None
+    draft_question_key: Optional[str] = None
     # One row is created per level (1-4 each, see chk_trigger_level_range) --
     # the endpoint reports per-level success/conflict rather than failing the
     # whole request over one already-occupied level.
@@ -185,6 +192,14 @@ class RecommendationCreate(BaseModel):
     effort: int = Field(ge=1, le=3)
     regulatory_flag: bool = False
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def _exactly_one_linkage(self) -> "RecommendationCreate":
+        if (self.question_id is None) == (self.draft_question_key is None):
+            raise ValueError(
+                "Exactly one of question_id / draft_question_key must be set."
+            )
+        return self
 
 
 class RecommendationUpdate(BaseModel):
