@@ -366,7 +366,7 @@ async def _resync_sequences(db: AsyncSession) -> None:
         )
 
 
-async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
+async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> dict[str, int]:
     """Make the live framework match ``tree``. Caller owns the transaction.
 
     Nodes carrying a numeric ``id`` are matched to existing rows; anything else
@@ -382,6 +382,12 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
       rather than a fresh one. Restoring a version has to reproduce the ids its
       snapshot recorded, otherwise answers collected under the restored version
       would point at ids the snapshot never described.
+
+    Returns a ``{temp_id: real_question_id}`` mapping for every question
+    newly created in this call (empty if the tree had no temp ids, which is
+    always true for ``restore_version``'s call -- it only ever passes a
+    ``build_snapshot()`` tree, never one with temp ids). Consumed by
+    ``promote_draft_recommendations`` right after ``publish()`` calls this.
     """
     existing = (await db.execute(_dimension_query())).scalars().unique().all()
     dimensions_by_id = {d.id: d for d in existing}
@@ -391,6 +397,7 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
     seen_dimensions: set[int] = set()
     seen_subs: set[int] = set()
     seen_questions: set[int] = set()
+    promoted: dict[str, int] = {}
 
     for dimension_order, node in enumerate(tree):
         node_id = _as_id(node.get("id"))
@@ -442,7 +449,8 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
             seen_subs.add(sub.id)
 
             for question_order, question_node in enumerate(sub_node.get("questions", [])):
-                question_node_id = _as_id(question_node.get("id"))
+                raw_question_id = question_node.get("id")
+                question_node_id = _as_id(raw_question_id)
                 question = questions_by_id.get(question_node_id)
                 if question is None:
                     question = Question(
@@ -461,6 +469,8 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
                     )
                     db.add(question)
                     await db.flush()
+                    if isinstance(raw_question_id, str) and not raw_question_id.isdigit():
+                        promoted[raw_question_id] = question.id
                 else:
                     question.dimension_id = dimension.id
                     question.sub_dimension_id = sub.id
@@ -497,6 +507,7 @@ async def apply_tree(db: AsyncSession, tree: list[dict[str, Any]]) -> None:
     # exist. Expire everything: the next read reloads from the database, still
     # inside this transaction.
     db.expire_all()
+    return promoted
 
 
 def _as_id(value: Any) -> int | None:
