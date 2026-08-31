@@ -27,7 +27,12 @@ class Recommendation(Base):
     __tablename__ = "recommendations"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    code: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # e.g. "D1Q1-1"
+    # Widened from 20: a draft row's code is "DRAFT-{draft_question_key}-{level}"
+    # (see app/routers/admin.py::create_recommendations), and draft_question_key
+    # (String(80)) is realistically ~42 chars ("new-q-<uuid>") -- "DRAFT-" + 42 +
+    # "-" + 1 digit = 50 chars. 100 leaves headroom, matching the same buffer
+    # ratio draft_question_key itself uses (80 for a ~42-char actual value).
+    code: Mapped[str] = mapped_column(String(100), unique=True, index=True)  # e.g. "D1Q1-1" or "DRAFT-<key>-1"
     # Nullable: a draft recommendation (see draft_question_key below) has no
     # real question yet. Exactly one of question_id / draft_question_key is
     # ever set -- enforced by chk_question_or_draft.
