@@ -25,6 +25,41 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Dimension, Question, QuestionnaireVersion, SubDimension
 
+
+def find_draft_question(
+    tree: list[dict[str, Any]], question_key: str
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Locate ``(dimension_node, sub_dimension_node, question_node)`` for
+    ``question_key`` inside a staged tree (same shape as
+    ``FrameworkDraft.tree`` / this module's ``apply_tree`` argument).
+
+    Returns ``None`` if the key isn't present -- the draft may have changed
+    since the admin followed the "Configurer les recommandations" link
+    (question edited/removed, or the draft discarded).
+    """
+    for dim_node in tree:
+        for sub_node in dim_node.get("sub_dimensions", []):
+            for question_node in sub_node.get("questions", []):
+                if question_node.get("id") == question_key:
+                    return dim_node, sub_node, question_node
+    return None
+
+
+def collect_question_ids(tree: list[dict[str, Any]]) -> set[str]:
+    """Every question node id in a staged tree, as strings -- both real
+    (already-numeric) and draft (temp) ids. Used to reconcile draft
+    recommendations against whichever draft questions are still staged
+    (see ``app.routers.admin_framework.save_draft``); including real ids in
+    the result is harmless since a ``draft_question_key`` is never a bare
+    number.
+    """
+    return {
+        str(question_node.get("id"))
+        for dim_node in tree
+        for sub_node in dim_node.get("sub_dimensions", [])
+        for question_node in sub_node.get("questions", [])
+    }
+
 # Question fields whose change is worth naming in the changelog.
 QUESTION_FIELDS: dict[str, str] = {
     "text": "libellé",
