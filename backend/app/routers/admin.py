@@ -27,6 +27,7 @@ from app.models import (
     Answer,
     Dimension,
     DimensionScore,
+    FrameworkDraft,
     Question,
     Recommendation,
     SubDimension,
@@ -53,6 +54,7 @@ from app.services.audit import (
     audit_context,
     summarize_changes,
 )
+from app.services.framework_publish import find_draft_question
 
 router = APIRouter(
     prefix="/api/super-admin",
@@ -694,35 +696,62 @@ async def create_recommendations(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
-    question = await _get_question_or_404(db, payload.question_id)
-    dim = await db.get(Dimension, question.dimension_id)
-
     levels = sorted(set(payload.trigger_levels))
-    occupied = set(
-        (
-            await db.execute(
-                select(Recommendation.trigger_level).where(
-                    Recommendation.question_id == question.id,
-                    Recommendation.trigger_level.in_(levels),
-                )
-            )
+
+    if payload.question_id is not None:
+        question = await _get_question_or_404(db, payload.question_id)
+        dim = await db.get(Dimension, question.dimension_id)
+        occupied_stmt = select(Recommendation.trigger_level).where(
+            Recommendation.question_id == question.id,
+            Recommendation.trigger_level.in_(levels),
         )
-        .scalars()
-        .all()
-    )
+        question_label = question.text
+        audit_details = {"question": question.text}
+
+        def make_code(level: int) -> str:
+            return f"{dim.code}Q{question.id}-{level}"
+
+        def row_kwargs(level: int) -> dict:
+            return {"question_id": question.id, "draft_question_key": None}
+    else:
+        # draft_question_key path: the question is still in the framework
+        # draft, not published yet -- see docs/superpowers/specs/
+        # 2026-08-31-draft-question-recommendations-design.md.
+        draft = await db.get(FrameworkDraft, 1)  # single row by design, id always 1
+        found = find_draft_question(draft.tree if draft else [], payload.draft_question_key)
+        if found is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Question de brouillon introuvable — le brouillon a peut-être changé.",
+            )
+        _dim_node, _sub_node, question_node = found
+        question_label = question_node.get("text", "")
+        audit_details = {"question": question_label, "brouillon": True}
+        occupied_stmt = select(Recommendation.trigger_level).where(
+            Recommendation.draft_question_key == payload.draft_question_key,
+            Recommendation.trigger_level.in_(levels),
+        )
+
+        def make_code(level: int) -> str:
+            return f"DRAFT-{payload.draft_question_key}-{level}"
+
+        def row_kwargs(level: int) -> dict:
+            return {"question_id": None, "draft_question_key": payload.draft_question_key}
+
+    occupied = set((await db.execute(occupied_stmt)).scalars().all())
 
     created: list[Recommendation] = []
     skipped: list[int] = []
     for level in levels:
-        # chk_trigger_level_range / uq_question_trigger: an out-of-range or
+        # chk_trigger_level_range / uq_question_trigger (or its draft
+        # equivalent, uq_draft_question_trigger): an out-of-range or
         # already-occupied level is skipped rather than failing the whole
         # batch — see RecommendationBatchCreateResult docstring.
         if level not in range(1, 5) or level in occupied:
             skipped.append(level)
             continue
         reco = Recommendation(
-            code=f"{dim.code}Q{question.id}-{level}",
-            question_id=question.id,
+            code=make_code(level),
             trigger_level=level,
             target_level=level + 1,
             title=payload.title,
@@ -731,6 +760,7 @@ async def create_recommendations(
             regulatory_flag=payload.regulatory_flag,
             effort=payload.effort,
             is_active=payload.is_active,
+            **row_kwargs(level),
         )
         db.add(reco)
         created.append(reco)
@@ -748,7 +778,7 @@ async def create_recommendations(
                 entity_label=reco.title,
                 after=reco.title,
                 details={
-                    "question": question.text,
+                    **audit_details,
                     "palier": f"{reco.trigger_level} → {reco.target_level}",
                 },
             )
