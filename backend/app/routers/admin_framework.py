@@ -41,7 +41,9 @@ from app.services.framework_publish import (
     apply_tree,
     build_changelog,
     build_snapshot,
+    delete_orphaned_draft_recommendations,
     next_version_number,
+    promote_draft_recommendations,
 )
 
 router = APIRouter(
@@ -221,7 +223,13 @@ async def publish(
     before = (await build_snapshot(db))["dimensions"]
 
     try:
-        await apply_tree(db, payload.tree)
+        promoted = await apply_tree(db, payload.tree)
+        if promoted:
+            await promote_draft_recommendations(db, promoted)
+        # Anything still draft-flagged here belongs to a draft question that
+        # isn't in the tree just published (deleted before publish, or the
+        # reconciliation in save_draft hasn't caught up yet) -- orphaned.
+        await delete_orphaned_draft_recommendations(db)
         after = await build_snapshot(db)
         version = QuestionnaireVersion(
             number=await next_version_number(db),
