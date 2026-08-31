@@ -936,6 +936,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
 }) {
   const staging = useStaging();
   const [search, setSearch] = useSeededSearch();
+  const [previewQ, setPreviewQ] = useState<FlatQuestion | null>(null);
   const [dimFilter, setDimFilter] = useState("Toutes les dimensions");
   const [typeFilter, setTypeFilter] = useState("Tous les types");
   const [statusFilter, setStatusFilter] = useState("Tous les statuts");
@@ -1081,6 +1082,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
           </tbody>
         </table>
       </div>
+      {previewQ && <QuestionPreviewModal q={previewQ} onClose={() => setPreviewQ(null)} />}
     </>
   );
 }

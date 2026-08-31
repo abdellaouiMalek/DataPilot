@@ -1371,6 +1371,8 @@ export function QuestionnaireVersions() {
               Suivant &rarr;
             </button>
           </div>
+        </div>
+      )}
 
       {/* Click-away layer for the row menu */}
       {openMenu !== null && <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={() => setOpenMenu(null)} />}

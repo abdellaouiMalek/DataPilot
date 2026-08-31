@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Upload, FileText, ChevronRight, ChevronDown, Check, Edit2, XCircle,
   BookOpen, ExternalLink, RefreshCw, CheckCircle2,
-  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle, Scale, ListPlus, Trash2,
+  Sparkles, X, ShieldCheck, Clock, ArrowUpRight, Loader2, AlertTriangle, Scale, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {

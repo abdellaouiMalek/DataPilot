@@ -26,9 +26,13 @@ import logging
 import os
 from typing import Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.keycloak_admin import kc_get
 from app.core.mailer import send_email
 from app.db.database import AsyncSessionLocal
-from app.models import PlatformSettings
+from app.models import Notification, PlatformSettings
+from app.models.regulatory import RegulatoryCircular
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +112,46 @@ async def notify_user_created(
         f"{APP_URL}\n\n"
         "Ce message a été généré automatiquement, merci de ne pas y répondre.",
     )
+
+
+async def notify_admins_of_publication(
+    db: AsyncSession, circular: RegulatoryCircular
+) -> None:
+    """Queue one in-app notification per ``admin`` user for a published circular.
+
+    Unlike the email notifications above this one writes rows, and it does so
+    on the caller's session without committing: the publication and its
+    notifications share a transaction, so a circular can never be published
+    without the admins hearing about it (see the call site in
+    ``app.routers.regulatory``).
+
+    The recipient list comes from Keycloak, which is reachable over the
+    network and therefore allowed to fail: a publication is far too expensive
+    to roll back because the identity server blinked. On failure nobody is
+    notified and the publication still stands.
+    """
+    try:
+        members = await kc_get("/roles/admin/users", {"max": 1000})
+    except Exception:
+        logger.exception(
+            "Notifications: could not list admins for circular %s", circular.id
+        )
+        return
+
+    reference = circular.reference or f"circulaire #{circular.id}"
+    for member in members:
+        user_id = member.get("id")
+        if not user_id:
+            continue
+        db.add(
+            Notification(
+                user_id=user_id,
+                type="info",
+                title="Nouvelle veille réglementaire publiée",
+                message=(
+                    f"{reference} est désormais en vigueur "
+                    f"({circular.version}). Le questionnaire a été mis à jour."
+                ),
+                circular_id=circular.id,
+            )
+        )

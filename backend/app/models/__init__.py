@@ -17,6 +17,7 @@ from app.models.embedding import RegulatoryEmbedding
 from app.models.framework_version import FrameworkDraft, QuestionnaireVersion
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
+from app.models.notification import Notification
 from app.models.platform_settings import PlatformSettings
 from app.models.question import Question
 from app.models.recommendation import Recommendation
@@ -33,6 +34,7 @@ __all__ = [
     "Department",
     "Role",
     "MaturityLevel",
+    "Notification",
     "PlatformSettings",
     "Assessment",
     "Answer",

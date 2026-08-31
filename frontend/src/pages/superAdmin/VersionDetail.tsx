@@ -376,7 +376,6 @@ export function VersionDetail({ versionId, versionNumber, versionName, onBack }:
                 { key: "réglementaire"              as ChangeType, label: "Réglementaire",            count: counts["réglementaire"] },
               ]).map(tab => {
                 const isActive = filter === tab.key;
-                const meta = tab.key !== "all" ? TYPE_META[tab.key as ChangeType] : null;
                 return (
                   <button key={tab.key} className="no-outline" onClick={() => setFilter(tab.key)}
                     style={{

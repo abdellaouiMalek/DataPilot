@@ -9,6 +9,7 @@ import {
   regulatoryApi,
   type Circular, type CircularDetail, type Impact, type ImpactAction, type AssociatedRecommendation,
 } from "../../lib/regulatory";
+import { getMaturityLevels, type MaturityLevel } from "../../lib/config";
 import { AdminLoader } from "../../components/AdminLoader";
 
 function formatDate(iso: string | null): string {

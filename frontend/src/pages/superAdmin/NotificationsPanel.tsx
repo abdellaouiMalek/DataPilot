@@ -81,7 +81,10 @@ export function NotificationsPanel({ items, setItems, onClose, onNavigateToCircu
               key={n.id}
               onClick={() => {
                 markRead(n.id);
-                if (n.circularId != null) onNavigateToCircular?.(n.circularId);
+                if (n.circularId != null) {
+                  onNavigateToCircular?.(n.circularId);
+                  onClose();
+                }
               }}
               style={{
                 display: "flex", gap: 12, padding: "12px 16px",

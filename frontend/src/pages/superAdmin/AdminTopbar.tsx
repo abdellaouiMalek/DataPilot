@@ -86,8 +86,6 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
   const seenScope = user?.sub || user?.username || "anonymous";
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // ── Notifications ──────────────────────────────────────────────────────────
