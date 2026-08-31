@@ -6,10 +6,12 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,8 +28,20 @@ class Recommendation(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # e.g. "D1Q1-1"
-    question_id: Mapped[int] = mapped_column(
-        ForeignKey("questions.id", ondelete="CASCADE"), index=True
+    # Nullable: a draft recommendation (see draft_question_key below) has no
+    # real question yet. Exactly one of question_id / draft_question_key is
+    # ever set -- enforced by chk_question_or_draft.
+    question_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("questions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Set only while the question this recommendation targets is still
+    # sitting in the framework draft (not yet published) -- holds the same
+    # temp id string the draft's tree uses for that question node (see
+    # frontend/src/pages/superAdmin/frameworkStaging.tsx's newId()). Cleared
+    # (and question_id populated) once the framework is published; see
+    # app/services/framework_publish.py::promote_draft_recommendations.
+    draft_question_key: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True, index=True
     )
     trigger_level: Mapped[int] = mapped_column(Integer)
     target_level: Mapped[int] = mapped_column(Integer)
@@ -49,4 +63,12 @@ class Recommendation(Base):
         CheckConstraint("target_level BETWEEN 2 AND 5", name="chk_target_level_range"),
         CheckConstraint("target_level = trigger_level + 1", name="chk_one_step"),
         CheckConstraint("effort BETWEEN 1 AND 3", name="chk_effort_range"),
+        CheckConstraint(
+            "(question_id IS NOT NULL) != (draft_question_key IS NOT NULL)",
+            name="chk_question_or_draft",
+        ),
+        Index(
+            "uq_draft_question_trigger", "draft_question_key", "trigger_level",
+            unique=True, postgresql_where=text("draft_question_key IS NOT NULL"),
+        ),
     )
