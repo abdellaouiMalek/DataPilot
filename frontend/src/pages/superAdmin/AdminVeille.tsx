@@ -26,36 +26,41 @@ const card: React.CSSProperties = {
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
 };
 
-// Texte + puce, sans fond -- statut de PUBLICATION uniquement (Brouillon /
-// En vigueur / Abrogée). Ce que la ligne doit faire d'urgent (analyse en
-// panne, en cours, éléments en attente) n'est plus une rangée de pastilles
-// séparées : c'est la couleur de la bordure gauche de la ligne (voir
-// `urgencyColor` ci-dessous) et une simple mention dans la ligne de
-// métadonnées -- un seul signal de couleur par ligne, pas cinq badges qui
-// se disputent l'attention. Standard qu'on attend d'un back-office bancaire :
-// dense, lisible, pas décoratif.
-function StatutBadge({ statut }: { statut: string }) {
-  const active = statut === "En vigueur";
-  const draft = statut === "Brouillon";
-  const color = active ? "#2E7D32" : draft ? "#8A6A1A" : "#6B6B6B";
+// Statut de publication (Brouillon / En vigueur / Abrogée), en pastille
+// teintée -- pas de bordure de couleur sur la ligne (retirée : un seul
+// signal de couleur par ligne suffit, la pastille) et pas de version
+// accolée (le numéro de version n'aide pas à un coup d'œil sur la liste ;
+// il reste consultable dans le détail de la circulaire).
+const STATUS_TINT: Record<string, { bg: string; fg: string }> = {
+  "En vigueur": { bg: "#E8F5E9", fg: "#2E7D32" },
+  "Brouillon":  { bg: "#FFF4DC", fg: "#8A6A1A" },
+  "Abrogée":    { bg: "#F0F0F0", fg: "#6B6B6B" },
+};
+function statusTint(statut: string): { bg: string; fg: string } {
+  return STATUS_TINT[statut] ?? STATUS_TINT["Abrogée"];
+}
+
+function StatusPill({ statut }: { statut: string }) {
+  const { bg, fg } = statusTint(statut);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color, flexShrink: 0 }}>
-      <span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color, flexShrink: 0 }} />
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      fontSize: 12, fontWeight: 600, color: fg, backgroundColor: bg,
+      padding: "3px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap",
+    }}>
       {statut}
     </span>
   );
 }
 
-// Priorité : ce qui a le plus besoin d'un coup d'œil de l'admin l'emporte.
-// Une seule couleur par ligne (la bordure gauche), plutôt qu'un badge par
-// état possible -- erreur > analyse en cours > éléments en attente ou
-// analyse partielle > publiée (réglée) > brouillon neutre.
-function urgencyColor(c: { status: string; analysisStatus: string; analysisError: string | null; pendingCount: number }): string {
+// Ce qui a le plus besoin d'un coup d'œil de l'admin l'emporte -- utilisé
+// uniquement pour la couleur du texte dans la ligne de métadonnées
+// ("Analyse en cours", "X en attente", ...), plus de bordure associée.
+function urgencyColor(c: { analysisStatus: string; analysisError: string | null; pendingCount: number }): string | null {
   if (c.analysisStatus === "erreur") return "#B91C1C";
   if (c.analysisStatus === "en_cours") return "#4F46E5";
   if (c.pendingCount > 0 || (c.analysisStatus === "terminee" && c.analysisError)) return "#8A6A1A";
-  if (c.status === "En vigueur") return "#2E7D32";
-  return "#D0D0D0";
+  return null;
 }
 
 // Libellés + couleurs EXACTEMENT ceux de la maquette ImpactsProposes.tsx
@@ -1364,6 +1369,8 @@ function DeleteCircularDialog({ circular, deleting, onCancel, onConfirm }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const PER_PAGE = 10;
+
 export function VeilleReglementaire() {
   const [circulars, setCirculars] = useState<Circular[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1374,6 +1381,7 @@ export function VeilleReglementaire() {
   const [reindexing, setReindexing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Circular | null>(null);
+  const [page, setPage] = useState(1);
 
   async function reindex() {
     setReindexing(true);
@@ -1445,6 +1453,10 @@ export function VeilleReglementaire() {
   const enVigueur = circulars.filter(c => c.status === "En vigueur").length;
   const abrogees = circulars.filter(c => c.status === "Abrogée").length;
 
+  const totalPages = Math.max(1, Math.ceil(circulars.length / PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const paged = circulars.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
+
   return (
     <div style={{ padding: "28px 32px 48px", backgroundColor: "#F2F2F2", minHeight: "100%" }}>
 
@@ -1482,20 +1494,22 @@ export function VeilleReglementaire() {
           </div>
         </div>
 
+        {/* Une seule barre neutre, plutôt que trois pastilles à pois de
+            couleur séparées par des points -- les nombres portent l'info,
+            pas des pastilles qui dupliquent la couleur des statuts
+            ci-dessous sans y correspondre exactement (vert ≠ teinte de
+            StatusPill, gris ≠ Abrogée). Divise à l'intérieur d'un seul
+            conteneur, comme une mini barre de KPI. */}
         {circulars.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "inline-flex", alignItems: "stretch", backgroundColor: "#fff", borderRadius: 10, border: "1px solid rgba(0,0,0,0.08)" }}>
             {[
-              { value: circulars.length, label: "circulaires intégrées", dot: "#1A1A1A" },
-              { value: enVigueur,        label: "en vigueur",            dot: "#16A34A" },
-              { value: abrogees,         label: "abrogées",              dot: "#C0C0C0" },
-            ].map((s, i, arr) => (
-              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, backgroundColor: "#fff", borderRadius: 20, padding: "5px 12px", border: "1px solid rgba(0,0,0,0.08)" }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: s.dot, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{s.value}</span>
-                  <span style={{ fontSize: 12, color: "#9B9B9B" }}>{s.label}</span>
-                </div>
-                {i < arr.length - 1 && <span style={{ color: "#D0D0D0", fontSize: 14 }}>·</span>}
+              { value: circulars.length, label: "circulaires" },
+              { value: enVigueur,        label: "en vigueur" },
+              { value: abrogees,         label: "abrogées" },
+            ].map((s, i) => (
+              <div key={s.label} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "9px 16px", borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{s.value}</span>
+                <span style={{ fontSize: 12, color: "#9B9B9B" }}>{s.label}</span>
               </div>
             ))}
           </div>
@@ -1521,8 +1535,9 @@ export function VeilleReglementaire() {
 
       {!loading && !loadError && circulars.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {circulars.map(c => {
-            const accent = urgencyColor(c);
+          {paged.map(c => {
+            const alertColor = urgencyColor(c) ?? "#6B6B6B"; // fallback never hit: set on every branch below that reads it
+            const tint = statusTint(c.status);
             return (
             <div key={c.id}
               role="button"
@@ -1532,35 +1547,24 @@ export function VeilleReglementaire() {
               style={{
                 ...card, padding: "16px 20px",
                 display: "flex", alignItems: "center", gap: 16,
-                borderLeft: `3px solid ${accent}`,
                 transition: "box-shadow 0.15s",
                 cursor: loadingDetail === c.id ? "wait" : "pointer",
               }}
               onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 16px rgba(0,0,0,0.08)"}
               onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"}
             >
-              <div style={{ width: 42, height: 42, borderRadius: 10, backgroundColor: c.status === "En vigueur" ? "#F0F7FF" : "#F5F5F5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <FileText size={20} style={{ color: c.status === "En vigueur" ? "#0277BD" : "#C0C0C0" }} />
+              <div style={{ width: 42, height: 42, borderRadius: 10, backgroundColor: tint.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <FileText size={20} style={{ color: tint.fg }} />
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{c.reference}</span>
-                  <StatutBadge statut={c.status} />
-                  {/* "Brouillon" comme version n'est qu'un défaut tant qu'il
-                      n'y a pas eu de publication (voir models/regulatory.py) --
-                      l'afficher répéterait le statut juste à côté au lieu
-                      d'apporter une info neuve. */}
-                  {c.version !== "Brouillon" && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#4A4A4A", border: "1px solid rgba(0,0,0,0.12)", padding: "1px 8px", borderRadius: 4, fontFamily: "monospace", flexShrink: 0 }}>
-                      {c.version}
-                    </span>
-                  )}
+                  <StatusPill statut={c.status} />
                 </div>
                 {/* Analyse en cours/en échec/partielle et éléments en attente
-                    ne sont plus des badges séparés : une mention discrète
-                    dans la ligne de métadonnées, dans la couleur de la
-                    bordure -- le même signal, pas un deuxième. */}
+                    ne sont pas des badges séparés : une mention discrète
+                    dans la ligne de métadonnées, colorée par urgencyColor. */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B6B6B", flexWrap: "wrap", rowGap: 3 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <Clock size={11} /> {formatDate(c.publicationDate)}
@@ -1572,7 +1576,7 @@ export function VeilleReglementaire() {
                   {c.analysisStatus === "en_cours" && (
                     <>
                       <span style={{ color: "#D0D0D0" }}>·</span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 4, color: accent, fontWeight: 600 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, color: alertColor, fontWeight: 600 }}>
                         <Loader2 size={11} className="animate-spin" /> Analyse en cours
                       </span>
                     </>
@@ -1580,7 +1584,7 @@ export function VeilleReglementaire() {
                   {c.analysisStatus === "erreur" && (
                     <>
                       <span style={{ color: "#D0D0D0" }}>·</span>
-                      <span style={{ color: accent, fontWeight: 600 }}>Échec de l&apos;analyse</span>
+                      <span style={{ color: alertColor, fontWeight: 600 }}>Échec de l&apos;analyse</span>
                     </>
                   )}
                   {/* analysisStatus "terminee" + analysisError renseigne :
@@ -1590,13 +1594,13 @@ export function VeilleReglementaire() {
                   {c.analysisStatus === "terminee" && c.analysisError && (
                     <>
                       <span style={{ color: "#D0D0D0" }}>·</span>
-                      <span title={c.analysisError} style={{ color: accent, fontWeight: 600 }}>Analyse partielle</span>
+                      <span title={c.analysisError} style={{ color: alertColor, fontWeight: 600 }}>Analyse partielle</span>
                     </>
                   )}
                   {c.pendingCount > 0 && (
                     <>
                       <span style={{ color: "#D0D0D0" }}>·</span>
-                      <span style={{ color: accent, fontWeight: 600 }}>{c.pendingCount} en attente</span>
+                      <span style={{ color: alertColor, fontWeight: 600 }}>{c.pendingCount} en attente</span>
                     </>
                   )}
                 </div>
@@ -1629,6 +1633,35 @@ export function VeilleReglementaire() {
         </div>
       )}
 
+      {/* Pagination -- même gabarit que AdminVersions.tsx / AdminBanks.tsx. */}
+      {!loading && !loadError && circulars.length > PER_PAGE && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderRadius: 9, border: "1px solid rgba(0,0,0,0.07)", padding: "12px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", marginTop: 8 }}>
+          <span style={{ fontSize: 12, color: "#9B9B9B" }}>
+            <strong style={{ color: "#1A1A1A" }}>{(currentPage - 1) * PER_PAGE + 1}</strong>-<strong style={{ color: "#1A1A1A" }}>{Math.min(currentPage * PER_PAGE, circulars.length)}</strong> sur <strong style={{ color: "#1A1A1A" }}>{circulars.length}</strong> circulaires
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+              style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: currentPage === 1 ? "#F5F5F5" : "#fff", color: currentPage === 1 ? "#C0C0C0" : "#1A1A1A", cursor: currentPage === 1 ? "not-allowed" : "pointer" }}>
+              &larr; Précédent
+            </button>
+            {pageWindow(currentPage, totalPages).map((p, i) =>
+              p === "…" ? (
+                <span key={`gap-${i}`} style={{ width: 20, textAlign: "center", fontSize: 12, color: "#C0C0C0" }}>…</span>
+              ) : (
+                <button key={p} onClick={() => setPage(p)}
+                  style={{ width: 32, height: 32, borderRadius: 6, fontSize: 12, fontWeight: p === currentPage ? 800 : 500, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: p === currentPage ? "#1A1A1A" : "#fff", color: p === currentPage ? "#FFE600" : "#4A4A4A", cursor: "pointer" }}>
+                  {p}
+                </button>
+              ),
+            )}
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+              style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.10)", backgroundColor: currentPage === totalPages ? "#F5F5F5" : "#fff", color: currentPage === totalPages ? "#C0C0C0" : "#1A1A1A", cursor: currentPage === totalPages ? "not-allowed" : "pointer" }}>
+              Suivant &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginTop: 24, textAlign: "right" }}>
         <span style={{ fontSize: 11, color: "#C0C0C0", fontStyle: "italic" }}>Usage interne EY — confidentiel</span>
       </div>
@@ -1650,4 +1683,20 @@ export function VeilleReglementaire() {
       )}
     </div>
   );
+}
+
+/** First, last, and the neighbours of the current page — même helper que
+ *  AdminVersions.tsx, pour que la pagination se comporte pareil partout. */
+function pageWindow(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
+  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+
+  const out: (number | "…")[] = [];
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1] > 1) out.push("…");
+    out.push(p);
+  });
+  return out;
 }
