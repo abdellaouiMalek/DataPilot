@@ -49,6 +49,8 @@ export function hasBackOffice(): boolean {
 }
 
 export interface CurrentUser {
+  /** Keycloak `sub` — stable account id, used to scope per-user client state. */
+  sub?: string;
   name: string;
   email?: string;
   username?: string;
@@ -61,6 +63,7 @@ export function getCurrentUser(): CurrentUser | null {
   const t = keycloak.tokenParsed;
   if (!keycloak.authenticated || !t) return null;
   return {
+    sub: t.sub,
     name: t.name || t.preferred_username || t.email || "Utilisateur",
     email: t.email,
     username: t.preferred_username,

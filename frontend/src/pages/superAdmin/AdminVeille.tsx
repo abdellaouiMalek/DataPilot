@@ -9,7 +9,7 @@ import {
   regulatoryApi,
   type Circular, type CircularDetail, type Impact, type ImpactAction, type AssociatedRecommendation,
 } from "../../lib/regulatory";
-import { getMaturityLevels, type MaturityLevel } from "../../lib/config";
+import { AdminLoader } from "../../components/AdminLoader";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "Date non détectée";
@@ -1502,9 +1502,7 @@ export function VeilleReglementaire() {
       </div>
 
       {loading && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: 60, color: "#9B9B9B" }}>
-          <Loader2 size={20} className="animate-spin" /> Chargement de la veille réglementaire…
-        </div>
+        <AdminLoader label="Chargement de la veille réglementaire…" />
       )}
 
       {!loading && loadError && (

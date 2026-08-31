@@ -25,6 +25,42 @@ _TIMEOUT = 10.0
 _token_cache: dict[str, Any] = {"access_token": None, "expires_at": 0.0}
 _token_lock = asyncio.Lock()
 
+# One client for the whole process, reused across calls.
+#
+# This is a performance fix, not a tidiness one. Constructing an
+# ``httpx.AsyncClient`` builds an SSL context and loads the system certificate
+# store, which on Windows costs ~300 ms — paid on *every* call when the client
+# was created per request, regardless of how small the response was. Keycloak
+# itself answers in single-digit milliseconds. Reusing one client also lets
+# concurrent calls share the connection pool, so the five role lookups behind
+# ``_role_by_user`` overlap instead of queueing behind five separate handshakes.
+_client: httpx.AsyncClient | None = None
+_client_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _http() -> httpx.AsyncClient:
+    """The shared client, rebuilt if it was closed or belongs to a dead loop.
+
+    A client is bound to the event loop that created it, so the loop check
+    matters for anything that runs several loops in one process (tests, an
+    interactive shell) -- reusing one across loops fails at the transport.
+    """
+    global _client, _client_loop
+    loop = asyncio.get_running_loop()
+    if _client is None or _client.is_closed or _client_loop is not loop:
+        _client = httpx.AsyncClient(timeout=_TIMEOUT)
+        _client_loop = loop
+    return _client
+
+
+async def close_client() -> None:
+    """Release the shared client on shutdown."""
+    global _client, _client_loop
+    if _client is not None and not _client.is_closed:
+        await _client.aclose()
+    _client = None
+    _client_loop = None
+
 
 async def _fetch_token() -> dict[str, Any]:
     if not (ADMIN_CLIENT_ID and ADMIN_CLIENT_SECRET and REALM and KEYCLOAK_URL):
@@ -33,15 +69,14 @@ async def _fetch_token() -> dict[str, Any]:
             detail="Keycloak admin client is not configured (missing env vars).",
         )
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(
+        resp = await _http().post(
                 TOKEN_URL,
                 data={
                     "grant_type": "client_credentials",
                     "client_id": ADMIN_CLIENT_ID,
                     "client_secret": ADMIN_CLIENT_SECRET,
                 },
-            )
+        )
     except httpx.RequestError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -111,14 +146,13 @@ async def kc_request(
 
     async def _send(token: str) -> httpx.Response:
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                return await client.request(
-                    method,
-                    url,
-                    params=params,
-                    json=json,
-                    headers={"Authorization": f"Bearer {token}"},
-                )
+            return await _http().request(
+                method,
+                url,
+                params=params,
+                json=json,
+                headers={"Authorization": f"Bearer {token}"},
+            )
         except httpx.RequestError:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

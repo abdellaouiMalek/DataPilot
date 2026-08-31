@@ -23,8 +23,6 @@ from app.db.database import AsyncSessionLocal
 from app.models import (
     Assessment,
     AssessmentRecommendationPlan,
-    Dimension,
-    Question,
     Recommendation,
 )
 from app.services import explain, ranking
@@ -34,6 +32,12 @@ from app.services.action_plan import (
     build_priority_plan,
 )
 from app.services.features import CATEGORY_ORDER, build_features
+from app.services.questionnaire_reference import (
+    live_reference,
+    merge_dimensions,
+    reference_for,
+    references_for,
+)
 from app.services.scoring import (
     DimensionInput,
     QuestionInput,
@@ -91,31 +95,46 @@ class RecommendationPlan:
     dimension_notes: list[DimensionNote]
 
 
-async def load_reference(db: AsyncSession) -> ReferenceData:
-    """Charge dimensions/questions/recommandations actives depuis la base.
+async def load_reference(
+    db: AsyncSession, assessment: Assessment | None = None
+) -> ReferenceData:
+    """Charge le questionnaire de reference + le catalogue de recommandations.
+
+    Avec ``assessment`` : le questionnaire fige dans la version sur laquelle il
+    a ete repondu (``app.services.questionnaire_reference``). C'est la seule
+    lecture correcte pour un assessment stocke -- le referentiel vivant a pu
+    perdre des questions depuis, et les noter contre les questions d'aujourd'hui
+    donnerait des recommandations sur un questionnaire que la banque n'a jamais
+    vu. Sans ``assessment`` : le referentiel vivant.
+
+    Le catalogue de recommandations, lui, reste celui d'aujourd'hui : c'est un
+    referentiel de conseils, pas une trace de ce qui a ete demande, et on veut
+    proposer la meilleure action connue a ce jour.
 
     Recalcule intra_weight (1 / nb de questions actives de la dimension) a
     chaque appel plutot que de le mettre en cache : les tables sont petites
     et un edit admin (question desactivee, etc.) doit se refleter
     immediatement, sans probleme de cache a invalider.
     """
-    dim_stmt = select(Dimension).where(Dimension.is_active.is_(True))
-    dimensions = (await db.execute(dim_stmt)).scalars().all()
-
-    question_stmt = select(Question).where(Question.is_active.is_(True))
-    questions = (await db.execute(question_stmt)).scalars().all()
+    reference = (
+        await reference_for(db, assessment)
+        if assessment is not None
+        else await live_reference(db)
+    )
+    dimensions = reference.active_dimensions
+    questions = reference.active_questions
 
     reco_result = await db.execute(select(Recommendation))
     recommendations = reco_result.scalars().all()
 
-    dim_weight = {d.id: d.weight for d in dimensions}
-    dimension_names = {d.id: d.name for d in dimensions}
-    question_dimensions = {q.id: q.dimension_id for q in questions}
+    dim_weight = {d.id: d.weight for d in dimensions.values()}
+    dimension_names = {d.id: d.name for d in dimensions.values()}
+    question_dimensions = {q.id: q.dimension_id for q in questions.values()}
     # Same weight submit_assessment() uses (app/routers/assessments.py) --
     # scores computed here must match the cached, official ones, or a
     # dimension could be ranked "weak" against a number the user was
     # never actually shown.
-    question_weights = {q.id: q.weight for q in questions}
+    question_weights = {q.id: q.weight for q in questions.values()}
 
     counts: dict[int, int] = {}
     for dim_id in question_dimensions.values():
@@ -177,9 +196,12 @@ async def get_narrative(db: AsyncSession, assessment: Assessment) -> str:
     if assessment.narrative:
         return assessment.narrative
 
-    dim_stmt = select(Dimension).where(Dimension.is_active.is_(True))
-    dimensions = (await db.execute(dim_stmt)).scalars().all()
-    dim_names = {d.id: d.name for d in dimensions}
+    # Names come from the version this assessment was answered on, not from the
+    # live table: reading them off today's active dimensions dropped every score
+    # whose dimension has since been deactivated or removed, which both truncated
+    # the narrative and moved strongest/weakest onto the wrong dimension.
+    reference = await reference_for(db, assessment)
+    dim_names = {i: d.name for i, d in reference.dimensions.items()}
 
     dimension_scores = {
         dim_names[ds.dimension_id]: ds.score
@@ -224,9 +246,13 @@ async def get_comparison_narrative(
     action for a single narrative, so paying for a fresh LLM call here is
     consistent with that).
     """
-    dim_stmt = select(Dimension).where(Dimension.is_active.is_(True))
-    dimensions = (await db.execute(dim_stmt)).scalars().all()
-    dim_names = {d.id: d.name for d in dimensions}
+    # The two assessments may sit on different versions, so the name map is the
+    # union of both questionnaires -- a dimension only one of them knew about
+    # still has to be named to be compared.
+    references = await references_for(db, [initial, current])
+    dim_names = {
+        i: d.name for i, d in merge_dimensions(references.values()).items()
+    }
 
     def _scores(assessment: Assessment) -> dict[str, float]:
         return {
@@ -281,7 +307,7 @@ async def get_recommendations(
     qui borne le cout de l'appel LLM independamment du nombre total de
     candidats.
     """
-    reference = await load_reference(db)
+    reference = await load_reference(db, assessment)
 
     if dimension_id is not None and dimension_id not in reference.dim_weight:
         raise DimensionNotFoundError(

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Loader2, Users } from "lucide-react";
+import { ArrowRight, Users } from "lucide-react";
 import { listUsers, countUsers } from "@/lib/adminUsers";
+import { AdminLoader } from "@/components/AdminLoader";
 import { buildKpiCards, KpiCard } from "../superAdmin/AdminUsers";
 import type { KpiStats } from "../superAdmin/AdminUsers";
 
@@ -79,10 +80,7 @@ export function AdminDashboard() {
       )}
 
       {!stats && !error ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#6B6B6B", fontSize: 13, padding: "40px 0" }}>
-          <Loader2 size={16} className="animate-spin" />
-          Chargement des statistiques…
-        </div>
+        <AdminLoader variant="inline" label="Chargement des statistiques…" />
       ) : stats ? (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
           {buildKpiCards(stats, { includeAdmins: false }).map(

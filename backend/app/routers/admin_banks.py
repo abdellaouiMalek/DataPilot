@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_super_admin
 from app.db.database import get_db
 from app.models import Assessment, Bank
+from app.models.audit_log import MODULE_BANKS
 from app.schemas.admin_bank import (
     BankActiveUpdate,
     BankAdminRead,
@@ -27,8 +28,19 @@ from app.schemas.admin_bank import (
     BankCreate,
     BankUpdate,
 )
+from app.services.audit import Audit, audit_context, summarize_changes
 
 router = APIRouter(prefix="/api/super-admin/banks", tags=["super-admin-banks"])
+
+
+# Field -> French label, for the "avant → après" text on an edit.
+BANK_FIELD_LABELS = {
+    "name": "Nom",
+    "country": "Pays",
+    "sector": "Secteur",
+    "contact": "Contact",
+    "description": "Description",
+}
 
 
 def _status(bank: Bank) -> str:
@@ -113,6 +125,7 @@ async def create_bank(
     payload: BankCreate,
     db: AsyncSession = Depends(get_db),
     _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
 ):
     max_order = (
         await db.execute(select(func.coalesce(func.max(Bank.sort_order), 0)))
@@ -132,6 +145,14 @@ async def create_bank(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Une banque porte déjà ce nom.")
     await db.refresh(bank)
+    await audit.record(
+        module=MODULE_BANKS,
+        action=f"Création banque {bank.name}",
+        entity_type="bank",
+        entity_id=bank.id,
+        entity_label=bank.name,
+        after=f"{bank.name} · {bank.sector or 'secteur non renseigné'}",
+    )
     return await _read_one(db, bank)
 
 
@@ -141,8 +162,16 @@ async def update_bank(
     payload: BankUpdate,
     db: AsyncSession = Depends(get_db),
     _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
 ):
     bank = await _get_bank(db, bank_id)
+    previous = {
+        "name": bank.name,
+        "country": bank.country,
+        "sector": bank.sector,
+        "contact": bank.contact,
+        "description": bank.description,
+    }
     bank.name = payload.name.strip()
     bank.country = payload.country.strip()
     bank.sector = payload.sector.strip()
@@ -154,6 +183,28 @@ async def update_bank(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Une banque porte déjà ce nom.")
     await db.refresh(bank)
+    before, after, fields = summarize_changes(
+        previous,
+        {
+            "name": bank.name,
+            "country": bank.country,
+            "sector": bank.sector,
+            "contact": bank.contact,
+            "description": bank.description,
+        },
+        BANK_FIELD_LABELS,
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_BANKS,
+            action=f"Modification banque {bank.name}",
+            entity_type="bank",
+            entity_id=bank.id,
+            entity_label=bank.name,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
     return await _read_one(db, bank)
 
 
@@ -163,11 +214,23 @@ async def set_bank_active(
     payload: BankActiveUpdate,
     db: AsyncSession = Depends(get_db),
     _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
 ):
     bank = await _get_bank(db, bank_id)
+    was = _status(bank)
     bank.is_active = payload.is_active
     await db.commit()
     await db.refresh(bank)
+    await audit.record(
+        module=MODULE_BANKS,
+        action=("Activation" if payload.is_active else "Désactivation")
+        + f" banque {bank.name}",
+        entity_type="bank",
+        entity_id=bank.id,
+        entity_label=bank.name,
+        before=was,
+        after=_status(bank),
+    )
     return await _read_one(db, bank)
 
 
@@ -177,11 +240,23 @@ async def set_bank_archived(
     payload: BankArchivedUpdate,
     db: AsyncSession = Depends(get_db),
     _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
 ):
     bank = await _get_bank(db, bank_id)
+    was = _status(bank)
     bank.archived = payload.archived
     # Archiving hides the bank from the public selector too; restoring re-enables.
     bank.is_active = not payload.archived
     await db.commit()
     await db.refresh(bank)
+    await audit.record(
+        module=MODULE_BANKS,
+        action=("Archivage" if payload.archived else "Restauration")
+        + f" banque {bank.name}",
+        entity_type="bank",
+        entity_id=bank.id,
+        entity_label=bank.name,
+        before=was,
+        after=_status(bank),
+    )
     return await _read_one(db, bank)

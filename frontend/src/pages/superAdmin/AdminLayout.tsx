@@ -1,8 +1,13 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigation } from 'react-router-dom';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
+import { AdminLoader } from '../../components/AdminLoader';
 
 export function AdminLayout() {
+  // Le routeur charge la page à la demande ; pendant ce temps le châssis
+  // reste peint et seule la zone de contenu attend.
+  const loadingRoute = useNavigation().state === 'loading';
+
   return (
     <div style={{
       display: "flex",
@@ -16,7 +21,7 @@ export function AdminLayout() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         <AdminTopbar />
         <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-          <Outlet />
+          {loadingRoute ? <AdminLoader /> : <Outlet />}
         </main>
       </div>
     </div>

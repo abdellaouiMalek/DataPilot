@@ -16,6 +16,19 @@ export type BusinessRole =
   | "repondant"
   | "validateur";
 
+/**
+ * Libellés français des rôles métier. Vit ici plutôt que dans la page
+ * utilisateurs : le tableau de bord les affiche aussi (répartition des
+ * comptes), et deux copies finiraient par diverger.
+ */
+export const ROLE_LABELS: Record<BusinessRole, string> = {
+  super_admin: "Super Admin EY",
+  admin:       "Admin",
+  consultant:  "Consultant EY",
+  repondant:   "Répondant Banque",
+  validateur:  "Validateur Banque",
+};
+
 export interface AdminUser {
   id: string;
   username: string | null;

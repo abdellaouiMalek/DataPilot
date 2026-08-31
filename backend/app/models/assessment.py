@@ -42,6 +42,19 @@ class Assessment(Base):
         String(255), nullable=True, index=True
     )
 
+    # The published questionnaire this was answered on, stamped at submission.
+    # Questions are edited in place, so without this an old assessment can only
+    # be read back against today's wording; with it, the frozen snapshot in
+    # `questionnaire_versions` says exactly what was asked.
+    # Nullable: assessments submitted before the first version was published
+    # have no snapshot to point at (see the backfill in the migration).
+    # RESTRICT: a version referenced by assessments must stay readable.
+    version_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("questionnaire_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     score_global: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     maturity_label: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
@@ -73,11 +86,13 @@ class Answer(Base):
     assessment_id: Mapped[int] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
     )
-    # RESTRICT: a question that has answers can't be hard-deleted — admins
-    # deactivate it (is_active=False) instead, preserving historical data.
-    question_id: Mapped[int] = mapped_column(
-        ForeignKey("questions.id", ondelete="RESTRICT"), index=True
-    )
+    # A historical key, not a live pointer: deliberately *not* a foreign key.
+    # The question this answers is read from the frozen snapshot of the
+    # assessment's version (see app.services.questionnaire_reference), so the
+    # live `questions` row is free to be deleted when a later version drops it.
+    # Without this, the framework could only ever deactivate questions, and
+    # every question ever asked would accumulate in the live tables for ever.
+    question_id: Mapped[int] = mapped_column(Integer, index=True)
     value: Mapped[int] = mapped_column(Integer)
 
     assessment: Mapped["Assessment"] = relationship(back_populates="answers")
@@ -92,9 +107,9 @@ class DimensionScore(Base):
     assessment_id: Mapped[int] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
     )
-    dimension_id: Mapped[int] = mapped_column(
-        ForeignKey("dimensions.id", ondelete="RESTRICT"), index=True
-    )
+    # Same as Answer.question_id: a key into the assessment's frozen snapshot,
+    # not a foreign key into the live framework.
+    dimension_id: Mapped[int] = mapped_column(Integer, index=True)
     score: Mapped[float] = mapped_column(Float)
 
     assessment: Mapped["Assessment"] = relationship(back_populates="dimension_scores")

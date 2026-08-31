@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import {
   Zap, Building2, Clock, ShieldCheck, TrendingUp, ArrowUpRight,
-  ChevronDown, CheckCircle2, Loader2, ArrowLeft, Download, BarChart2,
+  ChevronDown, CheckCircle2, Loader2, Download, BarChart2,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
+import { FlowHeader } from '../components/FlowHeader';
 import { getRecommendations, getNarrative } from '../lib/recommendations';
 import type { RecommendationOut } from '../lib/recommendations';
 import { getDimensions } from '../lib/config';
@@ -94,8 +95,7 @@ function MaturityRail({ trigger, target }: { trigger: number; target: number }) 
 // --- MAIN COMPONENT ---
 export function RecommendationsPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const assessmentId: number | undefined = location.state?.assessmentId;
+  const assessmentId = Number(useParams().assessmentId);
 
   const [recommendations, setRecommendations] = useState<RecommendationOut[]>([]);
   const [dimensionNames, setDimensionNames] = useState<Record<number, string>>({});
@@ -108,7 +108,7 @@ export function RecommendationsPage() {
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!assessmentId) {
+    if (!Number.isFinite(assessmentId)) {
       setLoading(false);
       return;
     }
@@ -236,19 +236,16 @@ export function RecommendationsPage() {
       <Navbar />
 
       {/* ── Page actions ── */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 flex items-center justify-between">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors px-3 py-2"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Retour
-        </button>
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 space-y-4">
+        <FlowHeader current="Plan d'action" />
+        <div className="flex items-center justify-end">
         <button
           onClick={() => toast.success('Génération du rapport PDF...')}
           className="flex items-center gap-1.5 text-xs font-semibold border border-gray-200 text-gray-600 hover:border-gray-400 transition-colors px-3 py-2 rounded-lg"
         >
           <Download className="w-3.5 h-3.5" /> Exporter PDF
         </button>
+        </div>
       </div>
 
       {/* ── Hero ── */}
@@ -544,7 +541,7 @@ export function RecommendationsPage() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/simulation', { state: { assessmentId } })}
+            onClick={() => navigate(`/simulation/${assessmentId}`)}
             className="flex items-center gap-2.5 bg-[#FFE600] hover:bg-[#f5d800] text-black px-6 py-3 text-sm font-bold rounded-xl transition-colors shrink-0"
           >
             Lancer une simulation

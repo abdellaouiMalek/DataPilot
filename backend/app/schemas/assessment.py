@@ -44,6 +44,11 @@ class AssessmentResult(BaseModel):
     score_global: Optional[float]
     maturity_label: Optional[str]
     created_at: datetime
+    # Published questionnaire this was answered on. None for assessments
+    # submitted before versioning existed -- there is no snapshot describing
+    # what those respondents saw.
+    version_id: Optional[int] = None
+    version_number: Optional[int] = None
     dimension_scores: list[DimensionScoreRead]
     # True if the calling user is the one who submitted this assessment --
     # relevant now that a bank's history shows every colleague's

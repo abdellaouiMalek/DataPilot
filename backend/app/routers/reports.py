@@ -16,8 +16,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_bank_scope, verify_token
 from app.db.database import get_db
-from app.models import Assessment, Bank, Dimension, MaturityLevel
+from app.models import Assessment, MaturityLevel
 from app.services.pdf import render_pdf
+from app.services.questionnaire_reference import merge_dimensions, references_for
 from app.services.recommendation_engine import (
     get_comparison_narrative,
     get_narrative,
@@ -65,14 +66,22 @@ def _level_for(score: float, bands: list[MaturityLevel]) -> MaturityLevel | None
     return bands[0] if bands else None
 
 
-async def _load_reference_data(db: AsyncSession):
-    dimensions = (await db.execute(select(Dimension))).scalars().all()
+async def _load_reference_data(db: AsyncSession, *assessments: Assessment):
+    """Dimensions as the given assessments knew them, plus the maturity bands.
+
+    Dimensions come from each assessment's frozen version snapshot, not the
+    live table: a report reprinted after the framework dropped a dimension must
+    still name the dimension the bank was actually scored on. The bands are
+    deliberately current — they are the scale the score is read against today.
+    """
+    references = await references_for(db, assessments)
+    dimensions = merge_dimensions(references.values())
     bands = (
         (await db.execute(select(MaturityLevel).order_by(MaturityLevel.sort_order)))
         .scalars()
         .all()
     )
-    return {d.id: d for d in dimensions}, list(bands)
+    return dimensions, list(bands)
 
 
 async def _get_assessment_or_404(
@@ -109,7 +118,7 @@ async def download_comparison_report(
 ):
     initial = await _get_assessment_or_404(db, initial_id, bank_scope)
     current = await _get_assessment_or_404(db, current_id, bank_scope)
-    dim_by_id, bands = await _load_reference_data(db)
+    dim_by_id, bands = await _load_reference_data(db, initial, current)
 
     score_init = initial.score_global or 0.0
     score_curr = current.score_global or 0.0
@@ -203,7 +212,7 @@ async def download_evaluation_report(
     bank_scope: int | None = Depends(get_bank_scope),
 ):
     assessment = await _get_assessment_or_404(db, assessment_id, bank_scope)
-    dim_by_id, bands = await _load_reference_data(db)
+    dim_by_id, bands = await _load_reference_data(db, assessment)
 
     score_global = assessment.score_global or 0.0
     global_level = _level_for(score_global, bands)

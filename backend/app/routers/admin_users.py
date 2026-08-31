@@ -17,7 +17,7 @@ import string
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import is_super_admin, require_back_office
@@ -25,6 +25,7 @@ from app.core.keycloak_admin import kc_delete, kc_get, kc_post, kc_put
 from app.core.mailer import send_email
 from app.db.database import get_db
 from app.models import Bank
+from app.models.audit_log import MODULE_USERS
 from app.schemas.admin_user import (
     ActionEmailResult,
     UserArchivedUpdate,
@@ -33,6 +34,8 @@ from app.schemas.admin_user import (
     UserRead,
     UserUpdate,
 )
+from app.services.notifications import notify_user_created
+from app.services.audit import Audit, audit_context, summarize_changes
 
 router = APIRouter(prefix="/api/super-admin", tags=["super-admin-users"])
 
@@ -49,6 +52,31 @@ SUPER_ADMIN_ROLE = "super_admin"
 # Relies on the realm's unmanagedAttributePolicy=ENABLED (app.keycloak_bootstrap),
 # same as `organization` / `archived` / `bank_id`.
 CREATED_BY_ATTR = "created_by"
+
+
+# Field -> French label, for the "avant → après" text on a user edit.
+USER_FIELD_LABELS = {
+    "first_name": "Prénom",
+    "last_name": "Nom",
+    "email": "Email",
+    "role": "Rôle",
+    "status": "Statut",
+    "organization": "Organisation",
+    "bank_id": "Banque",
+}
+
+
+def _audit_snapshot(user: dict[str, Any], role: Optional[str]) -> dict[str, Any]:
+    """The subset of a Keycloak user representation the audit trail reports on."""
+    return {
+        "first_name": user.get("firstName"),
+        "last_name": user.get("lastName"),
+        "email": user.get("email"),
+        "role": role,
+        "status": _status(user),
+        "organization": _organization(user),
+        "bank_id": _bank_id(user),
+    }
 
 
 def _created_by(user: dict[str, Any]) -> str | None:
@@ -159,6 +187,27 @@ def _bank_id(user: dict[str, Any]) -> Optional[int]:
         return int(raw)
     except ValueError:
         return None
+
+
+def _assert_bank_required(role: Optional[str], bank_id: Optional[int]) -> None:
+    """Every account except a super admin must be attached to a bank.
+
+    ``get_bank_scope`` returns None (unrestricted) for a super admin, so a bank
+    on one would be inert data. For everyone else it is the opposite: without
+    ``bank_id`` that dependency raises 403, which locks the account out of the
+    questionnaire, its results, the recommendations and both PDF reports. An
+    account created without a bank is therefore an account that cannot use the
+    product -- better refused here than discovered at first login.
+    """
+    if role == SUPER_ADMIN_ROLE or bank_id is not None:
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Une banque doit être associée au compte : sans elle, l'utilisateur "
+            "n'aura accès ni au questionnaire ni à ses résultats."
+        ),
+    )
 
 
 async def _validate_bank_id(db: AsyncSession, bank_id: Optional[int]) -> None:
@@ -366,10 +415,13 @@ async def count_users(
 @router.post("/users", response_model=UserRead, status_code=201)
 async def create_user(
     payload: UserCreate,
+    background_tasks: BackgroundTasks,
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     _assert_may_assign(claims, payload.role)
+    _assert_bank_required(payload.role, payload.bank_id)
     await _validate_bank_id(db, payload.bank_id)
 
     attributes: dict[str, Any] = {}
@@ -445,6 +497,23 @@ async def create_user(
             )
 
     user = await kc_get(f"/users/{user_id}")
+    await audit.record(
+        module=MODULE_USERS,
+        action="Création compte utilisateur",
+        entity_type="user",
+        entity_id=user_id,
+        entity_label=payload.email,
+        after=f"{payload.email} · {payload.role}",
+        details={"statut": payload.status, "organisation": payload.organization},
+    )
+    # After the account exists: notifying is a courtesy, never a reason to fail.
+    background_tasks.add_task(
+        notify_user_created,
+        email=payload.email,
+        role=payload.role,
+        author=audit.actor_name,
+        actor_email=audit.actor_email,
+    )
     return _map_user(user, payload.role)
 
 
@@ -454,14 +523,17 @@ async def update_user(
     payload: UserUpdate,
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     # Both directions: an admin may neither target an existing super admin
     # nor promote anyone (including themselves) to super_admin.
     await _assert_may_target(claims, user_id)
     _assert_may_assign(claims, payload.role)
+    _assert_bank_required(payload.role, payload.bank_id)
     await _validate_bank_id(db, payload.bank_id)
 
     user = await kc_get(f"/users/{user_id}")
+    previous = _audit_snapshot(user, await _user_role(user_id))
     # username is intentionally left untouched: the realm has editUsernameAllowed
     # disabled (admin API edits are rejected too), and login works by email
     # anyway (loginWithEmailAllowed) — see create_user for why username is no
@@ -495,6 +567,20 @@ async def update_user(
     await _set_business_role(user_id, payload.role)
 
     updated = await kc_get(f"/users/{user_id}")
+    before, after, fields = summarize_changes(
+        previous, _audit_snapshot(updated, payload.role), USER_FIELD_LABELS
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_USERS,
+            action=f"Modification compte {payload.email}",
+            entity_type="user",
+            entity_id=user_id,
+            entity_label=payload.email,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
     return _map_user(updated, payload.role)
 
 
@@ -503,14 +589,27 @@ async def set_user_enabled(
     user_id: str,
     payload: UserEnabledUpdate,
     claims: dict = Depends(require_back_office),
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     await _assert_may_target(claims, user_id)
     user = await kc_get(f"/users/{user_id}")
+    was = _status(user)
     user["enabled"] = payload.enabled
     await kc_put(f"/users/{user_id}", user)
 
     updated, role = await asyncio.gather(
         kc_get(f"/users/{user_id}"), _user_role(user_id)
+    )
+    await audit.record(
+        module=MODULE_USERS,
+        action=("Activation" if payload.enabled else "Désactivation")
+        + " compte utilisateur",
+        entity_type="user",
+        entity_id=user_id,
+        entity_label=updated.get("email") or user_id,
+        before=was,
+        after=_status(updated),
     )
     return _map_user(updated, role)
 
@@ -520,9 +619,12 @@ async def set_user_archived(
     user_id: str,
     payload: UserArchivedUpdate,
     claims: dict = Depends(require_back_office),
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     await _assert_may_target(claims, user_id)
     user = await kc_get(f"/users/{user_id}")
+    was = _status(user)
     attributes = user.get("attributes") or {}
     if payload.archived:
         # Archiving both hides the account (attribute) and blocks login (enabled).
@@ -538,6 +640,16 @@ async def set_user_archived(
     updated, role = await asyncio.gather(
         kc_get(f"/users/{user_id}"), _user_role(user_id)
     )
+    await audit.record(
+        module=MODULE_USERS,
+        action=("Archivage" if payload.archived else "Restauration")
+        + " compte utilisateur",
+        entity_type="user",
+        entity_id=user_id,
+        entity_label=updated.get("email") or user_id,
+        before=was,
+        after=_status(updated),
+    )
     return _map_user(updated, role)
 
 
@@ -545,6 +657,8 @@ async def set_user_archived(
 async def reset_user_password(
     user_id: str,
     claims: dict = Depends(require_back_office),
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     await _assert_may_target(claims, user_id)
     # 404 passthrough if the user doesn't exist.
@@ -556,5 +670,14 @@ async def reset_user_password(
     temp_password = await _set_temp_password(user_id)
     await _email_credentials(
         email, user.get("firstName") or "", temp_password, created=False
+    )
+    # The password itself is never recorded — only that a reset was sent.
+    await audit.record(
+        module=MODULE_USERS,
+        action="Réinitialisation du mot de passe",
+        entity_type="user",
+        entity_id=user_id,
+        entity_label=email,
+        after=f"Mot de passe temporaire envoyé à {email}",
     )
     return ActionEmailResult(email=email)

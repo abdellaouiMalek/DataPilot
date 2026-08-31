@@ -1,26 +1,19 @@
-import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app.core.cors import setup_cors
-
-# Sans ceci, les logs de niveau INFO (ex. "[Veille reglementaire] USING
-# GEMINI"/"USING LOCAL LLM" -- voir llm/generation.py) n'atteignent JAMAIS
-# le terminal : le logger racine Python vaut WARNING par defaut et
-# n'a aucun handler tant que rien ne le configure explicitement --
-# uvicorn configure ses PROPRES loggers ("uvicorn", "uvicorn.access") mais
-# jamais le logger racine ni les loggers applicatifs (``logging.getLogger
-# (__name__)`` un peu partout dans ce backend). basicConfig() ne fait rien
-# si le logger racine a deja un handler (peu importe donc que uvicorn se
-# configure avant ou apres cet import).
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+from app.core.keycloak_admin import close_client
 from app.routers import (
     admin,
     admin_banks,
+    admin_dashboard,
+    admin_framework,
+    admin_logs,
+    admin_profile,
+    admin_scoring,
+    admin_settings,
+    admin_topbar,
     admin_users,
     assessments,
     config,
@@ -32,10 +25,18 @@ from app.routers import (
     versions,
 )
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Release the shared Keycloak HTTP client and its connection pool.
+    await close_client()
+
+
 app = FastAPI(
     title="DataPilot API",
     description="Backend de l'application DataPilot",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 setup_cors(app)
@@ -48,6 +49,13 @@ app.include_router(reports.router)
 app.include_router(regulatory.router)
 app.include_router(admin_users.router)
 app.include_router(admin_banks.router)
+app.include_router(admin_scoring.router)
+app.include_router(admin_framework.router)
+app.include_router(admin_logs.router)
+app.include_router(admin_dashboard.router)
+app.include_router(admin_topbar.router)
+app.include_router(admin_profile.router)
+app.include_router(admin_settings.router)
 app.include_router(profile.router)
 app.include_router(notifications.router)
 app.include_router(versions.router)

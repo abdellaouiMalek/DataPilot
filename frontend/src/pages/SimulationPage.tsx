@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Navbar } from '../components/Navbar';
 import {
@@ -14,7 +14,8 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { TrendingUp, DollarSign, Clock, Shield, Play } from 'lucide-react';
+import { TrendingUp, DollarSign, Clock, Shield, Play, Loader2 } from 'lucide-react';
+import { getAssessment } from '../lib/assessment';
 
 interface Scores {
   gouvernance: number;
@@ -46,18 +47,35 @@ const DIMENSION_SHORT_LABELS: Record<keyof Scores, string> = {
 export function SimulationPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const assessmentId: number | undefined = location.state?.assessmentId;
+  const assessmentId = Number(useParams().assessmentId);
 
-  const initialScores: Scores = location.state?.scores || {
-    gouvernance: 2.5,
-    qualite: 2.8,
-    architecture: 2.3,
-    usage: 2.6,
-    culture: 2.7,
-    strategie: 2.4,
-  };
+  // Les scores de départ sont ceux de l'évaluation, jamais une valeur par
+  // défaut : le repli codé en dur qui existait ici s'affichait tel quel après
+  // un rafraîchissement, présentant des chiffres inventés comme ceux de la
+  // banque. Sans scores exploitables, la page le dit au lieu d'en montrer.
+  const [currentScores, setCurrentScores] = useState<Scores | null>(
+    (location.state?.scores as Scores | undefined) ?? null,
+  );
+  const [scoresError, setScoresError] = useState(false);
 
-  const [currentScores] = useState<Scores>(initialScores);
+  useEffect(() => {
+    if (currentScores || !Number.isFinite(assessmentId)) return;
+    let cancelled = false;
+    getAssessment(assessmentId)
+      .then((assessment) => {
+        if (cancelled) return;
+        const scores = Object.fromEntries(
+          assessment.dimension_scores.map((d) => [d.key, d.score]),
+        ) as Partial<Scores>;
+        const complete = (Object.keys(DIMENSION_LABELS) as Array<keyof Scores>)
+          .every((key) => typeof scores[key] === 'number');
+        if (complete) setCurrentScores(scores as Scores);
+        else setScoresError(true);
+      })
+      .catch(() => !cancelled && setScoresError(true));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentId]);
   const [targetScores, setTargetScores] = useState<Scores>({
     gouvernance: 4.0,
     qualite: 4.2,
@@ -67,6 +85,34 @@ export function SimulationPage() {
     strategie: 4.1,
   });
 
+  if (!currentScores) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex flex-col items-center justify-center gap-4 px-6 text-center py-32">
+          {scoresError ? (
+            <>
+              <p className="text-sm text-gray-600 max-w-md">
+                Les scores de cette évaluation n'ont pas pu être chargés. La simulation
+                a besoin d'un point de départ réel pour avoir un sens.
+              </p>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-5 py-2.5 text-xs font-bold tracking-wider uppercase bg-black text-white hover:bg-[#FFE600] hover:text-black transition-colors"
+              >
+                Retour au tableau de bord
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-3 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm font-medium">Chargement de vos scores…</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   const calculateImpact = () => {
     const currentAvg = Object.values(currentScores).reduce((a, b) => a + b, 0) / 6;
     const targetAvg = Object.values(targetScores).reduce((a, b) => a + b, 0) / 6;
@@ -347,7 +393,7 @@ export function SimulationPage() {
               <p className="text-xs sm:text-sm text-black/70">Consultez le plan d'action détaillé pour atteindre ces objectifs.</p>
             </div>
             <button
-              onClick={() => navigate('/recommendations', { state: { assessmentId } })}
+              onClick={() => navigate(`/recommendations/${assessmentId}`)}
               className="w-full sm:w-auto text-center px-6 py-3.5 bg-[#FFE600] hover:bg-[#f5dc00] text-black font-medium text-xs sm:text-sm transition-colors"
             >
               Voir les recommandations

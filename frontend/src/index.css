@@ -149,7 +149,11 @@
     transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
   }
 
-  input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+  /* `[data-search]` is excluded rather than overridden: this rule is !important
+     inside @layer base, so anything trying to beat it later would need both
+     !important and a higher specificity than its four :not()s. Opting out here
+     is one edit instead of a specificity war in every search field. */
+  input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([data-search]):focus,
   textarea:focus,
   select:focus {
     outline: none !important;
@@ -166,4 +170,74 @@
     box-shadow: none !important;
     border-color: transparent !important;
   }
+}
+
+/* ── Search field ───────────────────────────────────────────────────────────
+   A filled, borderless input with the icon floating over it and a soft halo
+   in place of an outline — so there is one surface, never a box inside a box.
+   The 2px border is transparent on purpose: it reserves the space the focus
+   state colours in, so nothing shifts when the field is activated. */
+
+.search-field {
+  display: flex;
+  line-height: 28px;
+  align-items: center;
+  position: relative;
+}
+
+.search-field .search-icon {
+  position: absolute;
+  left: 1rem;
+  color: #777;
+  width: 1rem;
+  height: 1rem;
+  pointer-events: none;
+}
+
+.search-field .search-input {
+  height: 40px;
+  line-height: 28px;
+  padding: 0 1rem 0 2.5rem;
+  width: 100%;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  background-color: #ffffff;
+  color: #0d0c22;
+  box-shadow: none;
+  transition: 0.3s ease;
+}
+
+.search-field .search-input::placeholder {
+  color: #777;
+}
+
+.search-field .search-input:focus {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+/* Sits inside the input's right padding, so it never overlaps the text. */
+.search-field .search-clear {
+  position: absolute;
+  right: 0.85rem;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #777;
+}
+/* ── Indicateur de chargement du back-office (components/AdminLoader) ────────
+   Déclaré ici plutôt qu'en style inline : les keyframes ne peuvent pas être
+   exprimées dans un objet `style`. */
+@keyframes dp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Révélation retardée : les pages répondent en quelques dizaines de ms, un
+   indicateur immédiat ne ferait que clignoter à chaque navigation. */
+@keyframes dp-loader-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

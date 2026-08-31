@@ -82,7 +82,9 @@ export function HistoriquePage() {
     const selected = compareIds
       .map((id) => assessments.find((a) => a.id === id)!)
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
-    navigate('/evolution', { state: { selected } });
+    // Les ids en query : une comparaison redevient un lien qu'on peut
+    // recharger ou coller, ce que l'état du routeur ne permettait pas.
+    navigate(`/evolution?ids=${selected.map((a) => a.id).join(',')}`, { state: { selected } });
   };
 
   if (loading) {
@@ -125,7 +127,7 @@ export function HistoriquePage() {
             Vous n'avez encore complété aucune évaluation. Démarrez-en une pour commencer à suivre votre progression.
           </p>
           <button
-            onClick={() => navigate('/questionnaire')}
+            onClick={() => navigate('/')}
             className="px-5 py-2.5 rounded-lg text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
           >
             Démarrer une évaluation
@@ -158,31 +160,12 @@ export function HistoriquePage() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8 space-y-5">
 
-        {/* ── Title + compare action ── */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Historique des évaluations</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{latest.bank}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {compareIds.length > 0 && (
-              <span className="text-xs text-gray-500 font-medium">
-                {compareIds.length} sélectionnée{compareIds.length > 1 ? 's' : ''}
-              </span>
-            )}
-            <button
-              onClick={handleCompare}
-              disabled={compareIds.length < 2}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                compareIds.length >= 2
-                  ? 'bg-gray-900 text-[#FFE600] hover:bg-black'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <GitCompare className="w-3.5 h-3.5" />
-              Comparer {compareIds.length >= 2 ? `(${compareIds.length})` : ''}
-            </button>
-          </div>
+        {/* ── Titre ──
+            Pas de bouton « Comparer » ici : le bandeau de sélection plus bas
+            porte déjà l'action, au moment où elle a un sens. */}
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">Historique des évaluations</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{latest.bank}</p>
         </div>
 
         {/* ── Summary card ── */}
@@ -332,6 +315,23 @@ export function HistoriquePage() {
                     <div className="min-w-0">
                       <p className="text-xs text-gray-700 font-medium truncate">{ev.department || '—'}</p>
                       <p className="text-[10px] text-gray-400 truncate">{ev.evaluator_role || '—'}</p>
+                      {/* Which published questionnaire this was answered on --
+                          a question the framework has since dropped is really
+                          gone from the live tables, so the version is the only
+                          thing that says what was actually asked.
+                          v0 is the reconstructed version standing in for
+                          submissions that predate versioning; anything falsy
+                          means no version at all. */}
+                      <p
+                        className="text-[9px] font-semibold text-gray-400 mt-0.5"
+                        title={
+                          ev.version_number
+                            ? `Questionnaire v${ev.version_number}`
+                            : "Soumise avant la mise en place des versions — questionnaire reconstitué"
+                        }
+                      >
+                        {ev.version_number ? `Questionnaire v${ev.version_number}` : 'Version antérieure'}
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -368,7 +368,7 @@ export function HistoriquePage() {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => navigate('/results', { state: { result: ev } })}
+                        onClick={() => navigate(`/results/${ev.id}`, { state: { result: ev } })}
                         className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:border-gray-400 hover:text-gray-900 transition-all"
                       >
                         <ExternalLink className="w-3 h-3" /> Rapport

@@ -11,17 +11,20 @@ from app.models.assessment import (
     AssessmentRecommendationPlan,
     DimensionScore,
 )
+from app.models.audit_log import AuditLog
 from app.models.dimension import Dimension
 from app.models.embedding import RegulatoryEmbedding
+from app.models.framework_version import FrameworkDraft, QuestionnaireVersion
 from app.models.lookups import Bank, Department, Role
 from app.models.maturity_level import MaturityLevel
-from app.models.notification import Notification
+from app.models.platform_settings import PlatformSettings
 from app.models.question import Question
 from app.models.recommendation import Recommendation
 from app.models.regulatory import RegulatoryCircular, RegulatoryImpact
 from app.models.subdimension import SubDimension
 
 __all__ = [
+    "AuditLog",
     "Dimension",
     "SubDimension",
     "Question",
@@ -30,6 +33,7 @@ __all__ = [
     "Department",
     "Role",
     "MaturityLevel",
+    "PlatformSettings",
     "Assessment",
     "Answer",
     "DimensionScore",
@@ -37,5 +41,6 @@ __all__ = [
     "RegulatoryCircular",
     "RegulatoryImpact",
     "RegulatoryEmbedding",
-    "Notification",
+    "FrameworkDraft",
+    "QuestionnaireVersion",
 ]

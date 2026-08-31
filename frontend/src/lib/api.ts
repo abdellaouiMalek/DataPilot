@@ -18,6 +18,43 @@ async function getFreshToken(): Promise<string | undefined> {
   return keycloak.token;
 }
 
+/** Une entrée du `detail` d'une 422 FastAPI. */
+interface ValidationDetail {
+  loc?: unknown[];
+  msg?: string;
+}
+
+/**
+ * Message lisible à partir du corps d'erreur de l'API.
+ *
+ * FastAPI répond aux erreurs applicatives avec `detail` en chaîne, mais aux
+ * **422 de validation avec un tableau** d'objets `{loc, msg}`. Ce tableau était
+ * passé tel quel à `Error()`, qui le rend « [object Object] » : le formulaire
+ * disait « Échec de la création » sans jamais nommer le champ fautif, alors que
+ * la réponse le contenait. On aplatit donc le tableau en « champ : message ».
+ */
+function errorDetail(data: unknown, fallback: string): string {
+  const detail = (data as { detail?: unknown } | null)?.detail;
+
+  if (typeof detail === "string" && detail) return detail;
+
+  if (Array.isArray(detail) && detail.length) {
+    return (detail as ValidationDetail[])
+      .map((entry) => {
+        // `loc` vaut ["body", "email"] : le premier segment dit d'où vient la
+        // valeur, pas quel champ c'est, et n'intéresse pas la personne.
+        const field = Array.isArray(entry.loc)
+          ? entry.loc.filter((part) => part !== "body" && part !== "query").join(".")
+          : "";
+        const message = entry.msg ?? "valeur invalide";
+        return field ? `${field} : ${message}` : message;
+      })
+      .join(" · ");
+  }
+
+  return fallback;
+}
+
 export class ApiError extends Error {
   status: number;
   body?: unknown;
@@ -66,9 +103,7 @@ export async function apiFetch<T = unknown>(
   const data = isJson && text ? JSON.parse(text) : text;
 
   if (!res.ok) {
-    const detail =
-      (isJson && (data as { detail?: string })?.detail) || res.statusText;
-    throw new ApiError(res.status, detail, data);
+    throw new ApiError(res.status, errorDetail(isJson ? data : null, res.statusText), data);
   }
 
   return data as T;
@@ -85,8 +120,12 @@ async function fetchBlob(path: string): Promise<Blob> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
+    // Même traitement que plus haut : une 422 sur un export renvoie aussi un
+    // tableau de champs, pas une phrase.
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, text || res.statusText);
+    let parsed: unknown = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+    throw new ApiError(res.status, errorDetail(parsed, text || res.statusText));
   }
   return res.blob();
 }

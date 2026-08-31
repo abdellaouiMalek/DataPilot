@@ -12,7 +12,10 @@ from app.models import Bank
 from app.schemas.profile import ProfileRead, ProfileUpdate
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
-BUSINESS_ROLES = ("admin", "consultant", "repondant", "validateur")
+# Priority order, most privileged first -- an account may hold several.
+# "super_admin" being absent here is what made a super admin's own profile
+# report no role at all.
+BUSINESS_ROLES = ("super_admin", "admin", "consultant", "repondant", "validateur")
 
 
 def _first_attribute(user: dict[str, Any], name: str) -> str | None:

@@ -1,8 +1,9 @@
-import { Outlet } from 'react-router-dom';
-import { LayoutDashboard, Users, Layers, BarChart3, GitBranch } from 'lucide-react';
+import { Outlet, useNavigation } from 'react-router-dom';
+import { LayoutDashboard, Settings, Users } from 'lucide-react';
 import { AdminSidebar } from '../superAdmin/AdminSidebar';
 import type { NavItem } from '../superAdmin/AdminSidebar';
 import { AdminTopbar } from '../superAdmin/AdminTopbar';
+import { AdminLoader } from '../../components/AdminLoader';
 
 /**
  * Espace admin : même châssis que le back-office super admin, mais réduit
@@ -14,14 +15,16 @@ import { AdminTopbar } from '../superAdmin/AdminTopbar';
  * juste préfixée `/admin`.
  */
 const navItems: NavItem[] = [
-  { path: "/admin",            label: "Tableau de bord",          icon: LayoutDashboard },
-  { path: "/admin/users",      label: "Gestion des utilisateurs", icon: Users },
-  { path: "/admin/dimensions", label: "Gestion du framework",     icon: Layers },
-  { path: "/admin/scoring",    label: "Référentiel de scoring",   icon: BarChart3 },
-  { path: "/admin/versions",   label: "Versions du questionnaire",icon: GitBranch },
+  { path: "/admin",          label: "Tableau de bord",          icon: LayoutDashboard },
+  { path: "/admin/users",    label: "Gestion des utilisateurs", icon: Users },
+  { path: "/admin/settings", label: "Paramètres",               icon: Settings },
 ];
 
 export function AdminLayout() {
+  // Le routeur charge la page à la demande ; pendant ce temps le châssis
+  // reste peint et seule la zone de contenu attend.
+  const loadingRoute = useNavigation().state === 'loading';
+
   return (
     <div style={{
       display: "flex",
@@ -38,9 +41,11 @@ export function AdminLayout() {
         footerLabel="Admin"
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        <AdminTopbar />
+        {/* `scope` recadre la barre sur cet espace : ses liens de compte
+            pointaient vers /super-admin/settings, où ce rôle est refusé. */}
+        <AdminTopbar scope="admin" />
         <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-          <Outlet />
+          {loadingRoute ? <AdminLoader /> : <Outlet />}
         </main>
       </div>
     </div>

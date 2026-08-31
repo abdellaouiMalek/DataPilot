@@ -1,28 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   Search, Plus, Edit2, Trash2, UserCheck, UserX,
-  Key, ChevronDown, X, Download, Upload,
-  Users, UserCog, ShieldCheck, Clock, MoreHorizontal,
-  TrendingUp, TrendingDown, Loader2,
+  Key, ChevronDown, X, Download,
+  Users, ShieldCheck, Clock, MoreHorizontal,
+  TrendingUp, TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listUsers, countUsers, createUser, updateUser, setUserEnabled, setUserArchived, resetUserPassword,
+  ROLE_LABELS,
 } from "@/lib/adminUsers";
+import { AdminLoader } from "@/components/AdminLoader";
+import { useSeededSearch } from "@/hooks/useSeededSearch";
 import type { AdminUser, BusinessRole, UserPayload } from "@/lib/adminUsers";
 import { ApiError } from "@/lib/api";
 import { getBanks } from "@/lib/config";
 import { isSuperAdmin } from "@/lib/keycloak";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-const ROLE_LABELS: Record<BusinessRole, string> = {
-  super_admin: "Super Admin EY",
-  admin:       "Admin",
-  consultant:  "Consultant EY",
-  repondant:   "Répondant Banque",
-  validateur:  "Validateur Banque",
-};
 
 /**
  * Rôles proposés dans le formulaire de création/édition.
@@ -263,9 +258,21 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
     };
   }, []);
 
+  // Un super admin n'est pas limité à une banque (get_bank_scope lui renvoie
+  // None) ; pour tous les autres, l'absence de banque vaut 403 sur le
+  // questionnaire et les résultats — le compte serait inutilisable.
+  const roleKey = LABEL_TO_ROLE[formData.role] ?? "consultant";
+  const bankRequired = roleKey !== "super_admin";
+
   const handleSubmit = async () => {
     if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
       toast.error("Champs manquants", { description: "Prénom, nom et email sont obligatoires." });
+      return;
+    }
+    if (bankRequired && !formData.bankId) {
+      toast.error("Banque obligatoire", {
+        description: "Sans banque associée, l'utilisateur n'aura accès ni au questionnaire ni à ses résultats.",
+      });
       return;
     }
     const payload: UserPayload = {
@@ -351,20 +358,27 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
 
           <div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>
-              Banque associée
+              Banque associée {bankRequired && "*"}
             </label>
             <select
               value={formData.bankId}
               onChange={e => setFormData(p => ({ ...p, bankId: e.target.value }))}
-              style={{ ...inp, appearance: "none", backgroundColor: "#fff", cursor: "pointer" }}
+              style={{
+                ...inp, appearance: "none", backgroundColor: "#fff", cursor: "pointer",
+                borderColor: bankRequired && !formData.bankId ? "#E0A800" : "rgba(0,0,0,0.13)",
+              }}
             >
-              <option value="">Aucune (ex. staff EY)</option>
+              <option value="">
+                {bankRequired ? "Sélectionner une banque…" : "Aucune (accès non restreint)"}
+              </option>
               {banks.map(b => (
                 <option key={b.id} value={String(b.id)}>{b.name}</option>
               ))}
             </select>
             <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 4 }}>
-              Détermine les évaluations que cet utilisateur peut consulter.
+              {bankRequired
+                ? "Détermine les évaluations que cet utilisateur peut consulter. Sans banque, le compte n'a accès ni au questionnaire ni aux résultats."
+                : "Un super administrateur accède aux données de toutes les banques."}
             </div>
           </div>
 
@@ -407,7 +421,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function UserManagement() {
-  const [search,         setSearch]         = useState("");
+  const [search,         setSearch]         = useSeededSearch();
   const [roleFilter,     setRoleFilter]     = useState("Tous les rôles");
   const [statusFilter,   setStatusFilter]   = useState("Tous les statuts");
   const [showModal,      setShowModal]      = useState(false);
@@ -689,20 +703,16 @@ export function UserManagement() {
         boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
         {/* Search */}
-        <div style={{
-          flex: 1, display: "flex", alignItems: "center", gap: 9,
-          backgroundColor: "#F7F7F7",
-          border: "1.5px solid rgba(0,0,0,0.08)",
-          borderRadius: 6, padding: "8px 13px",
-        }}>
-          <Search size={14} style={{ color: "#9B9B9B", flexShrink: 0 }} />
+        <div className="search-field" style={{ flex: 1 }}>
+          <Search className="search-icon" size={16} />
           <input
+            className="search-input"
             value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Rechercher un utilisateur, email ou organisation..."
             name="datapilot-user-search"
             autoComplete="off"
-            data-plain-focus=""
-            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#1A1A1A", width: "100%" }}
+            data-search=""
+            style={{ fontSize: 13 }}
           />
         </div>
 
@@ -942,10 +952,7 @@ export function UserManagement() {
 
         {/* Loading state */}
         {loading && (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <Loader2 size={26} className="animate-spin" style={{ color: "#9B9B9B", marginBottom: 10 }} />
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#9B9B9B" }}>Chargement des utilisateurs…</div>
-          </div>
+          <AdminLoader variant="inline" label="Chargement des utilisateurs…" />
         )}
 
         {/* Error state */}

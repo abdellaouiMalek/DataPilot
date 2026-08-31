@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import {
@@ -8,8 +8,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
+import { FlowHeader } from '../components/FlowHeader';
 import { getMaturityLevels } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
+import { getAssessment } from '../lib/assessment';
 import type { AssessmentResult } from '../lib/assessment';
 import { getNarrative } from '../lib/recommendations';
 import { downloadEvaluationReport } from '../lib/reports';
@@ -18,22 +20,45 @@ import { tint } from '../lib/utils';
 export function ResultsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { result } = (location.state || {}) as { result?: AssessmentResult };
+  const assessmentId = Number(useParams().assessmentId);
+
+  // L'évaluation qui vient d'être soumise est passée dans l'état du routeur :
+  // elle est déjà en mémoire, autant l'afficher sans attendre un aller-retour
+  // réseau. Ce n'est qu'une optimisation du premier rendu -- l'id de l'URL
+  // reste la source, et un rechargement (qui vide cet état) recharge la page
+  // depuis l'API au lieu de tomber sur un écran vide comme avant.
+  const submitted = (location.state || {}) as { result?: AssessmentResult };
+  const [result, setResult] = useState<AssessmentResult | null>(
+    submitted.result?.id === assessmentId ? submitted.result : null,
+  );
 
   const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    getMaturityLevels()
-      .then((data) => !cancelled && setMaturityLevels(data))
+    const assessment = result
+      ? Promise.resolve(result)
+      : getAssessment(assessmentId).catch((error) => {
+        if (!cancelled) setNotFound(true);
+        throw error;
+      });
+
+    Promise.all([getMaturityLevels(), assessment])
+      .then(([levels, data]) => {
+        if (cancelled) return;
+        setMaturityLevels(levels);
+        setResult(data);
+      })
       .catch(() => !cancelled && setLoadError(true))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentId]);
 
   // Executive synthesis — streamed reveal of the real LLM-authored narrative
   // for this assessment (same endpoint RecommendationsPage uses).
@@ -118,20 +143,23 @@ export function ResultsPage() {
     dimensionLabels[d.key] = d.name;
   }
 
-  // Opened without a submission in history state — nothing real to show.
-  if (!result || Object.keys(displayScores).length === 0) {
+  // Id inconnu, ou évaluation d'une autre banque (l'API répond 404 dans les
+  // deux cas). Retour au tableau de bord plutôt qu'à l'accueil : c'est de là
+  // que part le parcours.
+  if (notFound || !result || Object.keys(displayScores).length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
         <Navbar />
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="text-sm font-medium text-gray-600 max-w-md">
-            Aucun résultat à afficher. Complétez une évaluation pour générer votre profil de maturité.
+            Cette évaluation est introuvable. Elle a peut-être été supprimée, ou
+            appartient à une autre banque.
           </p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
             className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
           >
-            Démarrer une évaluation
+            Retour au tableau de bord
           </button>
         </div>
       </div>
@@ -167,6 +195,8 @@ export function ResultsPage() {
       <Navbar />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 space-y-6 sm:space-y-8">
+
+        <FlowHeader current="Résultats" />
 
         {/* ── PAGE TITLE + ACTIONS ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -504,14 +534,14 @@ export function ResultsPage() {
                 title: "Plan d'action & Recommandations",
                 desc: 'Actions priorisées et personnalisées pour progresser sur chaque axe de maturité.',
                 label: 'Consulter le plan',
-                action: () => navigate('/recommendations', { state: { assessmentId: result.id, scores: displayScores, maturity } }),
+                action: () => navigate(`/recommendations/${result.id}`),
               },
               {
                 icon: Settings2,
                 title: "Simulateur d'impact",
                 desc: 'Modélisez les gains potentiels en ajustant vos investissements stratégiques.',
                 label: 'Lancer la simulation',
-                action: () => navigate('/simulation', { state: { assessmentId: result.id, scores: displayScores } }),
+                action: () => navigate(`/simulation/${result.id}`, { state: { scores: displayScores } }),
               },
               {
                 icon: History,
@@ -522,9 +552,9 @@ export function ResultsPage() {
               },
               {
                 icon: BarChart3,
-                title: 'Dashboard Management',
-                desc: "Accédez à la vue consolidée et comparez-vous au benchmark du secteur.",
-                label: 'Accéder au Dashboard',
+                title: 'Tableau de bord',
+                desc: "Vue consolidée des évaluations de votre banque : profil par dimension et progression dans le temps.",
+                label: 'Accéder au tableau de bord',
                 action: () => navigate('/dashboard'),
               },
             ].map((card) => (

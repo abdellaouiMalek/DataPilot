@@ -1,82 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus, Edit2, ChevronDown, ChevronRight, GripVertical, X,
   Eye, Trash2, Loader2, Search, Copy, ListTree, Table2, Check, ArrowLeft, ArrowRight,
+  UploadCloud, FileEdit,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError } from "../../lib/api";
 import {
-  adminApi,
-  type Dimension, type SubDimension, type Question, type Status, type DeleteImpact,
+  type Dimension, type SubDimension, type Question, type Status,
   type LevelResponse, type ChoiceOption,
 } from "../../lib/admin";
+import { AdminLoader } from "../../components/AdminLoader";
+import { useSeededSearch } from "../../hooks/useSeededSearch";
+import { createStaging, StagingProvider, useStaging } from "./frameworkStaging";
+import {
+  discardDraft, fromApiTree, getFrameworkState, publishFramework, saveDraft, toApiTree,
+  type ChangelogEntry,
+} from "../../lib/adminFramework";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Une erreur est survenue";
-}
-
-// ── Force-delete confirmation ────────────────────────────────────────────────
-// The backend RESTRICTs hard-deletes of anything referenced by real assessment
-// answers (see app/models/assessment.py). A plain delete surfaces that as a 409;
-// this dialog shows the admin what a force-delete would actually wipe out, so
-// they can choose to proceed with full knowledge it's destroying history.
-
-interface PendingForceDelete {
-  label: string;
-  impact: DeleteImpact;
-  onConfirm: () => Promise<void>;
-}
-
-function ForceDeleteDialog({ pending, onClose }: { pending: PendingForceDelete; onClose: () => void }) {
-  const [deleting, setDeleting] = useState(false);
-
-  async function confirm() {
-    setDeleting(true);
-    try {
-      await pending.onConfirm();
-      onClose();
-    } catch (e) {
-      toast.error(errMsg(e));
-      setDeleting(false);
-    }
-  }
-
-  const { impact } = pending;
-
-  return (
-    <div style={overlay} onClick={onClose}>
-      <div style={{ ...panel, width: 460 }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#CC0000" }}>Suppression définitive</div>
-          <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>{pending.label}</div>
-        </div>
-        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ padding: "10px 14px", backgroundColor: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 7, fontSize: 12, color: "#CC0000", lineHeight: 1.5 }}>
-            Cet élément est référencé par des évaluations existantes. Le supprimer définitivement effacera aussi :
-          </div>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#1A1A1A", display: "flex", flexDirection: "column", gap: 4 }}>
-            <li><strong>{impact.answerCount}</strong> réponse{impact.answerCount !== 1 ? "s" : ""} enregistrée{impact.answerCount !== 1 ? "s" : ""}, sur <strong>{impact.assessmentCount}</strong> évaluation{impact.assessmentCount !== 1 ? "s" : ""}</li>
-            {impact.recommendationCount > 0 && (
-              <li><strong>{impact.recommendationCount}</strong> règle{impact.recommendationCount !== 1 ? "s" : ""} de recommandation associée{impact.recommendationCount !== 1 ? "s" : ""}</li>
-            )}
-          </ul>
-          <div style={{ fontSize: 12, color: "#9B9B9B" }}>
-            Cette action est irréversible : les évaluations concernées perdront ces données de façon permanente et leurs scores ne seront plus cohérents.
-          </div>
-        </div>
-        <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button style={btnGhost} onClick={onClose} disabled={deleting}>Annuler</button>
-          <button
-            onClick={confirm}
-            disabled={deleting}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#CC0000", color: "#fff", cursor: deleting ? "wait" : "pointer", opacity: deleting ? 0.7 : 1 }}
-          >
-            {deleting && <Loader2 size={14} className="animate-spin" />}Supprimer définitivement
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 const RESPONSE_TYPES = ["Oui/Non", "Échelle de maturité", "Choix unique", "Choix multiple", "Texte libre"];
@@ -141,7 +83,9 @@ function ModalShell({ title, subtitle, onClose, children, footer, headerExtra, w
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
           </div>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
+        {/* minHeight: 0 lets this shrink inside the panel's maxHeight; without
+            it the body overflows and clips instead of scrolling. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
         <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>{footer}</div>
       </div>
     </div>
@@ -153,6 +97,7 @@ function ModalShell({ title, subtitle, onClose, children, footer, headerExtra, w
 function DimensionModal({ initial, onClose, onSaved }: {
   initial?: Dimension; onClose: () => void; onSaved: () => Promise<void>;
 }) {
+  const staging = useStaging();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [weight, setWeight] = useState(initial?.weight ?? 10);
@@ -164,8 +109,8 @@ function DimensionModal({ initial, onClose, onSaved }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      if (initial) await adminApi.updateDimension(initial.id, { name, description, weight, color, status });
-      else await adminApi.createDimension({ name, description, weight, color, status });
+      if (initial) await staging.updateDimension(initial.id, { name, description, weight, color, status });
+      else await staging.createDimension({ name, description, weight, color, status });
       toast.success(initial ? "Dimension mise à jour" : "Dimension créée");
       await onSaved();
       onClose();
@@ -204,6 +149,7 @@ function DimensionModal({ initial, onClose, onSaved }: {
 function SubDimensionModal({ dim, initial, onClose, onSaved }: {
   dim: Dimension; initial?: SubDimension; onClose: () => void; onSaved: () => Promise<void>;
 }) {
+  const staging = useStaging();
   const [name, setName] = useState(initial?.name ?? "");
   const [status, setStatus] = useState<Status>(initial?.status ?? "Active");
   const [saving, setSaving] = useState(false);
@@ -212,8 +158,8 @@ function SubDimensionModal({ dim, initial, onClose, onSaved }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      if (initial) await adminApi.updateSubDimension(initial.id, { name, status });
-      else await adminApi.createSubDimension(dim.id, { name, status });
+      if (initial) await staging.updateSubDimension(initial.id, { name, status });
+      else await staging.createSubDimension(dim.id, { name, status });
       toast.success(initial ? "Sous-dimension mise à jour" : "Sous-dimension créée");
       await onSaved();
       onClose();
@@ -370,6 +316,7 @@ function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onC
     setSubDimensionId(dimensions.find(d => d.id === id)?.subDimensions[0]?.id ?? "");
   }
 
+  const staging = useStaging();
   const [label, setLabel] = useState(initial?.label ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState(initial?.type ?? "Échelle de maturité");
@@ -397,8 +344,8 @@ function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onC
         levelResponses: type === "Échelle de maturité" ? levelResponses : null,
         choiceOptions: isChoiceType ? choiceOptions : null,
       };
-      if (initial) await adminApi.updateQuestion(initial.id, { ...input, subDimensionId });
-      else await adminApi.createQuestion(subDimensionId, input);
+      if (initial) await staging.updateQuestion(initial.id, { ...input, subDimensionId });
+      else await staging.createQuestion(subDimensionId, input);
       toast.success(initial ? "Question mise à jour" : "Question créée");
       await onSaved();
       onClose();
@@ -555,13 +502,13 @@ function StepBar({ steps, current }: { steps: string[]; current: number }) {
 
 // ── Wizard question step (add one or more questions to a known sub-dimension) ─
 // Shared final step of both "New dimension" and "New sub-dimension" wizards.
-// Each "+ Autre question" / "Terminer" click saves for real via adminApi — the
-// wizard never batches unsaved state, so closing partway through still keeps
-// whatever was already created.
+// Each "+ Autre question" / "Terminer" click stages the question locally; it
+// reaches the database only when the framework is published.
 
 function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
   subDimensionId: string; breadcrumb: string; onBack: () => void; onFinish: () => void;
 }) {
+  const staging = useStaging();
   const blank = () => ({ label: "", description: "", type: "Échelle de maturité", weight: 5, required: true, status: "Active" as Status });
   const [form, setForm] = useState(blank());
   const [levelResponses, setLevelResponses] = useState<LevelResponse[]>(DEFAULT_LEVEL_RESPONSES);
@@ -574,7 +521,7 @@ function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
     if (!form.label.trim()) { if (!andContinue) onFinish(); return; }
     setSaving(true);
     try {
-      await adminApi.createQuestion(subDimensionId, {
+      await staging.createQuestion(subDimensionId, {
         label: form.label, description: form.description, type: form.type, weight: form.weight,
         isRequired: form.required, status: form.status,
         levelResponses: form.type === "Échelle de maturité" ? levelResponses : null,
@@ -645,6 +592,7 @@ function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
 // ── New dimension wizard (Dimension → Sous-dimensions → Questions) ───────────
 
 function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+  const staging = useStaging();
   const [step, setStep] = useState(0);
   const [dimForm, setDimForm] = useState({ name: "", description: "", weight: 10, color: "#1A1A1A" });
   const [subNames, setSubNames] = useState([""]);
@@ -657,7 +605,7 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
     if (!dimForm.name.trim()) return;
     setCreating(true);
     try {
-      const res = await adminApi.createDimension(dimForm);
+      const res = await staging.createDimension(dimForm);
       setCreatedDimId(String(res.id));
       setStep(1);
     } catch (e) { toast.error(errMsg(e)); } finally { setCreating(false); }
@@ -670,7 +618,7 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
     try {
       let firstId: string | null = null;
       for (const name of names) {
-        const res = await adminApi.createSubDimension(createdDimId, { name });
+        const res = await staging.createSubDimension(createdDimId, { name });
         if (firstId === null) { firstId = String(res.id); setFirstSubName(name); }
       }
       setCreatedSubId(firstId);
@@ -765,6 +713,7 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
 // ── New sub-dimension wizard (Sous-dimension → Questions) ────────────────────
 
 function NewSubDimensionWizard({ dim, onClose, onSaved }: { dim: Dimension; onClose: () => void; onSaved: () => Promise<void> }) {
+  const staging = useStaging();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -774,7 +723,7 @@ function NewSubDimensionWizard({ dim, onClose, onSaved }: { dim: Dimension; onCl
     if (!name.trim()) return;
     setCreating(true);
     try {
-      const res = await adminApi.createSubDimension(dim.id, { name });
+      const res = await staging.createSubDimension(dim.id, { name });
       setCreatedSubId(String(res.id));
       setStep(1);
     } catch (e) { toast.error(errMsg(e)); } finally { setCreating(false); }
@@ -827,34 +776,18 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
   dim: Dimension; sub: SubDimension; onChanged: () => Promise<void>;
   onEdit: (q: Question) => void; onAdd: () => void; readOnly?: boolean;
 }) {
-  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
+  const staging = useStaging();
 
   async function remove(q: Question) {
-    if (!window.confirm("Supprimer cette question ?")) return;
+    if (!window.confirm("Retirer cette question du questionnaire ?")) return;
     try {
-      await adminApi.deleteQuestion(q.id);
-      toast.success("Question supprimée");
+      await staging.deleteQuestion(q.id);
+      toast.success("Question retirée", { description: "Appliqué à la publication." });
       await onChanged();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const impact = await adminApi.getQuestionDeleteImpact(q.id);
-        const short = q.label.length > 60 ? `${q.label.slice(0, 60)}…` : q.label;
-        setForceDelete({
-          label: `Question « ${short} »`,
-          impact,
-          onConfirm: async () => {
-            await adminApi.deleteQuestion(q.id, true);
-            toast.success("Question supprimée définitivement");
-            await onChanged();
-          },
-        });
-        return;
-      }
-      toast.error(errMsg(e));
-    }
+    } catch (e) { toast.error(errMsg(e)); }
   }
   async function toggle(q: Question) {
-    try { await adminApi.updateQuestion(q.id, { status: q.status === "Active" ? "Inactive" : "Active" }); await onChanged(); }
+    try { await staging.updateQuestion(q.id, { status: q.status === "Active" ? "Inactive" : "Active" }); await onChanged(); }
     catch (e) { toast.error(errMsg(e)); }
   }
 
@@ -894,12 +827,9 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
       {sub.questions.length === 0 && (
         <div style={{ fontSize: 12, color: "#9B9B9B", padding: "6px 2px" }}>Aucune question dans cette sous-dimension.</div>
       )}
-      {!readOnly && (
-        <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
-          <Plus size={13} /> Ajouter une question
-        </button>
-      )}
-      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
+      <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
+        <Plus size={13} /> Ajouter une question
+      </button>
     </div>
   );
 }
@@ -1004,13 +934,12 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
   onChanged: () => Promise<void>;
   readOnly?: boolean;
 }) {
-  const [search, setSearch] = useState("");
+  const staging = useStaging();
+  const [search, setSearch] = useSeededSearch();
   const [dimFilter, setDimFilter] = useState("Toutes les dimensions");
   const [typeFilter, setTypeFilter] = useState("Tous les types");
   const [statusFilter, setStatusFilter] = useState("Tous les statuts");
   const [duplicating, setDuplicating] = useState<string | null>(null);
-  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
-  const [previewQ, setPreviewQ] = useState<FlatQuestion | null>(null);
 
   const dimNames = ["Toutes les dimensions", ...dimensions.map(d => d.name)];
   const typeNames = ["Tous les types", ...RESPONSE_TYPES];
@@ -1029,7 +958,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
   async function duplicate(q: FlatQuestion) {
     setDuplicating(q.id);
     try {
-      await adminApi.createQuestion(q.subDimensionId, {
+      await staging.createQuestion(q.subDimensionId, {
         label: `${q.label} (copie)`,
         description: q.description,
         type: q.type,
@@ -1049,37 +978,24 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
   }
 
   async function remove(q: FlatQuestion) {
-    if (!window.confirm("Supprimer cette question ?")) return;
+    if (!window.confirm("Retirer cette question du questionnaire ?")) return;
     try {
-      await adminApi.deleteQuestion(q.id);
-      toast.success("Question supprimée");
+      await staging.deleteQuestion(q.id);
+      toast.success("Question retirée", { description: "Appliqué à la publication." });
       await onChanged();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const impact = await adminApi.getQuestionDeleteImpact(q.id);
-        const short = q.label.length > 60 ? `${q.label.slice(0, 60)}…` : q.label;
-        setForceDelete({
-          label: `Question « ${short} »`,
-          impact,
-          onConfirm: async () => {
-            await adminApi.deleteQuestion(q.id, true);
-            toast.success("Question supprimée définitivement");
-            await onChanged();
-          },
-        });
-        return;
-      }
-      toast.error(errMsg(e));
-    }
+    } catch (e) { toast.error(errMsg(e)); }
   }
 
   return (
     <>
       {/* Filters */}
       <div style={{ backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, padding: "12px 16px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        <div style={{ flex: "1 1 220px", display: "flex", alignItems: "center", gap: 9, backgroundColor: "#F7F7F7", border: "1.5px solid rgba(0,0,0,0.08)", borderRadius: 6, padding: "8px 13px" }}>
-          <Search size={14} style={{ color: "#9B9B9B", flexShrink: 0 }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher par libellé, ID…" style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, width: "100%", color: "#1A1A1A" }} />
+        <div className="search-field" style={{ flex: "1 1 220px" }}>
+          <Search className="search-icon" size={16} />
+          <input className="search-input" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher par libellé, ID…"
+            name="datapilot-dimension-search" autoComplete="off" data-search=""
+            style={{ fontSize: 13 }} />
         </div>
         {[
           { options: dimNames, value: dimFilter, setter: setDimFilter },
@@ -1165,9 +1081,160 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
           </tbody>
         </table>
       </div>
-      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
-      {previewQ && <QuestionPreviewModal q={previewQ} onClose={() => setPreviewQ(null)} />}
     </>
+  );
+}
+
+// Client-side diff for the publish preview. Deliberately coarse compared with
+// the server's changelog (which is what gets stored): it only needs to tell the
+// admin what they are about to apply.
+function diffTrees(before: Dimension[], after: Dimension[]): ChangelogEntry[] {
+  const entries: ChangelogEntry[] = [];
+
+  const oldDims = new Map(before.map(d => [d.id, d]));
+  const newDims = new Map(after.map(d => [d.id, d]));
+  const oldSubs = new Map(before.flatMap(d => d.subDimensions.map(sub => [sub.id, { sub, d }] as const)));
+  const newSubs = new Map(after.flatMap(d => d.subDimensions.map(sub => [sub.id, { sub, d }] as const)));
+  const oldQs = new Map(before.flatMap(d => d.subDimensions.flatMap(sub => sub.questions.map(q => [q.id, { q, sub, d }] as const))));
+  const newQs = new Map(after.flatMap(d => d.subDimensions.flatMap(sub => sub.questions.map(q => [q.id, { q, sub, d }] as const))));
+
+  const short = (text: string) => (text.length > 60 ? `${text.slice(0, 59)}…` : text);
+
+  for (const [id, d] of newDims) {
+    const old = oldDims.get(id);
+    if (!old) { entries.push({ kind: "dimension.added", label: d.name, details: [] }); continue; }
+    const details: string[] = [];
+    if (old.name !== d.name) details.push(`nom : ${old.name} → ${d.name}`);
+    if (old.description !== d.description) details.push("description modifiée");
+    if (old.weight !== d.weight) details.push(`poids : ${old.weight} → ${d.weight}`);
+    if (old.color !== d.color) details.push("couleur modifiée");
+    if (old.status !== d.status) details.push(`statut : ${old.status} → ${d.status}`);
+    if (details.length) entries.push({ kind: "dimension.updated", label: d.name, details });
+  }
+  for (const [id, d] of oldDims) {
+    if (!newDims.has(id)) entries.push({ kind: "dimension.removed", label: d.name, details: [] });
+  }
+
+  for (const [id, { sub, d }] of newSubs) {
+    const old = oldSubs.get(id);
+    if (!old) { entries.push({ kind: "subdimension.added", label: `${d.name} › ${sub.name}`, details: [] }); continue; }
+    const details: string[] = [];
+    if (old.sub.name !== sub.name) details.push(`nom : ${old.sub.name} → ${sub.name}`);
+    if (old.sub.status !== sub.status) details.push(`statut : ${old.sub.status} → ${sub.status}`);
+    if (old.d.id !== d.id) details.push(`déplacée vers « ${d.name} »`);
+    if (details.length) entries.push({ kind: "subdimension.updated", label: `${d.name} › ${sub.name}`, details });
+  }
+  for (const [id, { sub, d }] of oldSubs) {
+    if (!newSubs.has(id)) entries.push({ kind: "subdimension.removed", label: `${d.name} › ${sub.name}`, details: [] });
+  }
+
+  for (const [id, { q, sub, d }] of newQs) {
+    const old = oldQs.get(id);
+    if (!old) { entries.push({ kind: "question.added", label: short(q.label), details: [`${d.name} › ${sub.name}`] }); continue; }
+    const details: string[] = [];
+    if (old.q.label !== q.label) details.push("libellé modifié");
+    if (old.q.description !== q.description) details.push("aide à la réponse modifiée");
+    if (old.q.type !== q.type) details.push(`type : ${old.q.type} → ${q.type}`);
+    if (old.q.weight !== q.weight) details.push(`poids : ${old.q.weight} → ${q.weight}`);
+    if (old.q.isRequired !== q.isRequired) details.push(`obligatoire : ${old.q.isRequired ? "oui" : "non"} → ${q.isRequired ? "oui" : "non"}`);
+    if (old.q.status !== q.status) details.push(`statut : ${old.q.status} → ${q.status}`);
+    if (JSON.stringify(old.q.levelResponses) !== JSON.stringify(q.levelResponses)) details.push("réponses par niveau modifiées");
+    if (JSON.stringify(old.q.choiceOptions) !== JSON.stringify(q.choiceOptions)) details.push("options modifiées");
+    if (old.sub.id !== sub.id) details.push(`déplacée vers « ${sub.name} »`);
+    if (details.length) entries.push({ kind: "question.updated", label: short(q.label), details });
+  }
+  for (const [id, { q, sub, d }] of oldQs) {
+    if (!newQs.has(id)) entries.push({ kind: "question.removed", label: short(q.label), details: [`${d.name} › ${sub.name}`] });
+  }
+
+  return entries;
+}
+
+// ── Publish dialog ──────────────────────────────────────────────────────────
+// The changelog shown here is the client's own preview of what changed; the
+// authoritative one is recomputed server-side from the applied tree, so a
+// concurrent edit can't produce a version whose notes don't match its content.
+
+function PublishDialog({ pending, publishing, onClose, onConfirm }: {
+  pending: ChangelogEntry[];
+  publishing: boolean;
+  onClose: () => void;
+  onConfirm: (label: string, note: string) => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [note, setNote] = useState("");
+
+  return (
+    <div style={overlay} onClick={publishing ? undefined : onClose}>
+      <div style={{ ...panel, width: 600 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>Publier le questionnaire</div>
+          <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>
+            {pending.length} modification{pending.length > 1 ? "s" : ""} seront appliquées et figées dans une nouvelle version
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div><label style={lbl}>Nom de la version</label>
+              <input style={inp} value={label} onChange={e => setLabel(e.target.value)} placeholder="ex. Édition 2026" /></div>
+            <div><label style={lbl}>Note (facultatif)</label>
+              <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="Contexte de la publication…" /></div>
+          </div>
+
+          <div>
+            <label style={lbl}>Modifications</label>
+            <div style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: 8, overflow: "hidden" }}>
+              {pending.map((entry, i) => (
+                <div key={i} style={{ padding: "9px 13px", borderBottom: i < pending.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none", display: "flex", gap: 10 }}>
+                  <ChangeKindBadge kind={entry.kind} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500 }}>{entry.label}</div>
+                    {entry.details.map((detail, j) => (
+                      <div key={j} style={{ fontSize: 11, color: "#9B9B9B", marginTop: 2 }}>{detail}</div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {pending.length === 0 && (
+                <div style={{ padding: "12px 13px", fontSize: 12, color: "#9B9B9B" }}>Aucune modification détectée.</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ padding: "10px 14px", backgroundColor: "#F5F7FF", border: "1px solid #DBE4FF", borderRadius: 7, fontSize: 11, color: "#1E3A8A", lineHeight: 1.55 }}>
+            Les questions déjà répondues qui ont été retirées sont désactivées, jamais supprimées :
+            les évaluations passées conservent leurs réponses.
+          </div>
+        </div>
+
+        <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+          <button style={btnGhost} onClick={onClose} disabled={publishing}>Annuler</button>
+          <button style={{ ...btnPrimary, opacity: publishing || pending.length === 0 ? 0.6 : 1 }}
+            disabled={publishing || pending.length === 0}
+            onClick={() => onConfirm(label, note)}>
+            {publishing && <Loader2 size={14} className="animate-spin" />}Publier
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CHANGE_KINDS: Record<string, { text: string; bg: string; color: string }> = {
+  added:   { text: "Ajout",       bg: "#E8F5E9", color: "#2E7D32" },
+  updated: { text: "Modif.",      bg: "#FFF8E1", color: "#B45309" },
+  removed: { text: "Retrait",     bg: "#FFEBEE", color: "#CC0000" },
+};
+
+function ChangeKindBadge({ kind }: { kind: string }) {
+  const action = kind.split(".")[1] ?? "updated";
+  const cfg = CHANGE_KINDS[action] ?? CHANGE_KINDS.updated;
+  const scope = kind.startsWith("dimension") ? "Dim." : kind.startsWith("subdimension") ? "Sous-dim." : "Question";
+  return (
+    <span style={{ flexShrink: 0, alignSelf: "flex-start", backgroundColor: cfg.bg, color: cfg.color, borderRadius: 4, padding: "2px 7px", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+      {scope} · {cfg.text}
+    </span>
   );
 }
 
@@ -1188,64 +1255,132 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
   } | null>(null);
   const [showNewDim, setShowNewDim] = useState(false);
   const [newSubWizard, setNewSubWizard] = useState<{ dim: Dimension } | null>(null);
-  const [forceDelete, setForceDelete] = useState<PendingForceDelete | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(false);
-    try { setDimensions(await adminApi.listDimensions()); }
-    catch (e) { setError(true); toast.error(errMsg(e)); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  // ── Staging ───────────────────────────────────────────────────────────────
+  // `published` is the last state we know the database is in; `dimensions` is
+  // what the admin is building. Comparing the two is what "N modifications non
+  // publiées" counts, and what the publish payload is diffed against.
+  const [published, setPublished] = useState<Dimension[]>([]);
+  const [baseVersionId, setBaseVersionId] = useState<number | null>(null);
+  const [draftAuthor, setDraftAuthor] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  // Set while applying a server response, so the autosave effect doesn't
+  // immediately write back what it just received.
+  const skipNextSave = useRef(true);
+
+  const staging = useMemo(
+    () => createStaging(mutate => setDimensions(prev => mutate(prev))),
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    getFrameworkState()
+      .then(state => {
+        if (cancelled) return;
+        const live = fromApiTree(state.tree);
+        setPublished(live);
+        setBaseVersionId(state.active_version?.id ?? null);
+        skipNextSave.current = true;
+        // A staged draft wins over the live tree — that's the work in progress.
+        setDimensions(state.draft ? fromApiTree(state.draft.tree) : live);
+        setDraftAuthor(state.draft?.updated_by_name ?? null);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setError(true);
+        toast.error(errMsg(e));
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  const dirty = useMemo(
+    () => JSON.stringify(toApiTree(dimensions)) !== JSON.stringify(toApiTree(published)),
+    [dimensions, published],
+  );
+
+  // Autosave the pending tree. Debounced: editing a weight field shouldn't
+  // fire a request per keystroke.
+  useEffect(() => {
+    if (loading || error || skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    if (!dirty) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setSaveState("saving");
+      saveDraft(dimensions, baseVersionId)
+        .then(() => !cancelled && setSaveState("saved"))
+        .catch(() => !cancelled && setSaveState("error"));
+    }, 900);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [dimensions, dirty, loading, error, baseVersionId]);
+
+  const reload = () => {
+    setLoading(true);
+    setError(false);
+    setRefreshKey(k => k + 1);
+  };
+
+  async function discardChanges() {
+    if (!window.confirm(
+      "Abandonner toutes les modifications non publiées ?\n\n" +
+      "Le questionnaire revient à la dernière version publiée."
+    )) return;
+    try {
+      await discardDraft();
+      toast.success("Modifications abandonnées");
+      reload();
+    } catch (e) { toast.error(errMsg(e)); }
+  }
+
+  // Modals call this after staging a change; the tree is already updated in
+  // state, so there is nothing to refetch.
+  const load = async () => {};
+
+  const [publishing, setPublishing] = useState(false);
+
+  // Client-side preview of the diff, shown in the publish dialog.
+  const pendingChanges = useMemo<ChangelogEntry[]>(
+    () => diffTrees(published, dimensions),
+    [published, dimensions],
+  );
+
+  async function confirmPublish(label: string, note: string) {
+    setPublishing(true);
+    try {
+      const version = await publishFramework(dimensions, { label, note, baseVersionId });
+      toast.success(`Version v${version.number} publiée`, {
+        description: `${version.changelog.length} modification${version.changelog.length > 1 ? "s" : ""} appliquée${version.changelog.length > 1 ? "s" : ""}.`,
+      });
+      setPublishOpen(false);
+      reload();
+    } catch (e) {
+      toast.error("Publication impossible", { description: errMsg(e) });
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   const toggleDim = (id: string) => setExpandedDims(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const toggleSub = (id: string) => setExpandedSubs(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   async function deleteDim(d: Dimension) {
-    if (!window.confirm(`Supprimer la dimension « ${d.name} » et tout son contenu ?`)) return;
-    try {
-      await adminApi.deleteDimension(d.id);
-      toast.success("Dimension supprimée");
-      await load();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const impact = await adminApi.getDimensionDeleteImpact(d.id);
-        setForceDelete({
-          label: `Dimension « ${d.name} »`,
-          impact,
-          onConfirm: async () => {
-            await adminApi.deleteDimension(d.id, true);
-            toast.success("Dimension supprimée définitivement");
-            await load();
-          },
-        });
-        return;
-      }
-      toast.error(errMsg(e));
-    }
+    if (!window.confirm(`Retirer la dimension « ${d.name} » et tout son contenu ?`)) return;
+    await staging.deleteDimension(d.id);
+    toast.success("Dimension retirée", { description: "Appliqué à la publication." });
   }
   async function deleteSub(s: SubDimension) {
-    if (!window.confirm(`Supprimer la sous-dimension « ${s.name} » et ses questions ?`)) return;
-    try {
-      await adminApi.deleteSubDimension(s.id);
-      toast.success("Sous-dimension supprimée");
-      await load();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const impact = await adminApi.getSubDimensionDeleteImpact(s.id);
-        setForceDelete({
-          label: `Sous-dimension « ${s.name} »`,
-          impact,
-          onConfirm: async () => {
-            await adminApi.deleteSubDimension(s.id, true);
-            toast.success("Sous-dimension supprimée définitivement");
-            await load();
-          },
-        });
-        return;
-      }
-      toast.error(errMsg(e));
-    }
+    if (!window.confirm(`Retirer la sous-dimension « ${s.name} » et ses questions ?`)) return;
+    await staging.deleteSubDimension(s.id);
+    toast.success("Sous-dimension retirée", { description: "Appliqué à la publication." });
   }
 
   const totalQ = dimensions.reduce((a, d) => a + d.subDimensions.reduce((b, s) => b + s.questions.length, 0), 0);
@@ -1253,6 +1388,7 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
   const totalWeight = dimensions.reduce((a, d) => a + d.weight, 0);
 
   return (
+    <StagingProvider value={staging}>
     <div style={{ padding: "28px 32px 40px", backgroundColor: "#F2F2F2", minHeight: "100%" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
@@ -1274,24 +1410,65 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
               </button>
             ))}
           </div>
-          {!readOnly && (
-            <button onClick={() => setShowNewDim(true)} style={{ ...btnPrimary, padding: "9px 18px", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
-              <Plus size={15} /> Nouvelle dimension
-            </button>
-          )}
+          <button onClick={() => setShowNewDim(true)} style={{ ...btnGhost, display: "flex", alignItems: "center", gap: 6, padding: "9px 16px" }}>
+            <Plus size={15} /> Nouvelle dimension
+          </button>
+          <button
+            onClick={() => setPublishOpen(true)}
+            disabled={!dirty}
+            title={dirty ? "Appliquer les modifications et créer une version" : "Aucune modification à publier"}
+            style={{ ...btnPrimary, padding: "9px 18px", boxShadow: dirty ? "0 4px 14px rgba(0,0,0,0.18)" : "none", opacity: dirty ? 1 : 0.45, cursor: dirty ? "pointer" : "not-allowed" }}
+          >
+            <UploadCloud size={15} /> Publier
+          </button>
         </div>
       </div>
 
-      {loading && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: 60, color: "#9B9B9B" }}>
-          <Loader2 size={20} className="animate-spin" /> Chargement du framework…
+      {/* Staged-changes bar — the framework only reaches respondents on publish,
+          so the page has to make "nothing is live yet" impossible to miss. */}
+      {!loading && !error && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+          padding: "10px 16px", borderRadius: 8,
+          backgroundColor: dirty ? "#FFFBEB" : "#fff",
+          border: `1px solid ${dirty ? "#FDE68A" : "rgba(0,0,0,0.07)"}`,
+        }}>
+          {dirty ? <FileEdit size={15} style={{ color: "#B45309", flexShrink: 0 }} />
+                 : <Check size={15} style={{ color: "#2E7D32", flexShrink: 0 }} />}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: dirty ? "#92400E" : "#1A1A1A" }}>
+              {dirty
+                ? `${pendingChanges.length} modification${pendingChanges.length > 1 ? "s" : ""} non publiée${pendingChanges.length > 1 ? "s" : ""}`
+                : "Aucune modification en attente"}
+            </div>
+            <div style={{ fontSize: 11, color: dirty ? "#92400E" : "#9B9B9B", marginTop: 1 }}>
+              {dirty
+                ? "Les répondants voient toujours la dernière version publiée."
+                : "Le questionnaire en ligne correspond à la dernière version publiée."}
+              {draftAuthor && dirty ? ` · Brouillon de ${draftAuthor}` : ""}
+            </div>
+          </div>
+          <span style={{ fontSize: 11, color: "#9B9B9B", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+            {saveState === "saving" && <><Loader2 size={12} className="animate-spin" /> Enregistrement…</>}
+            {saveState === "saved" && <><Check size={12} style={{ color: "#2E7D32" }} /> Brouillon enregistré</>}
+            {saveState === "error" && <span style={{ color: "#CC0000" }}>Brouillon non enregistré</span>}
+          </span>
+          {dirty && (
+            <button onClick={discardChanges} style={{ ...btnGhost, padding: "6px 12px", fontSize: 12, flexShrink: 0 }}>
+              Abandonner
+            </button>
+          )}
         </div>
+      )}
+
+      {loading && (
+        <AdminLoader label="Chargement du framework…" />
       )}
 
       {!loading && error && (
         <div style={{ textAlign: "center", padding: 50 }}>
           <p style={{ fontSize: 13, color: "#6B6B6B", marginBottom: 14 }}>Impossible de charger le framework.</p>
-          <button style={btnPrimary} onClick={load}>Réessayer</button>
+          <button style={btnPrimary} onClick={reload}>Réessayer</button>
         </div>
       )}
 
@@ -1453,8 +1630,16 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
           onSaved={load}
         />
       )}
-      {forceDelete && <ForceDeleteDialog pending={forceDelete} onClose={() => setForceDelete(null)} />}
+      {publishOpen && (
+        <PublishDialog
+          pending={pendingChanges}
+          publishing={publishing}
+          onClose={() => setPublishOpen(false)}
+          onConfirm={confirmPublish}
+        />
+      )}
     </div>
+    </StagingProvider>
   );
 }
 

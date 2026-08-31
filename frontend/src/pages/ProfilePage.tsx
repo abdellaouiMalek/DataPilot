@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Building2, Check, ChevronRight, Landmark, Loader2, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
-import keycloak from '../lib/keycloak';
+import keycloak, { isSuperAdmin } from '../lib/keycloak';
 import { getProfile, updateProfile, type UserProfile } from '../lib/profile';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -30,7 +31,20 @@ function Field({ label, icon, children }: { label: string; icon: ReactNode; chil
   );
 }
 
+/**
+ * Un compte back-office a son propre écran « Mon compte » : aucune banque de
+ * rattachement, mais un historique d'actions que cette page-ci ne montre pas.
+ * Le lien « Mon profil » de la barre reste donc unique — seule sa destination
+ * dépend du rôle.
+ */
 export function ProfilePage() {
+  if (isSuperAdmin()) {
+    return <Navigate to="/super-admin/settings?tab=profile" replace />;
+  }
+  return <ClientProfile />;
+}
+
+function ClientProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');

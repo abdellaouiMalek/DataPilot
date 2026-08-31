@@ -142,7 +142,10 @@ export function QuestionnairePage() {
         answers: buildAnswerPayload(),
       });
       toast.success('Évaluation terminée !', { description: 'Votre profil de maturité est prêt.', duration: 3000 });
-      navigate('/results', { state: { result, answers, profile: profileData } });
+      // L'objet complet reste passé pour un premier rendu immédiat, mais
+      // c'est l'id de l'URL qui fait foi : rafraîchir la page la recharge
+      // au lieu de la vider.
+      navigate(`/results/${result.id}`, { state: { result } });
     } catch (error) {
       setCompleting(false);
       if (error instanceof ApiError && error.status === 403) {

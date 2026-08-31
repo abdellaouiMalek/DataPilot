@@ -65,7 +65,7 @@ export interface DeleteImpact {
 }
 
 // ── Raw API shapes ──────────────────────────────────────────────────────────
-interface ApiQuestion {
+export interface ApiQuestion {
   id: number;
   dimension_id: number;
   sub_dimension_id: number | null;
@@ -79,7 +79,7 @@ interface ApiQuestion {
   choice_options: ChoiceOption[] | null;
   is_active: boolean;
 }
-interface ApiSubDimension {
+export interface ApiSubDimension {
   id: number;
   dimension_id: number;
   name: string;
@@ -87,7 +87,7 @@ interface ApiSubDimension {
   is_active: boolean;
   questions: ApiQuestion[];
 }
-interface ApiDimension {
+export interface ApiDimension {
   id: number;
   key: string;
   code: string;
@@ -173,7 +173,7 @@ function mapQuestion(q: ApiQuestion): Question {
 function mapSub(s: ApiSubDimension): SubDimension {
   return { id: String(s.id), name: s.name, status: toStatus(s.is_active), questions: s.questions.map(mapQuestion) };
 }
-function mapDimension(d: ApiDimension): Dimension {
+export function mapDimension(d: ApiDimension): Dimension {
   return {
     id: String(d.id),
     name: d.name,

@@ -3,12 +3,14 @@ import {
   Search, Plus, Edit2, ChevronDown, X,
   Building2, CheckCircle2,
   MoreHorizontal, Download,
-  Trash2, AlertCircle, Loader2,
+  Trash2, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listBanks, createBank, updateBank, setBankActive, setBankArchived,
 } from "@/lib/adminBanks";
+import { AdminLoader } from "@/components/AdminLoader";
+import { useSeededSearch } from "@/hooks/useSeededSearch";
 import type { AdminBank, BankPayload } from "@/lib/adminBanks";
 import { ApiError } from "@/lib/api";
 
@@ -227,7 +229,7 @@ const avatarColor = (name: string) => avatarColors[name.charCodeAt(0) % avatarCo
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function BankManagement() {
-  const [search,       setSearch]       = useState("");
+  const [search,       setSearch]       = useSeededSearch();
   const [statusFilter, setStatusFilter] = useState("Tous les statuts");
   const [showModal,    setShowModal]    = useState(false);
   const [editingBank,  setEditingBank]  = useState<Bank | null>(null);
@@ -395,14 +397,14 @@ export function BankManagement() {
 
       {/* Filters */}
       <div style={{ backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, padding: "12px 16px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 9, backgroundColor: "#F7F7F7", borderRadius: 6, padding: "8px 13px", border: "1.5px solid rgba(0,0,0,0.08)" }}>
-          <Search size={14} style={{ color: "#9B9B9B", flexShrink: 0 }} />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+        <div className="search-field" style={{ flex: 1 }}>
+          <Search className="search-icon" size={16} />
+          <input className="search-input" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Rechercher une banque, un secteur ou un pays..."
             name="datapilot-bank-search"
             autoComplete="off"
-            data-plain-focus=""
-            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#1A1A1A", width: "100%" }} />
+            data-search=""
+            style={{ fontSize: 13 }} />
         </div>
         <div style={{ position: "relative" }}>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} onFocus={() => setFocusStatus(true)} onBlur={() => setFocusStatus(false)}
@@ -550,10 +552,7 @@ export function BankManagement() {
         </table>
 
         {loading && (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <Loader2 size={26} className="animate-spin" style={{ color: "#9B9B9B", marginBottom: 10 }} />
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#9B9B9B" }}>Chargement des banques…</div>
-          </div>
+          <AdminLoader variant="inline" label="Chargement des banques…" />
         )}
 
         {!loading && loadError && (

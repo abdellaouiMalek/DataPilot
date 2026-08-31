@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { ArrowLeft, TrendingUp, TrendingDown, Minus, ChevronDown, ArrowRight, Sparkles, Check, Loader2, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ArrowRight, Sparkles, Check, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
+import { FlowHeader } from '../components/FlowHeader';
 import { getMaturityLevels } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
 import { getMyAssessments } from '../lib/assessment';
@@ -21,15 +22,33 @@ type NarrStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 export function EvolutionPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const selected: AssessmentResult[] = location.state?.selected || [];
+  const [searchParams] = useSearchParams();
+
+  const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
+  const [allAssessments, setAllAssessments] = useState<AssessmentResult[]>([]);
+
+  // Les évaluations comparées sont désignées par `?ids=5,6`, et résolues
+  // contre la liste que la page charge de toute façon. L'état du routeur ne
+  // sert plus qu'au premier rendu, avant l'arrivée de cette liste : lui seul
+  // ne survivait ni au rafraîchissement ni à un lien partagé.
+  const comparedIds = useMemo(
+    () => (searchParams.get('ids') ?? '')
+      .split(',')
+      .map(Number)
+      .filter(Number.isFinite),
+    [searchParams],
+  );
+
+  const selected: AssessmentResult[] = useMemo(() => {
+    const resolved = allAssessments.filter((a) => comparedIds.includes(a.id));
+    if (resolved.length) return resolved;
+    return (location.state?.selected as AssessmentResult[] | undefined) ?? [];
+  }, [allAssessments, comparedIds, location.state]);
 
   const sortedSelected = useMemo(
     () => [...selected].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [selected]
   );
-
-  const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
-  const [allAssessments, setAllAssessments] = useState<AssessmentResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -208,16 +227,13 @@ export function EvolutionPage() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8 space-y-5">
 
-        {/* ── Breadcrumb + back ── */}
-        <div className="flex items-center justify-between">
-          <nav className="flex items-center gap-2 text-xs text-gray-400">
-            <button onClick={() => navigate('/')} className="hover:text-gray-700 transition-colors">Accueil</button>
-            <span className="text-gray-300">/</span>
-            <button onClick={() => navigate('/historique')} className="hover:text-gray-700 transition-colors">Mes évaluations</button>
-            <span className="text-gray-300">/</span>
-            <span className="text-gray-700 font-semibold">Évolution — {bank}</span>
-          </nav>
-          <div className="flex items-center gap-2">
+        {/* ── Fil d'Ariane + export ──
+            Pas de bouton de retour ici : les deux maillons du fil restent
+            cliquables, et la place de droite revient à l'action de la page. */}
+        <FlowHeader
+          current={`Évolution — ${bank}`}
+          parent={{ label: 'Mes évaluations', to: '/historique' }}
+          action={(
             <button
               onClick={() => toast.promise(downloadComparisonReport(stateInit.id, stateCurr.id), {
                 loading: 'Génération du rapport PDF…',
@@ -228,14 +244,8 @@ export function EvolutionPage() {
             >
               <Download className="w-3.5 h-3.5" /> Exporter PDF
             </button>
-            <button
-              onClick={() => navigate('/historique')}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Retour
-            </button>
-          </div>
-        </div>
+          )}
+        />
 
         {/* ── Title + period selectors ── */}
         <motion.div

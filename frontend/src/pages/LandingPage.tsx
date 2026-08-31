@@ -8,7 +8,8 @@ import { getBanks, getDepartments, getRoles, getDimensions } from '../lib/config
 import type { Dimension } from '../lib/config';
 import { isSuperAdmin, isAdmin } from '../lib/keycloak';
 import { getProfile } from '../lib/profile';
-import backImage from '../assets/back.png';
+import { getMyAssessments, questionnaireUrl } from '../lib/assessment';
+import backImage from '../assets/back.webp';
 
 type Option = { value: string; label: string };
 
@@ -45,7 +46,7 @@ function FieldSelect({
   return (
     <RadixSelect.Root value={value || undefined} onValueChange={onChange} disabled={disabled}>
       <RadixSelect.Trigger
-        className={`w-full h-12 flex items-center justify-between gap-2 rounded-lg border bg-white px-4 text-sm outline-none transition-colors ${
+        className={`w-full h-14 flex items-center justify-between gap-2 rounded-lg border bg-white px-5 text-base outline-none transition-colors ${
           error
             ? 'border-red-400 ring-2 ring-red-100'
             : filled ? 'border-[#FFE600]' : 'border-slate-200 hover:border-slate-300'
@@ -57,9 +58,9 @@ function FieldSelect({
         />
         <RadixSelect.Icon>
           {loading ? (
-            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-slate-300" />
+            <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin text-slate-300" />
           ) : (
-            <ChevronDown className={`w-4 h-4 flex-shrink-0 ${filled ? 'text-[#FFE600]' : 'text-slate-300'}`} />
+            <ChevronDown className={`w-5 h-5 flex-shrink-0 ${filled ? 'text-[#FFE600]' : 'text-slate-300'}`} />
           )}
         </RadixSelect.Icon>
       </RadixSelect.Trigger>
@@ -77,7 +78,7 @@ function FieldSelect({
               <RadixSelect.Item
                 key={opt.value}
                 value={opt.value}
-                className="relative flex items-center rounded-md px-3 py-2.5 text-sm text-slate-900 outline-none cursor-pointer select-none data-[highlighted]:bg-yellow-50 data-[state=checked]:bg-[#FFE600] data-[state=checked]:font-semibold"
+                className="relative flex items-center rounded-md px-4 py-3 text-base text-slate-900 outline-none cursor-pointer select-none data-[highlighted]:bg-yellow-50 data-[state=checked]:bg-[#FFE600] data-[state=checked]:font-semibold"
               >
                 <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
               </RadixSelect.Item>
@@ -115,6 +116,11 @@ export function LandingPage() {
   // field below locks to it instead of offering an open choice, matching
   // what the backend already enforces on submit (see get_bank_scope).
   const [attachedBankId, setAttachedBankId] = useState<number | null>(null);
+  // Departement et role tels que cette personne les a renseignes la derniere
+  // fois. Relus depuis sa propre derniere evaluation plutot que stockes a
+  // part : c'est deja la seule trace fiable de ce qu'elle a choisi, et la
+  // recopier ailleurs creerait une deuxieme verite a maintenir.
+  const [lastChoice, setLastChoice] = useState<{ department: string | null; role: string | null } | null>(null);
 
   // Admins don't take the assessment — send them straight to the back-office.
   // The landing page ("/") is where Keycloak returns after login.
@@ -156,6 +162,44 @@ export function LandingPage() {
     };
   }, []);
 
+  // Meme logique que ci-dessus : un echec (visiteur non connecte, compte sans
+  // banque -> 403 sur get_bank_scope) ne doit rien casser, il laisse
+  // simplement les deux champs vides comme avant.
+  useEffect(() => {
+    let cancelled = false;
+    getMyAssessments()
+      .then((mine) => {
+        if (cancelled) return;
+        // La liste est commune a toute la banque : seules les evaluations que
+        // cette personne a elle-meme soumises disent ce qu'*elle* avait choisi.
+        const own = mine
+          .filter((a) => a.submitted_by_me)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        if (own.length) {
+          setLastChoice({ department: own[0].department, role: own[0].evaluator_role });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Le choix precedent est applique au rendu, pas via un `setState` dans un
+  // effet : la reponse peut arriver alors que la personne a deja ouvert un
+  // menu, et une ecriture differee ecraserait sa selection en cours. Ici une
+  // selection explicite gagne toujours, puisqu'elle est testee en premier.
+  //
+  // La valeur n'est reprise que si elle figure encore dans la liste : un
+  // departement desactive depuis laisserait sinon le champ afficher un choix
+  // que le menu ne propose plus. Le selecteur n'offre aucun moyen de revenir
+  // a "vide", donc ce repli ne peut pas resurgir apres coup.
+  const remembered = (options: Option[], value: string | null | undefined) =>
+    value && options.some((o) => o.value === value) ? value : '';
+
+  const department = selectedDepartment || remembered(deptOptions, lastChoice?.department);
+  const role = selectedRole || remembered(roleOptions, lastChoice?.role);
+
   // Once both the bank list and the user's attachment are known, lock
   // the selection to their bank instead of leaving it an open choice.
   useEffect(() => {
@@ -165,24 +209,19 @@ export function LandingPage() {
   }, [attachedBankId, bankOptions]);
 
   const handleStart = () => {
-    if (selectedBank && selectedDepartment && selectedRole) {
+    if (selectedBank && department && role) {
       const bankLabel = bankOptions.find((o) => o.value === selectedBank)?.label ?? '';
-      // In the URL, not router state: if the user isn't logged in yet,
-      // this navigation is about to be interrupted by a real redirect
-      // through Keycloak (RequireAuth) and back -- only the URL survives
-      // that round-trip, router state doesn't.
-      const params = new URLSearchParams({
-        bankId: selectedBank,
+      navigate(questionnaireUrl({
+        bankId: Number(selectedBank),
         bank: bankLabel,
-        department: selectedDepartment,
-        role: selectedRole,
-      });
-      navigate(`/questionnaire?${params.toString()}`);
+        department,
+        role,
+      }));
     }
   };
 
-  const canProceed = selectedBank && selectedDepartment && selectedRole;
-  const filledCount = [selectedBank, selectedDepartment, selectedRole].filter(Boolean).length;
+  const canProceed = selectedBank && department && role;
+  const filledCount = [selectedBank, department, role].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -197,7 +236,7 @@ export function LandingPage() {
         />
         <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#FFE600]" />
 
-        <div className="relative max-w-5xl mx-auto px-6 md:px-16 py-16 md:py-24">
+        <div className="relative max-w-6xl mx-auto px-6 md:px-16 py-16 md:py-24">
           <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <span className="inline-block text-[10px] font-bold tracking-[0.25em] text-slate-400 mb-6">
               SECTEUR BANCAIRE TUNISIEN
@@ -247,8 +286,8 @@ export function LandingPage() {
       </div>
 
       {/* ── MAIN ── */}
-      <div className="max-w-5xl mx-auto px-6 md:px-16 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-10 items-start">
+      <div className="max-w-6xl mx-auto px-6 md:px-16 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-10 items-start">
           {/* LEFT: Dimensions */}
           <div className="space-y-8">
             <div>
@@ -288,7 +327,7 @@ export function LandingPage() {
               <div className="space-y-3">
                 {[
                   'Score de maturité global et par dimension',
-                  'Positionnement par rapport au secteur bancaire tunisien',
+                  'Suivi de votre progression, évaluation après évaluation',
                   "Plan d'action EY priorisé, généré par notre modèle de recommandation",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3">
@@ -309,28 +348,28 @@ export function LandingPage() {
           >
             <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/60 overflow-hidden">
               {/* Progress bar */}
-              <div className="h-1 bg-slate-100">
+              <div className="h-1.5 bg-slate-100">
                 <div
                   className="h-full bg-[#FFE600] transition-all duration-500"
                   style={{ width: `${(filledCount / 3) * 100}%` }}
                 />
               </div>
 
-              <div className="p-7">
-                <h2 className="text-xl font-bold text-slate-900 mb-1">Commencer l&apos;évaluation</h2>
-                <p className="text-sm text-slate-400 mb-7">
+              <div className="p-9">
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">Commencer l&apos;évaluation</h2>
+                <p className="text-base text-slate-400 mb-8">
                   Renseignez votre profil pour personnaliser votre diagnostic.
                 </p>
 
                 {loadError && (
-                  <div className="mb-5 rounded-lg border-l-4 border-red-500 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                  <div className="mb-5 rounded-lg border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
                     Impossible de charger les données. Vérifiez que l&apos;API est démarrée puis rechargez la page.
                   </div>
                 )}
 
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <div>
-                    <label className="block text-xs font-semibold tracking-[0.15em] text-slate-500 mb-2">
+                    <label className="block text-sm font-semibold tracking-[0.15em] text-slate-500 mb-2.5">
                       ÉTABLISSEMENT BANCAIRE
                     </label>
                     <FieldSelect
@@ -344,23 +383,23 @@ export function LandingPage() {
                       error={bankError}
                     />
                     {bankError ? (
-                      <p className="mt-1.5 text-[11px] font-medium text-red-500">
+                      <p className="mt-2 text-sm font-medium text-red-500">
                         Vous ne pouvez accéder qu'à la banque à laquelle vous êtes rattaché.
                       </p>
                     ) : attachedBankId != null && (
-                      <p className="mt-1.5 text-[11px] text-slate-400">
+                      <p className="mt-2 text-sm text-slate-400">
                         Banque associée à votre compte — pour la modifier, contactez un administrateur.
                       </p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold tracking-[0.15em] text-slate-500 mb-2">
+                    <label className="block text-sm font-semibold tracking-[0.15em] text-slate-500 mb-2.5">
                       DÉPARTEMENT
                     </label>
                     <FieldSelect
                       options={deptOptions}
-                      value={selectedDepartment}
+                      value={department}
                       onChange={setSelectedDepartment}
                       placeholder="Sélectionnez votre département..."
                       loadingPlaceholder="Chargement..."
@@ -370,12 +409,12 @@ export function LandingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold tracking-[0.15em] text-slate-500 mb-2">
+                    <label className="block text-sm font-semibold tracking-[0.15em] text-slate-500 mb-2.5">
                       RÔLE
                     </label>
                     <FieldSelect
                       options={roleOptions}
-                      value={selectedRole}
+                      value={role}
                       onChange={setSelectedRole}
                       placeholder="Sélectionnez votre rôle..."
                       loadingPlaceholder="Chargement..."
@@ -385,31 +424,31 @@ export function LandingPage() {
                   </div>
                 </div>
 
-                <div className="mt-7 space-y-3">
+                <div className="mt-8 space-y-3">
                   <motion.button
                     onClick={handleStart}
                     disabled={!canProceed}
                     whileHover={canProceed ? { scale: 1.02 } : {}}
                     whileTap={canProceed ? { scale: 0.98 } : {}}
-                    className={`w-full h-[52px] flex items-center justify-center gap-3 rounded-xl font-semibold text-sm tracking-wide transition-all duration-200 ${
+                    className={`w-full h-[64px] flex items-center justify-center gap-3 rounded-xl font-semibold text-base tracking-wide transition-all duration-200 ${
                       canProceed
                         ? 'bg-[#FFE600] text-black hover:bg-[#f5d800] shadow-md shadow-yellow-200 cursor-pointer'
                         : 'bg-slate-100 text-slate-300 cursor-not-allowed'
                     }`}
                   >
                     Commencer l&apos;évaluation
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-5 h-5" />
                   </motion.button>
 
                   <button
                     onClick={() => navigate('/historique')}
-                    className="w-full text-xs text-slate-400 hover:text-slate-700 transition-colors py-2"
+                    className="w-full text-sm text-slate-400 hover:text-slate-700 transition-colors py-2.5"
                   >
                     Accéder aux évaluations précédentes →
                   </button>
                 </div>
 
-                <p className="text-[11px] text-slate-300 mt-5 text-center leading-relaxed">
+                <p className="text-xs text-slate-300 mt-6 text-center leading-relaxed">
                   Réponses confidentielles — usage interne EY
                 </p>
               </div>

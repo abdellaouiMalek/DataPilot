@@ -1,92 +1,136 @@
-import { useState } from "react";
-import { Shield, Users, FileQuestion, Download, Bell, Palette, ChevronRight, Save, ToggleLeft } from "lucide-react";
+/**
+ * Paramètres — ce que la plateforme sait réellement configurer.
+ *
+ * La page ne propose plus que des réglages ayant quelque chose derrière eux,
+ * chacun avec sa propre source de vérité :
+ *
+ * — **Sécurité** est stockée par Keycloak sur le realm (durée de session,
+ *   politique de mot de passe, action requise TOTP). Rien n'est recopié ici :
+ *   une copie locale serait la version qui se désynchronise pendant que le
+ *   realm continue de décider du comportement réel ;
+ * — **Notifications** relèvent de l'application, donc de sa table
+ *   `platform_settings`.
+ *
+ * Ont été retirés les réglages sans implémentation possible côté application :
+ * restriction par IP (relève du reverse proxy, pas de Keycloak), bascule de
+ * journalisation (le journal d'audit est inconditionnel, et un journal qu'on
+ * peut éteindre n'est plus une preuve), versions multiples simultanées
+ * (contredit l'index unique partiel sur `is_active`), exports par format et
+ * anonymisation, rapport hebdomadaire (aucun ordonnanceur) et branding.
+ */
 
-type SettingsSection = "security" | "roles" | "questionnaire" | "export" | "notifications" | "branding";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Shield, Bell, Save, Loader2, AlertTriangle,
+  ChevronRight, UserRound, type LucideIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  getSettings,
+  updateSettings,
+  type NotificationSettings,
+  type PlatformSettings,
+  type SecuritySettings,
+} from "@/lib/adminSettings";
+import { AdminLoader } from "@/components/AdminLoader";
+import { AccountSection } from "./AdminAccount";
+import { Section, SettingRow, Toggle, numInput } from "./settingsUi";
+
+type SettingsSection = "security" | "notifications" | "profile";
 
 interface SectionTab {
   id: SettingsSection;
   label: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon: LucideIcon;
 }
 
 const tabs: SectionTab[] = [
-  { id: "security", label: "Sécurité", icon: Shield },
-  { id: "roles", label: "Rôles & permissions", icon: Users },
-  { id: "questionnaire", label: "Questionnaire actif", icon: FileQuestion },
-  { id: "export", label: "Export", icon: Download },
+  { id: "profile",       label: "Mon compte",    icon: UserRound },
+  { id: "security",      label: "Sécurité",      icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "branding", label: "Branding", icon: Palette },
 ];
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
-  return (
-    <button onClick={onChange} style={{
-      width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
-      backgroundColor: enabled ? "var(--ey-black)" : "#D0D0D0",
-      position: "relative", transition: "background 0.2s", flexShrink: 0
-    }}>
-      <span style={{
-        position: "absolute", top: 3, left: enabled ? 20 : 3,
-        width: 16, height: 16, borderRadius: "50%", backgroundColor: "white",
-        transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)"
-      }} />
-    </button>
-  );
-}
-
-function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "16px 0", borderBottom: "1px solid rgba(0,0,0,0.05)", gap: 20 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ey-black)" }}>{label}</div>
-        {description && <div style={{ fontSize: 12, color: "var(--ey-gray-mid)", marginTop: 3 }}>{description}</div>}
-      </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ backgroundColor: "var(--ey-white)", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 6, padding: "20px 24px", marginBottom: 18 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ey-black)", marginBottom: 4, paddingBottom: 14, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{title}</div>
-      {children}
-    </div>
-  );
-}
+const TAB_IDS: SettingsSection[] = ["profile", "security", "notifications"];
+// Premier onglet de la liste, donc celui qui s'ouvre sans paramètre d'URL.
+const DEFAULT_TAB: SettingsSection = TAB_IDS[0];
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsSection>("security");
-  const [settings, setSettings] = useState({
-    twoFactor: true,
-    sessionTimeout: "60",
-    passwordExpiry: "90",
-    ipWhitelist: false,
-    auditLogs: true,
-    autoLogout: true,
-    defaultVersionActive: "v2.1",
-    allowMultipleVersions: false,
-    exportPDF: true,
-    exportExcel: true,
-    exportCSV: true,
-    exportAnonymized: true,
-    notifyOnPublish: true,
-    notifyOnNewUser: true,
-    notifyOnError: true,
-    notifyWeeklyReport: false,
-    notifyEmail: "admin@ey.com",
-    brandName: "EY DataMaturity",
-    brandTagline: "Back Office Administration",
-  });
+  // L'onglet vit dans l'URL : le menu compte du bandeau peut pointer
+  // directement sur une section, et un rechargement ne la perd pas.
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab") as SettingsSection | null;
+  const activeTab: SettingsSection =
+    requested && TAB_IDS.includes(requested) ? requested : DEFAULT_TAB;
+  const setActiveTab = (tab: SettingsSection) =>
+    setParams(tab === DEFAULT_TAB ? {} : { tab }, { replace: true });
 
-  const toggle = (key: keyof typeof settings) => setSettings(p => ({ ...p, [key]: !p[key] }));
+  const [loaded, setLoaded] = useState<PlatformSettings | null>(null);
+  const [security, setSecurity] = useState<SecuritySettings | null>(null);
+  const [notifications, setNotifications] = useState<NotificationSettings | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const permissions = [
-    { role: "Admin EY", permissions: ["Lecture", "Écriture", "Suppression", "Publication", "Administration"] },
-    { role: "Consultant EY", permissions: ["Lecture", "Écriture"] },
-    { role: "Répondant Banque", permissions: ["Lecture"] },
-    { role: "Validateur Banque", permissions: ["Lecture", "Validation"] },
-  ];
+  const apply = (data: PlatformSettings) => {
+    setLoaded(data);
+    setSecurity(data.security);
+    setNotifications(data.notifications);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then(data => { if (!cancelled) { apply(data); setError(null); } })
+      .catch(() => { if (!cancelled) setError("Impossible de charger les paramètres."); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const dirty = useMemo(() => {
+    if (!loaded || !security || !notifications) return false;
+    return (
+      JSON.stringify(security) !== JSON.stringify(loaded.security) ||
+      JSON.stringify(notifications) !== JSON.stringify(loaded.notifications)
+    );
+  }, [loaded, security, notifications]);
+
+  async function handleSave() {
+    if (!security || !notifications) return;
+    setSaving(true);
+    try {
+      // Seules les sections réellement modifiées sont envoyées : écrire le
+      // realm Keycloak pour rien est un aller-retour inutile.
+      const payload = {
+        ...(JSON.stringify(security) !== JSON.stringify(loaded?.security) ? { security } : {}),
+        ...(JSON.stringify(notifications) !== JSON.stringify(loaded?.notifications) ? { notifications } : {}),
+      };
+      apply(await updateSettings(payload));
+      toast.success("Paramètres enregistrés");
+    } catch (err) {
+      toast.error("Enregistrement impossible", {
+        description: err instanceof Error ? err.message : "Veuillez réessayer.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 32 }}>
+        <div style={{ backgroundColor: "#FFEBEE", color: "#CC0000", borderRadius: 10, padding: "14px 18px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+          <AlertTriangle size={16} /> {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!loaded || !security || !notifications) {
+    return (
+      <AdminLoader label="Chargement des paramètres…" />
+    );
+  }
+
+  const notificationsOn = notifications.notify_on_assessment || notifications.notify_on_new_user;
 
   return (
     <div style={{ padding: 32 }}>
@@ -125,133 +169,148 @@ export function Settings() {
         {/* Content */}
         <div>
           {activeTab === "security" && (
-            <>
-              <Section title="Authentification & Accès">
-                <SettingRow label="Authentification à deux facteurs (2FA)" description="Exiger un second facteur pour tous les comptes Admin et Consultant EY">
-                  <Toggle enabled={settings.twoFactor} onChange={() => toggle("twoFactor")} />
-                </SettingRow>
-                <SettingRow label="Délai d'expiration de session" description="Déconnexion automatique après inactivité">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input value={settings.sessionTimeout} onChange={e => setSettings(p => ({ ...p, sessionTimeout: e.target.value }))} style={{ width: 70, padding: "6px 10px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, textAlign: "center", outline: "none" }} />
-                    <span style={{ fontSize: 12, color: "var(--ey-gray-mid)" }}>minutes</span>
-                  </div>
-                </SettingRow>
-                <SettingRow label="Expiration des mots de passe" description="Forcer le renouvellement du mot de passe après N jours">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input value={settings.passwordExpiry} onChange={e => setSettings(p => ({ ...p, passwordExpiry: e.target.value }))} style={{ width: 70, padding: "6px 10px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, textAlign: "center", outline: "none" }} />
-                    <span style={{ fontSize: 12, color: "var(--ey-gray-mid)" }}>jours</span>
-                  </div>
-                </SettingRow>
-                <SettingRow label="Restriction par adresse IP" description="Limiter l'accès admin à des plages IP autorisées">
-                  <Toggle enabled={settings.ipWhitelist} onChange={() => toggle("ipWhitelist")} />
-                </SettingRow>
-                <SettingRow label="Journalisation des actions (audit logs)" description="Enregistrer toutes les actions administratives">
-                  <Toggle enabled={settings.auditLogs} onChange={() => toggle("auditLogs")} />
-                </SettingRow>
-              </Section>
-            </>
-          )}
+            <Section
+              title="Authentification & Accès"
+              subtitle="Ces trois réglages sont appliqués par Keycloak sur l'ensemble du realm."
+            >
+              <SettingRow
+                label="Authentification à deux facteurs (2FA)"
+                description="Chaque compte devra configurer un second facteur à sa prochaine connexion. Le réglage est global : Keycloak ne sait pas l'imposer à un seul rôle."
+              >
+                <Toggle
+                  enabled={security.two_factor_required}
+                  onChange={() => setSecurity({ ...security, two_factor_required: !security.two_factor_required })}
+                />
+              </SettingRow>
 
-          {activeTab === "roles" && (
-            <Section title="Rôles & Permissions">
-              <div style={{ marginTop: 8 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ backgroundColor: "var(--ey-gray-bg)" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "var(--ey-gray-mid)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Rôle</th>
-                      {["Lecture", "Écriture", "Suppression", "Publication", "Validation", "Administration"].map(p => (
-                        <th key={p} style={{ padding: "10px 14px", textAlign: "center", fontSize: 11, fontWeight: 600, color: "var(--ey-gray-mid)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{p}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissions.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
-                        <td style={{ padding: "12px 14px", fontSize: 13, fontWeight: 600, color: "var(--ey-black)" }}>{r.role}</td>
-                        {["Lecture", "Écriture", "Suppression", "Publication", "Validation", "Administration"].map(p => (
-                          <td key={p} style={{ padding: "12px 14px", textAlign: "center" }}>
-                            {r.permissions.includes(p)
-                              ? <span style={{ fontSize: 16, color: "#2E7D32" }}>✓</span>
-                              : <span style={{ fontSize: 14, color: "#D0D0D0" }}>—</span>
-                            }
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ marginTop: 16, padding: "12px 14px", backgroundColor: "var(--ey-gray-bg)", borderRadius: 4, fontSize: 12, color: "var(--ey-gray-mid)" }}>
-                  Les permissions Admin EY ne sont pas modifiables. Les rôles Consultant, Répondant et Validateur peuvent être personnalisés.
+              <SettingRow label="Délai d'expiration de session" description="Déconnexion automatique après cette durée d'inactivité.">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={1} max={10080}
+                    value={security.session_idle_minutes}
+                    onChange={e => setSecurity({ ...security, session_idle_minutes: Number(e.target.value) })}
+                    style={numInput}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--ey-gray-mid)" }}>minutes</span>
                 </div>
-              </div>
-            </Section>
-          )}
+              </SettingRow>
 
-          {activeTab === "questionnaire" && (
-            <Section title="Questionnaire actif">
-              <SettingRow label="Version du questionnaire actif" description="Version actuellement présentée aux utilisateurs Front Office">
-                <select value={settings.defaultVersionActive} onChange={e => setSettings(p => ({ ...p, defaultVersionActive: e.target.value }))} style={{ padding: "7px 30px 7px 12px", borderRadius: 4, fontSize: 13, border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white", outline: "none", appearance: "none" }}>
-                  <option>v2.1</option><option>v2.2 (Brouillon)</option>
-                </select>
+              <SettingRow
+                label="Expiration des mots de passe"
+                description="Renouvellement forcé après N jours. Vide = aucune règle d'expiration."
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={1} max={3650} placeholder="—"
+                    value={security.password_expiry_days ?? ""}
+                    onChange={e => setSecurity({
+                      ...security,
+                      password_expiry_days: e.target.value === "" ? null : Number(e.target.value),
+                    })}
+                    style={numInput}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--ey-gray-mid)" }}>jours</span>
+                </div>
               </SettingRow>
-              <SettingRow label="Plusieurs versions actives simultanément" description="Permettre à différentes banques d'utiliser des versions différentes">
-                <Toggle enabled={settings.allowMultipleVersions} onChange={() => toggle("allowMultipleVersions")} />
-              </SettingRow>
-              <SettingRow label="Visibilité publique du questionnaire" description="Les utilisateurs Front Office peuvent consulter le questionnaire sans être connectés">
-                <Toggle enabled={false} onChange={() => {}} />
-              </SettingRow>
-            </Section>
-          )}
-
-          {activeTab === "export" && (
-            <Section title="Paramètres d'export">
-              <SettingRow label="Export au format PDF" description="Permettre l'export des résultats en PDF"><Toggle enabled={settings.exportPDF} onChange={() => toggle("exportPDF")} /></SettingRow>
-              <SettingRow label="Export au format Excel / XLSX" description="Permettre l'export des données brutes en Excel"><Toggle enabled={settings.exportExcel} onChange={() => toggle("exportExcel")} /></SettingRow>
-              <SettingRow label="Export au format CSV" description="Permettre l'export des données au format CSV"><Toggle enabled={settings.exportCSV} onChange={() => toggle("exportCSV")} /></SettingRow>
-              <SettingRow label="Anonymisation des exports" description="Supprimer les données personnelles des exports destinés aux tiers"><Toggle enabled={settings.exportAnonymized} onChange={() => toggle("exportAnonymized")} /></SettingRow>
             </Section>
           )}
 
           {activeTab === "notifications" && (
-            <Section title="Paramètres de notification">
-              <SettingRow label="Email de réception des notifications admin" description="Adresse pour les alertes système et récapitulatifs">
-                <input value={settings.notifyEmail} onChange={e => setSettings(p => ({ ...p, notifyEmail: e.target.value }))} style={{ width: 240, padding: "7px 12px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, outline: "none" }} />
-              </SettingRow>
-              <SettingRow label="Notification lors d'une publication" description="Email envoyé à l'admin lors de chaque publication de questionnaire"><Toggle enabled={settings.notifyOnPublish} onChange={() => toggle("notifyOnPublish")} /></SettingRow>
-              <SettingRow label="Notification lors d'un nouvel utilisateur" description="Email envoyé à l'admin lors de chaque création de compte"><Toggle enabled={settings.notifyOnNewUser} onChange={() => toggle("notifyOnNewUser")} /></SettingRow>
-              <SettingRow label="Alerte en cas d'erreur système" description="Email immédiat en cas d'erreur critique"><Toggle enabled={settings.notifyOnError} onChange={() => toggle("notifyOnError")} /></SettingRow>
-              <SettingRow label="Rapport hebdomadaire automatique" description="Envoi d'un récapitulatif chaque lundi matin"><Toggle enabled={settings.notifyWeeklyReport} onChange={() => toggle("notifyWeeklyReport")} /></SettingRow>
-            </Section>
-          )}
-
-          {activeTab === "branding" && (
-            <Section title="Branding de la plateforme">
-              <SettingRow label="Nom de la plateforme" description="Nom affiché dans la topbar et les emails">
-                <input value={settings.brandName} onChange={e => setSettings(p => ({ ...p, brandName: e.target.value }))} style={{ width: 220, padding: "7px 12px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, outline: "none" }} />
-              </SettingRow>
-              <SettingRow label="Sous-titre / Tagline" description="Texte affiché sous le nom dans la sidebar">
-                <input value={settings.brandTagline} onChange={e => setSettings(p => ({ ...p, brandTagline: e.target.value }))} style={{ width: 220, padding: "7px 12px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, outline: "none" }} />
-              </SettingRow>
-              <SettingRow label="Couleur d'accent principale" description="Couleur utilisée pour les actions primaires et les accents visuels">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <input type="color" defaultValue="#FFE600" style={{ width: 38, height: 32, borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", cursor: "pointer", padding: 3 }} />
-                  <span style={{ fontSize: 12, color: "var(--ey-gray-mid)", fontFamily: "monospace" }}>#FFE600</span>
+            <Section
+              title="Notifications administratives"
+              subtitle="Emails envoyés après coup, et jamais à la personne qui vient d'agir. Un échec d'envoi n'interrompt pas l'action concernée."
+            >
+              {!loaded.smtp_configured && (
+                <div style={{ display: "flex", gap: 9, margin: "12px 0 4px", padding: "11px 13px", backgroundColor: "#FFEBEE", border: "1px solid #F5C6C6", borderRadius: 5 }}>
+                  <AlertTriangle size={13} style={{ color: "#CC0000", flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: 11.5, color: "#CC0000", lineHeight: 1.5 }}>
+                    SMTP n'est pas configuré côté serveur (<code>SMTP_USER</code> / <code>SMTP_PASSWORD</code>).
+                    Les notifications activées ici ne partiront pas.
+                  </div>
                 </div>
+              )}
+
+              <SettingRow
+                label="Adresse de réception"
+                description="Sans adresse, aucune notification n'est envoyée."
+              >
+                <input
+                  type="email"
+                  placeholder="admin@exemple.com"
+                  value={notifications.notify_email ?? ""}
+                  onChange={e => setNotifications({ ...notifications, notify_email: e.target.value || null })}
+                  style={{ width: 240, padding: "7px 12px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", fontSize: 13, outline: "none" }}
+                />
               </SettingRow>
-              <SettingRow label="Logo de la plateforme" description="Fichier PNG/SVG, recommandé 48×48px">
-                <button style={{ padding: "7px 14px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white", cursor: "pointer", fontSize: 12, color: "var(--ey-gray-dark)" }}>
-                  Importer un logo
-                </button>
+
+              <SettingRow
+                label="Soumission d'une évaluation"
+                description="Email dès qu'une banque soumet une évaluation — la seule action de la plateforme qu'un administrateur ne déclenche jamais lui-même."
+              >
+                <Toggle
+                  enabled={notifications.notify_on_assessment}
+                  onChange={() => setNotifications({ ...notifications, notify_on_assessment: !notifications.notify_on_assessment })}
+                />
               </SettingRow>
+
+              <SettingRow
+                label="Création d'un compte"
+                description="Email à chaque compte créé depuis le back-office, y compris par un admin. Les comptes que vous créez vous-même ne déclenchent rien."
+              >
+                <Toggle
+                  enabled={notifications.notify_on_new_user}
+                  onChange={() => setNotifications({ ...notifications, notify_on_new_user: !notifications.notify_on_new_user })}
+                />
+              </SettingRow>
+
+              {notificationsOn && !notifications.notify_email && (
+                <div style={{ display: "flex", gap: 9, marginTop: 14, padding: "11px 13px", backgroundColor: "#FFF8E1", border: "1px solid #F5DFA0", borderRadius: 5 }}>
+                  <AlertTriangle size={13} style={{ color: "#8A5300", flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: 11.5, color: "#8A5300", lineHeight: 1.5 }}>
+                    Renseignez une adresse de réception : l'enregistrement sera refusé sans elle.
+                  </div>
+                </div>
+              )}
             </Section>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button style={{ padding: "9px 20px", borderRadius: 4, fontSize: 13, fontWeight: 500, border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white", cursor: "pointer", color: "var(--ey-gray-dark)" }}>Annuler les modifications</button>
-            <button style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 20px", borderRadius: 4, fontSize: 13, fontWeight: 600, border: "none", backgroundColor: "var(--ey-black)", color: "white", cursor: "pointer" }}>
-              <Save size={14} /> Enregistrer les paramètres
-            </button>
-          </div>
+          {activeTab === "profile" && <AccountSection />}
+
+          {activeTab !== "profile" && (
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
+              {dirty && (
+                <span style={{ fontSize: 11.5, color: "var(--ey-gray-mid)", marginRight: "auto" }}>
+                  Modifications non enregistrées
+                </span>
+              )}
+              <button
+                onClick={() => apply(loaded)}
+                disabled={!dirty || saving}
+                style={{
+                  padding: "9px 20px", borderRadius: 4, fontSize: 13, fontWeight: 500,
+                  border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white",
+                  cursor: dirty && !saving ? "pointer" : "not-allowed",
+                  color: "var(--ey-gray-dark)", opacity: dirty && !saving ? 1 : 0.5,
+                }}
+              >
+                Annuler les modifications
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!dirty || saving}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "9px 20px",
+                  borderRadius: 4, fontSize: 13, fontWeight: 600, border: "none",
+                  backgroundColor: dirty && !saving ? "var(--ey-black)" : "#E8E8E8",
+                  color: dirty && !saving ? "#FFE600" : "#9B9B9B",
+                  cursor: dirty && !saving ? "pointer" : "not-allowed",
+                }}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Enregistrer les paramètres
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

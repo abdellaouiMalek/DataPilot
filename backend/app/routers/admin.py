@@ -15,14 +15,14 @@ import re
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete as sa_delete, func, select
-from sqlalchemy import update as sa_update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import require_back_office, require_super_admin
 from app.db.database import get_db
+from app.models.audit_log import MODULE_FRAMEWORK
 from app.models import (
     Answer,
     Dimension,
@@ -47,11 +47,46 @@ from app.schemas.admin import (
     SubDimensionCreate,
     SubDimensionUpdate,
 )
+from app.services.audit import (
+    STATUS_FAILURE,
+    Audit,
+    audit_context,
+    summarize_changes,
+)
 
 router = APIRouter(
     prefix="/api/super-admin",
     tags=["super-admin"],
 )
+
+# Field -> French label, for the "avant → après" text on framework edits.
+DIMENSION_FIELD_LABELS = {
+    "name": "Nom",
+    "description": "Description",
+    "weight": "Poids",
+    "color": "Couleur",
+    "sort_order": "Ordre",
+    "is_active": "Active",
+}
+
+SUBDIMENSION_FIELD_LABELS = {
+    "name": "Nom",
+    "dimension_id": "Dimension",
+    "sort_order": "Ordre",
+    "is_active": "Active",
+}
+
+QUESTION_FIELD_LABELS = {
+    "text": "Libellé",
+    "description": "Description",
+    "type": "Type",
+    "weight": "Poids",
+    "sub_dimension_id": "Sous-dimension",
+    "sort_order": "Ordre",
+    "is_required": "Obligatoire",
+    "is_active": "Active",
+}
+
 
 REFERENCED_409 = (
     "Élément référencé par des évaluations existantes. "
@@ -107,12 +142,14 @@ async def _get_question_or_404(db: AsyncSession, question_id: int) -> Question:
 
 
 # ── Force-delete helpers ─────────────────────────────────────────────────────
-# Answers/dimension-scores are RESTRICT-protected against ordinary deletes (see
-# app/models/assessment.py) so admins don't accidentally corrupt historical
-# evaluations. A force-delete opts into that: it removes the blocking rows
-# itself before the entity, then relies on ORM cascade for the rest
-# (Dimension → SubDimension → Question, and Question → Recommendation, which
-# are all ON DELETE CASCADE already).
+# Answers and dimension-scores no longer block a delete: they key into the
+# frozen snapshot of the version they were collected under (see
+# app/services/questionnaire_reference.py), so deleting the live rows costs no
+# history and they are deliberately left alone here. `force` now only reaches
+# past the recommendation ladder, and the impact preview stays because an admin
+# should still see how many past evaluations mentioned what they are removing.
+# The rest is ORM cascade (Dimension → SubDimension → Question, and
+# Question → Recommendation, both ON DELETE CASCADE already).
 
 async def _question_ids_for_dimension(db: AsyncSession, dimension_id: int) -> list[int]:
     return list(
@@ -128,11 +165,6 @@ async def _question_ids_for_subdimension(db: AsyncSession, sub_id: int) -> list[
         .scalars()
         .all()
     )
-
-
-async def _delete_answers_for_questions(db: AsyncSession, question_ids: list[int]) -> None:
-    if question_ids:
-        await db.execute(sa_delete(Answer).where(Answer.question_id.in_(question_ids)))
 
 
 async def _delete_impact(
@@ -194,7 +226,11 @@ async def get_dimension(dimension_id: int, db: AsyncSession = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_super_admin)],
 )
-async def create_dimension(payload: DimensionCreate, db: AsyncSession = Depends(get_db)):
+async def create_dimension(
+    payload: DimensionCreate,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
+):
     count = await db.scalar(select(func.count()).select_from(Dimension)) or 0
     dim = Dimension(
         key=await _unique_key(db, _slugify(payload.name)),
@@ -209,6 +245,15 @@ async def create_dimension(payload: DimensionCreate, db: AsyncSession = Depends(
     )
     db.add(dim)
     await db.commit()
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Ajout dimension {dim.name}",
+        entity_type="dimension",
+        entity_id=dim.id,
+        entity_label=dim.name,
+        before=f"{count} dimensions",
+        after=f"{count + 1} dimensions",
+    )
     return await _get_dimension_or_404(db, dim.id)
 
 
@@ -221,11 +266,30 @@ async def update_dimension(
     dimension_id: int,
     payload: DimensionUpdate,
     db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     dim = await _get_dimension_or_404(db, dimension_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    previous = {field: getattr(dim, field) for field in DIMENSION_FIELD_LABELS}
+    for field, value in updates.items():
         setattr(dim, field, value)
     await db.commit()
+    before, after, fields = summarize_changes(
+        previous,
+        {field: getattr(dim, field) for field in previous},
+        DIMENSION_FIELD_LABELS,
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Modification dimension {dim.name}",
+            entity_type="dimension",
+            entity_id=dim.id,
+            entity_label=dim.name,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
     return await _get_dimension_or_404(db, dimension_id)
 
 
@@ -235,7 +299,12 @@ async def update_dimension(
     dependencies=[Depends(require_super_admin)],
 )
 async def dimension_delete_impact(dimension_id: int, db: AsyncSession = Depends(get_db)):
-    """Preview what a force-delete of this dimension would wipe out."""
+    """How much collected history refers to this dimension.
+
+    Nothing here is destroyed by a delete any more — answers and scores are
+    read from their version's snapshot — but an admin should still see how
+    many past evaluations mentioned what they are about to remove.
+    """
     await _get_dimension_or_404(db, dimension_id)
     question_ids = await _question_ids_for_dimension(db, dimension_id)
     return await _delete_impact(db, question_ids, dimension_ids=[dimension_id])
@@ -247,21 +316,40 @@ async def dimension_delete_impact(dimension_id: int, db: AsyncSession = Depends(
     dependencies=[Depends(require_super_admin)],
 )
 async def delete_dimension(
-    dimension_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+    dimension_id: int,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     dim = await _get_dimension_or_404(db, dimension_id)
-    if force:
-        question_ids = await _question_ids_for_dimension(db, dimension_id)
-        await _delete_answers_for_questions(db, question_ids)
-        await db.execute(
-            sa_delete(DimensionScore).where(DimensionScore.dimension_id == dimension_id)
-        )
+    name = dim.name
     await db.delete(dim)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
+        # A blocked delete is worth recording too: it's an attempt to remove
+        # something history still depends on.
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Suppression dimension {name}",
+            status=STATUS_FAILURE,
+            entity_type="dimension",
+            entity_id=dimension_id,
+            entity_label=name,
+            before=name,
+            after="Refusé — élément référencé",
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Suppression dimension {name}",
+        entity_type="dimension",
+        entity_id=dimension_id,
+        entity_label=name,
+        before=name,
+        after="Supprimée",
+    )
 
 
 # ── Sub-dimensions ────────────────────────────────────────────────────────────
@@ -274,7 +362,9 @@ async def delete_dimension(
     dependencies=[Depends(require_super_admin)],
 )
 async def create_subdimension(
-    payload: SubDimensionCreate, db: AsyncSession = Depends(get_db)
+    payload: SubDimensionCreate,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     await _get_dimension_or_404(db, payload.dimension_id)
     count = await db.scalar(
@@ -290,6 +380,14 @@ async def create_subdimension(
     )
     db.add(sub)
     await db.commit()
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Ajout sous-dimension {sub.name}",
+        entity_type="subdimension",
+        entity_id=sub.id,
+        entity_label=sub.name,
+        after=sub.name,
+    )
     return await _get_subdimension_or_404(db, sub.id)
 
 
@@ -302,9 +400,11 @@ async def update_subdimension(
     sub_id: int,
     payload: SubDimensionUpdate,
     db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     sub = await _get_subdimension_or_404(db, sub_id)
     updates = payload.model_dump(exclude_unset=True)
+    previous = {field: getattr(sub, field) for field in SUBDIMENSION_FIELD_LABELS}
     if "dimension_id" in updates:
         await _get_dimension_or_404(db, updates["dimension_id"])
         # keep the denormalized dimension_id on the moved questions consistent
@@ -313,6 +413,22 @@ async def update_subdimension(
     for field, value in updates.items():
         setattr(sub, field, value)
     await db.commit()
+    before, after, fields = summarize_changes(
+        previous,
+        {field: getattr(sub, field) for field in previous},
+        SUBDIMENSION_FIELD_LABELS,
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Modification sous-dimension {sub.name}",
+            entity_type="subdimension",
+            entity_id=sub.id,
+            entity_label=sub.name,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
     return await _get_subdimension_or_404(db, sub_id)
 
 
@@ -322,7 +438,7 @@ async def update_subdimension(
     dependencies=[Depends(require_super_admin)],
 )
 async def subdimension_delete_impact(sub_id: int, db: AsyncSession = Depends(get_db)):
-    """Preview what a force-delete of this sub-dimension would wipe out."""
+    """How much collected history refers to this sub-dimension."""
     await _get_subdimension_or_404(db, sub_id)
     question_ids = await _question_ids_for_subdimension(db, sub_id)
     return await _delete_impact(db, question_ids)
@@ -334,18 +450,38 @@ async def subdimension_delete_impact(sub_id: int, db: AsyncSession = Depends(get
     dependencies=[Depends(require_super_admin)],
 )
 async def delete_subdimension(
-    sub_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+    sub_id: int,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     sub = await _get_subdimension_or_404(db, sub_id)
-    if force:
-        question_ids = await _question_ids_for_subdimension(db, sub_id)
-        await _delete_answers_for_questions(db, question_ids)
+    name = sub.name
     await db.delete(sub)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Suppression sous-dimension {name}",
+            status=STATUS_FAILURE,
+            entity_type="subdimension",
+            entity_id=sub_id,
+            entity_label=name,
+            before=name,
+            after="Refusé — élément référencé",
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Suppression sous-dimension {name}",
+        entity_type="subdimension",
+        entity_id=sub_id,
+        entity_label=name,
+        before=name,
+        after="Supprimée",
+    )
 
 
 # ── Questions ─────────────────────────────────────────────────────────────────
@@ -376,7 +512,11 @@ async def list_questions(
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_super_admin)],
 )
-async def create_question(payload: QuestionCreate, db: AsyncSession = Depends(get_db)):
+async def create_question(
+    payload: QuestionCreate,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
+):
     sub = await _get_subdimension_or_404(db, payload.sub_dimension_id)
     count = await db.scalar(
         select(func.count())
@@ -405,6 +545,15 @@ async def create_question(payload: QuestionCreate, db: AsyncSession = Depends(ge
     db.add(question)
     await db.commit()
     await db.refresh(question)
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Ajout question Q-{question.id:03d}",
+        entity_type="question",
+        entity_id=question.id,
+        entity_label=question.text,
+        after=question.text,
+        details={"sous-dimension": sub.name, "type": question.type},
+    )
     return question
 
 
@@ -417,9 +566,11 @@ async def update_question(
     question_id: int,
     payload: QuestionUpdate,
     db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     question = await _get_question_or_404(db, question_id)
     updates = payload.model_dump(exclude_unset=True)
+    previous = {field: getattr(question, field) for field in QUESTION_FIELD_LABELS}
     if "sub_dimension_id" in updates and updates["sub_dimension_id"] is not None:
         target = await _get_subdimension_or_404(db, updates["sub_dimension_id"])
         question.dimension_id = target.dimension_id  # keep denormalized FK consistent
@@ -427,6 +578,22 @@ async def update_question(
         setattr(question, field, value)
     await db.commit()
     await db.refresh(question)
+    before, after, fields = summarize_changes(
+        previous,
+        {field: getattr(question, field) for field in previous},
+        QUESTION_FIELD_LABELS,
+    )
+    if fields:
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Modification question Q-{question.id:03d}",
+            entity_type="question",
+            entity_id=question.id,
+            entity_label=question.text,
+            before=before,
+            after=after,
+            details={"champs": fields},
+        )
     return question
 
 
@@ -436,7 +603,7 @@ async def update_question(
     dependencies=[Depends(require_super_admin)],
 )
 async def question_delete_impact(question_id: int, db: AsyncSession = Depends(get_db)):
-    """Preview what a force-delete of this question would wipe out."""
+    """How much collected history refers to this question."""
     await _get_question_or_404(db, question_id)
     return await _delete_impact(db, [question_id])
 
@@ -447,152 +614,35 @@ async def question_delete_impact(question_id: int, db: AsyncSession = Depends(ge
     dependencies=[Depends(require_super_admin)],
 )
 async def delete_question(
-    question_id: int, force: bool = False, db: AsyncSession = Depends(get_db)
+    question_id: int,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    audit: Audit = Depends(audit_context),
 ):
     question = await _get_question_or_404(db, question_id)
-    if force:
-        await _delete_answers_for_questions(db, [question_id])
+    label = question.text
     await db.delete(question)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
+        await audit.record(
+            module=MODULE_FRAMEWORK,
+            action=f"Suppression question Q-{question_id:03d}",
+            status=STATUS_FAILURE,
+            entity_type="question",
+            entity_id=question_id,
+            entity_label=label,
+            before=label,
+            after="Refusé — élément référencé",
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
-
-
-# ── Recommendations ──────────────────────────────────────────────────────────
-# One row per (question_id, trigger_level) -- see uq_question_trigger on the
-# model. A wizard step that targets several trigger levels at once submits a
-# single POST with several trigger_levels; the endpoint creates one row per
-# level not already occupied for that question, and reports the rest as
-# skipped rather than failing the whole request over one conflict.
-
-
-async def _get_recommendation_or_404(db: AsyncSession, recommendation_id: int) -> Recommendation:
-    reco = await db.scalar(select(Recommendation).where(Recommendation.id == recommendation_id))
-    if reco is None:
-        raise HTTPException(status_code=404, detail="Recommandation introuvable")
-    return reco
-
-
-@router.get(
-    "/recommendations",
-    response_model=list[RecommendationAdminRead],
-    dependencies=[Depends(require_super_admin)],
-)
-async def list_recommendations(db: AsyncSession = Depends(get_db)):
-    stmt = select(Recommendation).order_by(Recommendation.question_id, Recommendation.trigger_level)
-    return (await db.execute(stmt)).scalars().all()
-
-
-@router.post(
-    "/recommendations",
-    response_model=RecommendationBatchCreateResult,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_super_admin)],
-)
-async def create_recommendations(
-    payload: RecommendationCreate, db: AsyncSession = Depends(get_db)
-):
-    question = await _get_question_or_404(db, payload.question_id)
-    dimension = await _get_dimension_or_404(db, question.dimension_id)
-
-    requested = sorted(set(payload.trigger_levels))
-    invalid = [lvl for lvl in requested if lvl < 1 or lvl > 4]
-    if invalid:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Niveau(x) déclencheur(s) invalide(s) : {invalid} (doit être entre 1 et 4).",
-        )
-
-    existing_levels = set(
-        (
-            await db.execute(
-                select(Recommendation.trigger_level).where(
-                    Recommendation.question_id == question.id
-                )
-            )
-        )
-        .scalars()
-        .all()
+    await audit.record(
+        module=MODULE_FRAMEWORK,
+        action=f"Suppression question Q-{question_id:03d}",
+        entity_type="question",
+        entity_id=question_id,
+        entity_label=label,
+        before=label,
+        after="Supprimée",
     )
-    to_create = [lvl for lvl in requested if lvl not in existing_levels]
-    skipped = [lvl for lvl in requested if lvl in existing_levels]
-
-    if not to_create:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Une recommandation existe déjà pour tous les niveaux sélectionnés sur cette question.",
-        )
-
-    created: list[Recommendation] = []
-    for lvl in to_create:
-        reco = Recommendation(
-            code=f"{dimension.code}Q{question.id}-{lvl}",
-            question_id=question.id,
-            trigger_level=lvl,
-            target_level=lvl + 1,
-            title=payload.title,
-            recommendation_text=payload.recommendation_text,
-            category=payload.category,
-            regulatory_flag=payload.regulatory_flag,
-            effort=payload.effort,
-            is_active=payload.is_active,
-        )
-        db.add(reco)
-        created.append(reco)
-
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Conflit lors de la création (code ou niveau déjà utilisé).",
-        )
-    for reco in created:
-        await db.refresh(reco)
-
-    return RecommendationBatchCreateResult(created=created, skipped_levels=skipped)
-
-
-@router.patch(
-    "/recommendations/{recommendation_id}",
-    response_model=RecommendationAdminRead,
-    dependencies=[Depends(require_super_admin)],
-)
-async def update_recommendation(
-    recommendation_id: int,
-    payload: RecommendationUpdate,
-    db: AsyncSession = Depends(get_db),
-):
-    reco = await _get_recommendation_or_404(db, recommendation_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(reco, field, value)
-    await db.commit()
-    await db.refresh(reco)
-    return reco
-
-
-@router.delete(
-    "/recommendations/{recommendation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_super_admin)],
-)
-async def delete_recommendation(
-    recommendation_id: int, db: AsyncSession = Depends(get_db)
-):
-    reco = await _get_recommendation_or_404(db, recommendation_id)
-    # prerequisite_id is a nullable self-FK with no ON DELETE behavior
-    # declared (Postgres defaults to RESTRICT) -- clear anything pointing at
-    # this row first so deleting it never 409s over that alone. Nothing else
-    # references recommendations.id (delivery to an assessment is computed
-    # live by the recommendation engine, never persisted as a hard FK -- see
-    # AssessmentRecommendationPlan, a JSON cache keyed by assessment_id only).
-    await db.execute(
-        sa_update(Recommendation)
-        .where(Recommendation.prerequisite_id == recommendation_id)
-        .values(prerequisite_id=None)
-    )
-    await db.delete(reco)
-    await db.commit()
