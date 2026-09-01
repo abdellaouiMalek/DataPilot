@@ -1416,9 +1416,12 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
     // navigating -- the debounced autosave (below) might not have fired
     // yet. Reuses the exact same saveDraft the autosave already calls; this
     // never publishes anything and never touches the live questionnaire.
+    setSaveState("saving");
     try {
       await saveDraft(dimensions, baseVersionId);
+      setSaveState("saved");
     } catch (e) {
+      setSaveState("error");
       toast.error("Impossible d'enregistrer le brouillon avant de continuer", { description: errMsg(e) });
       return;
     }

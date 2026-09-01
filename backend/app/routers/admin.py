@@ -681,7 +681,12 @@ async def _get_recommendation_or_404(db: AsyncSession, recommendation_id: int) -
     dependencies=[Depends(require_super_admin)],
 )
 async def list_recommendations(db: AsyncSession = Depends(get_db)):
-    stmt = select(Recommendation).order_by(Recommendation.question_id, Recommendation.trigger_level)
+    # Draft rows (draft_question_key IS NOT NULL, question_id IS NULL) sort
+    # first -- NULLs sort last under plain ASC, which would otherwise bury a
+    # just-created draft recommendation on the catalog's last page.
+    stmt = select(Recommendation).order_by(
+        Recommendation.draft_question_key.is_(None), Recommendation.question_id, Recommendation.trigger_level
+    )
     return (await db.execute(stmt)).scalars().all()
 
 

@@ -420,9 +420,9 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
                 <label style={LBL}>Dimension *</label>
                 <FSelect
                   value={selectedDim ? (isNewId(selectedDim.id) ? `${selectedDim.name} [Brouillon]` : selectedDim.name) : ""}
-                  onChange={name => {
-                    const plain = name.replace(/ \[Brouillon\]$/, "");
-                    changeDimension(dimensions.find(dim => dim.name === plain)?.id ?? "");
+                  onChange={label => {
+                    const dimLabel = (dim: typeof dimensions[number]) => isNewId(dim.id) ? `${dim.name} [Brouillon]` : dim.name;
+                    changeDimension(dimensions.find(dim => dimLabel(dim) === label)?.id ?? "");
                   }}
                   options={dimensions.map(dim => isNewId(dim.id) ? `${dim.name} [Brouillon]` : dim.name)}
                   placeholder="Sélectionner une dimension..." />
@@ -435,9 +435,9 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
                       const s = availableSubs.find(s => s.id === d.subDimensionId);
                       return s ? (isNewId(s.id) ? `${s.name} [Brouillon]` : s.name) : "";
                     })()}
-                    onChange={name => {
-                      const plain = name.replace(/ \[Brouillon\]$/, "");
-                      changeSub(availableSubs.find(s => s.name === plain)?.id ?? "");
+                    onChange={label => {
+                      const subLabel = (s: typeof availableSubs[number]) => isNewId(s.id) ? `${s.name} [Brouillon]` : s.name;
+                      changeSub(availableSubs.find(s => subLabel(s) === label)?.id ?? "");
                     }}
                     options={availableSubs.map(s => isNewId(s.id) ? `${s.name} [Brouillon]` : s.name)}
                     placeholder="Sélectionner une sous-dimension..." />
@@ -452,8 +452,8 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
                       return q ? (isNewId(q.id) ? `${q.label} [Brouillon]` : q.label) : "";
                     })()}
                     onChange={label => {
-                      const plain = label.replace(/ \[Brouillon\]$/, "");
-                      set({ questionId: availableQuestions.find(q => q.label === plain)?.id ?? "" });
+                      const qLabel = (q: typeof availableQuestions[number]) => isNewId(q.id) ? `${q.label} [Brouillon]` : q.label;
+                      set({ questionId: availableQuestions.find(q => qLabel(q) === label)?.id ?? "" });
                     }}
                     options={availableQuestions.map(q => isNewId(q.id) ? `${q.label} [Brouillon]` : q.label)}
                     placeholder="Sélectionner une question..."
@@ -830,7 +830,7 @@ export function RecommendationCatalog() {
   // so a refresh doesn't reopen it.
   useEffect(() => {
     const draftQuestionId = searchParams.get("draftQuestionId");
-    if (!draftQuestionId || loading) return;
+    if (!draftQuestionId || loading || loadError) return;
     const exists = mergedDimensions.some(d => d.subDimensions.some(s => s.questions.some(q => q.id === draftQuestionId)));
     if (exists) {
       setPresetQuestionId(draftQuestionId);
@@ -839,7 +839,7 @@ export function RecommendationCatalog() {
       toast.warning("Question de brouillon introuvable — le brouillon a peut-être changé.");
     }
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete("draftQuestionId"); return next; }, { replace: true });
-  }, [searchParams, loading, mergedDimensions, setSearchParams]);
+  }, [searchParams, loading, loadError, mergedDimensions, setSearchParams]);
 
   const categories = Array.from(new Set(recs.map(r => r.category))).sort();
 

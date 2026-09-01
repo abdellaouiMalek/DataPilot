@@ -244,7 +244,7 @@ async def _fetch_recommendation_context(db: AsyncSession, reco_code: str) -> dic
     if not reco_code:
         return None
     reco = await db.scalar(select(Recommendation).where(Recommendation.code == reco_code))
-    if reco is None:
+    if reco is None or reco.question_id is None:
         return None
     question_ctx = None
     question = await db.get(Question, reco.question_id)
