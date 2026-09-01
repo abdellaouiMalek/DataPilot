@@ -22,8 +22,13 @@ import type {
   Status,
 } from "@/lib/admin";
 
-let counter = 0;
-const newId = (prefix: string) => `new-${prefix}-${++counter}`;
+// crypto.randomUUID() (standard Web Crypto API, no import needed) instead of
+// a module-level counter: the counter reset to 0 on every page load, which
+// could collide with a "new-q-1" already sitting in the persisted draft --
+// harmless before, but this id is now also the durable cross-reference a
+// draft recommendation uses to point at its (not-yet-published) question,
+// so it has to be genuinely unique, not just unique-per-session.
+const newId = (prefix: string) => `new-${prefix}-${crypto.randomUUID()}`;
 
 const active = (status?: Status) => (status === "Inactive" ? "Inactive" : "Active");
 
