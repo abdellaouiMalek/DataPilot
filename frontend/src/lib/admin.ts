@@ -115,7 +115,13 @@ interface ApiDeleteImpact {
 export interface Recommendation {
   id: string;
   code: string;
-  questionId: string;
+  /** Null for a draft recommendation -- see draftQuestionKey. */
+  questionId: string | null;
+  /** Set only for a recommendation staged against a question that hasn't
+   *  been published yet (see AdminDimensions.tsx's "Configurer les
+   *  recommandations" flow) -- the same temp id the framework editor uses
+   *  for that question in its draft tree. */
+  draftQuestionKey: string | null;
   triggerLevel: number;
   targetLevel: number;
   title: string;
@@ -129,7 +135,8 @@ export interface Recommendation {
 interface ApiRecommendation {
   id: number;
   code: string;
-  question_id: number;
+  question_id: number | null;
+  draft_question_key: string | null;
   trigger_level: number;
   target_level: number;
   title: string;
@@ -188,7 +195,8 @@ function mapRecommendation(r: ApiRecommendation): Recommendation {
   return {
     id: String(r.id),
     code: r.code,
-    questionId: String(r.question_id),
+    questionId: r.question_id != null ? String(r.question_id) : null,
+    draftQuestionKey: r.draft_question_key,
     triggerLevel: r.trigger_level,
     targetLevel: r.target_level,
     title: r.title,
@@ -333,6 +341,25 @@ export const adminApi = {
   ): Promise<{ created: Recommendation[]; skippedLevels: number[] }> => {
     const res = await api.post<ApiRecommendationBatchResult>("/api/super-admin/recommendations", {
       question_id: Number(questionId),
+      trigger_levels: triggerLevels,
+      title: input.title,
+      recommendation_text: input.text,
+      category: input.category,
+      effort: input.effort,
+      regulatory_flag: input.regulatoryFlag,
+      is_active: toActive(input.status),
+    });
+    return { created: res.created.map(mapRecommendation), skippedLevels: res.skipped_levels };
+  },
+  // Same shape as createRecommendations, but for a question that's still in
+  // the framework draft (no real question_id yet) -- see
+  // AdminDimensions.tsx's "Configurer les recommandations" flow and
+  // WizardDrawer's isNewId(questionId) branch in AdminRecommendations.tsx.
+  createDraftRecommendations: async (
+    draftQuestionKey: string, triggerLevels: number[], input: RecommendationCreateInput
+  ): Promise<{ created: Recommendation[]; skippedLevels: number[] }> => {
+    const res = await api.post<ApiRecommendationBatchResult>("/api/super-admin/recommendations", {
+      draft_question_key: draftQuestionKey,
       trigger_levels: triggerLevels,
       title: input.title,
       recommendation_text: input.text,
