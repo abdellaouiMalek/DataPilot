@@ -28,7 +28,8 @@
  *    déjà dans la maquette d'origine.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Search, Plus, X, ChevronDown, MoreHorizontal,
   Edit2, Trash2, Eye, Power,
@@ -41,6 +42,7 @@ import {
   adminApi,
   type Dimension, type Recommendation, type Status,
 } from "../../lib/admin";
+import { getFrameworkState, fromApiTree, isNewId } from "../../lib/adminFramework";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Une erreur est survenue";
@@ -55,8 +57,13 @@ interface FlatRecommendation extends Recommendation {
   dimensionColor: string;
   subDimensionName: string;
   questionText: string;
+  isDraft: boolean;
 }
 
+// `dimensions` here is the MERGED tree (live + draft, see mergedDimensions
+// in RecommendationCatalog below) -- a draft recommendation's questionId is
+// null, so it's resolved by draftQuestionKey against the same merged tree
+// instead (a draft question's id in that tree IS its draftQuestionKey).
 function flattenRecommendations(recs: Recommendation[], dimensions: Dimension[]): FlatRecommendation[] {
   const byQuestion = new Map<string, { dim: Dimension; subName: string; text: string }>();
   for (const d of dimensions) {
@@ -67,15 +74,45 @@ function flattenRecommendations(recs: Recommendation[], dimensions: Dimension[])
     }
   }
   return recs.map(r => {
-    const ctx = byQuestion.get(r.questionId);
+    const key = r.questionId ?? r.draftQuestionKey ?? "";
+    const ctx = byQuestion.get(key);
     return {
       ...r,
       dimensionName: ctx?.dim.name ?? "—",
       dimensionColor: ctx?.dim.color ?? "#9B9B9B",
       subDimensionName: ctx?.subName ?? "—",
       questionText: ctx?.text ?? "—",
+      isDraft: r.questionId === null,
     };
   });
+}
+
+// Live tree + draft-only nodes, so the catalog's selectors can offer a
+// question that hasn't been published yet. A draft dimension/sub-dimension
+// only appears if it's genuinely new (isNewId) -- an existing dimension
+// being edited in the draft keeps its real id and is already in `live`.
+function mergeDraftIntoLive(live: Dimension[], draft: Dimension[]): Dimension[] {
+  const liveIds = new Set(live.map(d => d.id));
+  const draftOnlyDimensions = draft.filter(d => isNewId(d.id) && !liveIds.has(d.id));
+
+  const merged = live.map(liveDim => {
+    const draftDim = draft.find(d => d.id === liveDim.id);
+    if (!draftDim) return liveDim;
+    const liveSubIds = new Set(liveDim.subDimensions.map(s => s.id));
+    const draftOnlySubs = draftDim.subDimensions.filter(s => isNewId(s.id) && !liveSubIds.has(s.id));
+    const subDimensions = liveDim.subDimensions.map(liveSub => {
+      const draftSub = draftDim.subDimensions.find(s => s.id === liveSub.id);
+      if (!draftSub) return liveSub;
+      const liveQIds = new Set(liveSub.questions.map(q => q.id));
+      const draftOnlyQuestions = draftSub.questions.filter(q => isNewId(q.id) && !liveQIds.has(q.id));
+      return draftOnlyQuestions.length
+        ? { ...liveSub, questions: [...liveSub.questions, ...draftOnlyQuestions] }
+        : liveSub;
+    });
+    return draftOnlySubs.length ? { ...liveDim, subDimensions: [...subDimensions, ...draftOnlySubs] } : { ...liveDim, subDimensions };
+  });
+
+  return [...merged, ...draftOnlyDimensions];
 }
 
 type TypeReco = "Réglementaire" | "Amélioration";
@@ -91,6 +128,14 @@ function StatutBadge({ value }: { value: Status }) {
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color }}>
       <span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: color, flexShrink: 0 }} />
       {statutLabel(value)}
+    </span>
+  );
+}
+
+function DraftBadge() {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 700, color: "#8A6A1A", backgroundColor: "#FFF4DC", borderRadius: 4, padding: "1px 6px" }}>
+      Brouillon
     </span>
   );
 }
@@ -249,23 +294,41 @@ function makeInitialWizard(): WizardData {
 
 // ── Wizard drawer ─────────────────────────────────────────────────────────────
 
-function WizardDrawer({ dimensions, categories, editing, onClose, onSaved }: {
+function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClose, onSaved }: {
   dimensions: Dimension[];
   categories: string[];
   /** Présent = édition (rattachement figé, une seule ligne réelle) ; absent = création (rattachement libre, plusieurs niveaux possibles). */
   editing?: FlatRecommendation;
+  /** Pré-sélectionne dimension/sous-dimension/question au montage (déclenché
+   *  par "Configurer les recommandations" depuis une question tout juste
+   *  créée en brouillon) -- ignoré en édition. */
+  presetQuestionId?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const isEdit = Boolean(editing);
-  const [d, setD] = useState<WizardData>(() => editing ? {
-    titre: editing.title, description: editing.text, statut: editing.status,
-    dimensionId: "", subDimensionId: "", questionId: editing.questionId,
-    niveaux: [editing.triggerLevel],
-    type: typeOf(editing), category: editing.category, effort: editing.effort,
-  } : makeInitialWizard());
+  const [d, setD] = useState<WizardData>(() => {
+    if (editing) {
+      return {
+        titre: editing.title, description: editing.text, statut: editing.status,
+        dimensionId: "", subDimensionId: "", questionId: editing.questionId ?? editing.draftQuestionKey ?? "",
+        niveaux: [editing.triggerLevel],
+        type: typeOf(editing), category: editing.category, effort: editing.effort,
+      };
+    }
+    if (presetQuestionId) {
+      for (const dim of dimensions) {
+        for (const sub of dim.subDimensions) {
+          if (sub.questions.some(q => q.id === presetQuestionId)) {
+            return { ...makeInitialWizard(), dimensionId: dim.id, subDimensionId: sub.id, questionId: presetQuestionId };
+          }
+        }
+      }
+    }
+    return makeInitialWizard();
+  });
   const set = (patch: Partial<WizardData>) => setD(prev => ({ ...prev, ...patch }));
 
   const selectedDim = dimensions.find(dim => dim.id === d.dimensionId);
@@ -289,10 +352,13 @@ function WizardDrawer({ dimensions, categories, editing, onClose, onSaved }: {
         });
         toast.success("Recommandation mise à jour");
       } else {
-        const res = await adminApi.createRecommendations(d.questionId, d.niveaux, {
+        const input = {
           title: d.titre, text: d.description, category: d.category,
           effort: d.effort, regulatoryFlag: d.type === "Réglementaire", status: d.statut,
-        });
+        };
+        const res = isNewId(d.questionId)
+          ? await adminApi.createDraftRecommendations(d.questionId, d.niveaux, input)
+          : await adminApi.createRecommendations(d.questionId, d.niveaux, input);
         toast.success(`${res.created.length} recommandation${res.created.length !== 1 ? "s" : ""} créée${res.created.length !== 1 ? "s" : ""}`);
         if (res.skippedLevels.length > 0) {
           toast.warning(`Niveau${res.skippedLevels.length !== 1 ? "x" : ""} déjà existant${res.skippedLevels.length !== 1 ? "s" : ""} pour cette question, ignoré${res.skippedLevels.length !== 1 ? "s" : ""} : ${res.skippedLevels.join(", ")}`);
@@ -352,24 +418,46 @@ function WizardDrawer({ dimensions, categories, editing, onClose, onSaved }: {
             <>
               <div>
                 <label style={LBL}>Dimension *</label>
-                <FSelect value={selectedDim?.name ?? ""}
-                  onChange={name => changeDimension(dimensions.find(dim => dim.name === name)?.id ?? "")}
-                  options={dimensions.map(dim => dim.name)} placeholder="Sélectionner une dimension..." />
+                <FSelect
+                  value={selectedDim ? (isNewId(selectedDim.id) ? `${selectedDim.name} [Brouillon]` : selectedDim.name) : ""}
+                  onChange={name => {
+                    const plain = name.replace(/ \[Brouillon\]$/, "");
+                    changeDimension(dimensions.find(dim => dim.name === plain)?.id ?? "");
+                  }}
+                  options={dimensions.map(dim => isNewId(dim.id) ? `${dim.name} [Brouillon]` : dim.name)}
+                  placeholder="Sélectionner une dimension..." />
               </div>
               {selectedDim && (
                 <div>
                   <label style={LBL}>Sous-dimension *</label>
-                  <FSelect value={availableSubs.find(s => s.id === d.subDimensionId)?.name ?? ""}
-                    onChange={name => changeSub(availableSubs.find(s => s.name === name)?.id ?? "")}
-                    options={availableSubs.map(s => s.name)} placeholder="Sélectionner une sous-dimension..." />
+                  <FSelect
+                    value={(() => {
+                      const s = availableSubs.find(s => s.id === d.subDimensionId);
+                      return s ? (isNewId(s.id) ? `${s.name} [Brouillon]` : s.name) : "";
+                    })()}
+                    onChange={name => {
+                      const plain = name.replace(/ \[Brouillon\]$/, "");
+                      changeSub(availableSubs.find(s => s.name === plain)?.id ?? "");
+                    }}
+                    options={availableSubs.map(s => isNewId(s.id) ? `${s.name} [Brouillon]` : s.name)}
+                    placeholder="Sélectionner une sous-dimension..." />
                 </div>
               )}
               {selectedSub && (
                 <div>
                   <label style={LBL}>Question *</label>
-                  <FSelect value={availableQuestions.find(q => q.id === d.questionId)?.label ?? ""}
-                    onChange={label => set({ questionId: availableQuestions.find(q => q.label === label)?.id ?? "" })}
-                    options={availableQuestions.map(q => q.label)} placeholder="Sélectionner une question..." />
+                  <FSelect
+                    value={(() => {
+                      const q = availableQuestions.find(q => q.id === d.questionId);
+                      return q ? (isNewId(q.id) ? `${q.label} [Brouillon]` : q.label) : "";
+                    })()}
+                    onChange={label => {
+                      const plain = label.replace(/ \[Brouillon\]$/, "");
+                      set({ questionId: availableQuestions.find(q => q.label === plain)?.id ?? "" });
+                    }}
+                    options={availableQuestions.map(q => isNewId(q.id) ? `${q.label} [Brouillon]` : q.label)}
+                    placeholder="Sélectionner une question..."
+                  />
                 </div>
               )}
               <div>
@@ -542,7 +630,10 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: FlatRecommendation; onClos
         <div style={{ padding: "22px 28px 18px", borderBottom: "1px solid #EBEBEB", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 10, color: "#A0A0A0", fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.04em", display: "block", marginBottom: 5 }}>{rec.code}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                <span style={{ fontSize: 10, color: "#A0A0A0", fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.04em" }}>{rec.code}</span>
+                {rec.isDraft && <DraftBadge />}
+              </div>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1A1A1A", margin: "0 0 12px", lineHeight: 1.35 }}>{rec.title}</h2>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <TypeBadge value={typeOf(rec)} />
@@ -677,7 +768,9 @@ function RCStyleInjector() {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function RecommendationCatalog() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
+  const [draftDimensions, setDraftDimensions] = useState<Dimension[]>([]);
   const [recs, setRecs] = useState<FlatRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -689,6 +782,7 @@ export function RecommendationCatalog() {
   const [fStat, setFStat] = useState("");
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [presetQuestionId, setPresetQuestionId] = useState<string | null>(null);
   const [editRec, setEditRec] = useState<FlatRecommendation | null>(null);
   const [focusSearch, setFocusSearch] = useState(false);
   const [viewRec, setViewRec] = useState<FlatRecommendation | null>(null);
@@ -700,9 +794,18 @@ export function RecommendationCatalog() {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
     try {
-      const [dims, recommendations] = await Promise.all([adminApi.listDimensions(), adminApi.listRecommendations()]);
+      const [dims, recommendations, framework] = await Promise.all([
+        adminApi.listDimensions(),
+        adminApi.listRecommendations(),
+        getFrameworkState(),
+      ]);
+      // Draft-only nodes (dimension/sub-dimension/question ids failing
+      // isNewId are real and already in `dims` -- keep only what isn't).
+      const draftTree = framework.draft ? fromApiTree(framework.draft.tree) : [];
       setDimensions(dims);
-      setRecs(flattenRecommendations(recommendations, dims));
+      setDraftDimensions(draftTree);
+      const merged = mergeDraftIntoLive(dims, draftTree);
+      setRecs(flattenRecommendations(recommendations, merged));
     } catch (e) {
       setLoadError(true);
       toast.error(errMsg(e));
@@ -711,6 +814,32 @@ export function RecommendationCatalog() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Live dimensions, with any draft-only dimensions/sub-dimensions/questions
+  // merged in (tagged via isNewId so the UI can badge them "Brouillon") --
+  // passed to WizardDrawer so both the manual flow and the deep-link below
+  // can select a draft question, per the brainstormed design.
+  const mergedDimensions = useMemo(
+    () => mergeDraftIntoLive(dimensions, draftDimensions),
+    [dimensions, draftDimensions],
+  );
+
+  // Deep-link from AdminDimensions.tsx's "Configurer les recommandations":
+  // ?draftQuestionId=<tempId> opens the wizard pre-filled with that draft
+  // question, once the merged tree has loaded. Consumed once (param cleared)
+  // so a refresh doesn't reopen it.
+  useEffect(() => {
+    const draftQuestionId = searchParams.get("draftQuestionId");
+    if (!draftQuestionId || loading) return;
+    const exists = mergedDimensions.some(d => d.subDimensions.some(s => s.questions.some(q => q.id === draftQuestionId)));
+    if (exists) {
+      setPresetQuestionId(draftQuestionId);
+      setShowWizard(true);
+    } else {
+      toast.warning("Question de brouillon introuvable — le brouillon a peut-être changé.");
+    }
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete("draftQuestionId"); return next; }, { replace: true });
+  }, [searchParams, loading, mergedDimensions, setSearchParams]);
 
   const categories = Array.from(new Set(recs.map(r => r.category))).sort();
 
@@ -888,6 +1017,7 @@ export function RecommendationCatalog() {
                     <td style={{ padding: "14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "#ABABAB", fontFamily: "monospace", letterSpacing: "0.04em", flexShrink: 0 }}>{rec.code}</span>
+                        {rec.isDraft && <DraftBadge />}
                         <span style={{ fontSize: 9, fontWeight: 700, color: "#4A4A4A", backgroundColor: "#F0F0F0", padding: "1px 5px", borderRadius: 3, flexShrink: 0 }}>Niv. {rec.triggerLevel}→{rec.targetLevel}</span>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1A1A", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -971,10 +1101,18 @@ export function RecommendationCatalog() {
 
       {viewRec && <DetailPanel rec={viewRec} onClose={() => setViewRec(null)} onEdit={(r) => { setViewRec(null); setEditRec(r); }} />}
 
-      {showWizard && <WizardDrawer dimensions={dimensions} categories={categories} onClose={() => setShowWizard(false)} onSaved={load} />}
+      {showWizard && (
+        <WizardDrawer
+          dimensions={mergedDimensions}
+          categories={categories}
+          presetQuestionId={presetQuestionId ?? undefined}
+          onClose={() => { setShowWizard(false); setPresetQuestionId(null); }}
+          onSaved={load}
+        />
+      )}
 
       {editRec && (
-        <WizardDrawer dimensions={dimensions} categories={categories} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
+        <WizardDrawer dimensions={mergedDimensions} categories={categories} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
       )}
 
       {deleteTarget && (
