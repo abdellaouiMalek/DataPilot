@@ -41,6 +41,7 @@ from app.services.framework_publish import (
     apply_tree,
     build_changelog,
     build_snapshot,
+    collect_question_ids,
     delete_orphaned_draft_recommendations,
     next_version_number,
     promote_draft_recommendations,
@@ -157,6 +158,11 @@ async def save_draft(
     draft.base_version_id = payload.base_version_id
     draft.updated_by_sub = claims.get("sub")
     draft.updated_by_name = _claim_name(claims)
+
+    # A draft recommendation whose question is no longer in the saved tree
+    # (the admin deleted that question) is now orphaned -- remove it here so
+    # it never lingers past the edit that removed its question.
+    await delete_orphaned_draft_recommendations(db, keep_keys=collect_question_ids(payload.tree))
 
     await db.commit()
     await db.refresh(draft)
