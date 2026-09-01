@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Plus, Edit2, ChevronDown, ChevronRight, GripVertical, X,
   Eye, Trash2, Loader2, Search, Copy, ListTree, Table2, Check, ArrowLeft, ArrowRight,
@@ -291,12 +292,13 @@ function TabSwitch({ tab, onChange }: { tab: "edit" | "preview"; onChange: (t: "
   );
 }
 
-function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onClose, onSaved }: {
+function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onClose, onSaved, onConfigureRecommendations }: {
   dimensions: Dimension[];
   dim?: Dimension; sub?: SubDimension;
   initial?: Question;
   initialTab?: "edit" | "preview";
   onClose: () => void; onSaved: () => Promise<void>;
+  onConfigureRecommendations?: (tempId: string) => void;
 }) {
   const [tab, setTab] = useState<"edit" | "preview">(initialTab);
 
@@ -331,6 +333,7 @@ function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onC
     initial?.choiceOptions?.length ? initial.choiceOptions : DEFAULT_CHOICE_OPTIONS
   );
   const [saving, setSaving] = useState(false);
+  const [justCreated, setJustCreated] = useState<{ id: string; label: string } | null>(null);
 
   const canSave = label.trim() && subDimensionId;
   const isChoiceType = type === "Choix unique" || type === "Choix multiple";
@@ -344,12 +347,47 @@ function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onC
         levelResponses: type === "Échelle de maturité" ? levelResponses : null,
         choiceOptions: isChoiceType ? choiceOptions : null,
       };
-      if (initial) await staging.updateQuestion(initial.id, { ...input, subDimensionId });
-      else await staging.createQuestion(subDimensionId, input);
-      toast.success(initial ? "Question mise à jour" : "Question créée");
-      await onSaved();
-      onClose();
+      if (initial) {
+        await staging.updateQuestion(initial.id, { ...input, subDimensionId });
+        toast.success("Question mise à jour");
+        await onSaved();
+        onClose();
+      } else {
+        const created = await staging.createQuestion(subDimensionId, input);
+        await onSaved();
+        // Stay open: show the success view instead of closing immediately,
+        // so the admin can jump straight to configuring this question's
+        // recommendations without hunting for it in the catalog afterward.
+        setJustCreated({ id: created.id, label });
+      }
     } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
+  }
+
+  if (justCreated) {
+    return (
+      <ModalShell
+        title="Nouvelle question"
+        width={480}
+        onClose={onClose}
+        footer={<>
+          <button style={btnGhost} onClick={onClose}>Terminer</button>
+          <button
+            style={btnPrimary}
+            onClick={() => onConfigureRecommendations?.(justCreated.id)}
+          >
+            Configurer les recommandations <ArrowRight size={14} />
+          </button>
+        </>}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10, padding: "18px 8px" }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", backgroundColor: "#E8F5E9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Check size={22} style={{ color: "#2E7D32" }} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>Question ajoutée avec succès</div>
+          <div style={{ fontSize: 12, color: "#9B9B9B" }}>{justCreated.label}</div>
+        </div>
+      </ModalShell>
+    );
   }
 
   return (
@@ -1243,6 +1281,7 @@ function ChangeKindBadge({ kind }: { kind: string }) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean } = {}) {
+  const navigate = useNavigate();
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -1369,6 +1408,21 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
     } finally {
       setPublishing(false);
     }
+  }
+
+  async function configureRecommendations(tempQuestionId: string) {
+    setQModal(null);
+    // Guarantee the backend's draft actually contains this question before
+    // navigating -- the debounced autosave (below) might not have fired
+    // yet. Reuses the exact same saveDraft the autosave already calls; this
+    // never publishes anything and never touches the live questionnaire.
+    try {
+      await saveDraft(dimensions, baseVersionId);
+    } catch (e) {
+      toast.error("Impossible d'enregistrer le brouillon avant de continuer", { description: errMsg(e) });
+      return;
+    }
+    navigate(`/super-admin/recommendations?draftQuestionId=${encodeURIComponent(tempQuestionId)}`);
   }
 
   const toggleDim = (id: string) => setExpandedDims(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -1630,6 +1684,7 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
           initialTab={qModal.initialTab}
           onClose={() => setQModal(null)}
           onSaved={load}
+          onConfigureRecommendations={configureRecommendations}
         />
       )}
       {publishOpen && (
