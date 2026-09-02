@@ -331,6 +331,14 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
   });
   const set = (patch: Partial<WizardData>) => setD(prev => ({ ...prev, ...patch }));
 
+  // Niveaux déjà couverts pour la question courante, connus dans cette
+  // session du tiroir (recommandations qu'on vient de créer + niveaux
+  // rejetés comme déjà occupés) -- alimente l'enchaînement automatique
+  // ci-dessous et grise les cases déjà prises. Repart à zéro si la
+  // question change.
+  const [occupiedLevels, setOccupiedLevels] = useState<number[]>([]);
+  useEffect(() => { setOccupiedLevels([]); }, [d.questionId]);
+
   const selectedDim = dimensions.find(dim => dim.id === d.dimensionId);
   const availableSubs = selectedDim?.subDimensions ?? [];
   const selectedSub = availableSubs.find(s => s.id === d.subDimensionId);
@@ -351,6 +359,8 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
           effort: d.effort, regulatoryFlag: d.type === "Réglementaire", status: d.statut,
         });
         toast.success("Recommandation mise à jour");
+        await onSaved();
+        onClose();
       } else {
         const input = {
           title: d.titre, text: d.description, category: d.category,
@@ -359,13 +369,32 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
         const res = isNewId(d.questionId)
           ? await adminApi.createDraftRecommendations(d.questionId, d.niveaux, input)
           : await adminApi.createRecommendations(d.questionId, d.niveaux, input);
-        toast.success(`${res.created.length} recommandation${res.created.length !== 1 ? "s" : ""} créée${res.created.length !== 1 ? "s" : ""}`);
+        await onSaved();
+
+        if (res.created.length > 0) {
+          toast.success(`Niveau${res.created.length > 1 ? "x" : ""} ${res.created.map(r => r.triggerLevel).join(", ")} créé${res.created.length > 1 ? "s" : ""}`);
+        }
         if (res.skippedLevels.length > 0) {
           toast.warning(`Niveau${res.skippedLevels.length !== 1 ? "x" : ""} déjà existant${res.skippedLevels.length !== 1 ? "s" : ""} pour cette question, ignoré${res.skippedLevels.length !== 1 ? "s" : ""} : ${res.skippedLevels.join(", ")}`);
         }
+
+        // Une question a 4 paliers (1→2 … 4→5), chacun avec son propre texte
+        // -- enchaîne directement sur le prochain palier libre plutôt que de
+        // fermer le tiroir et forcer à tout reprendre depuis "Ajouter une
+        // recommandation". S'arrête dès que les 4 sont couverts, ou si rien
+        // n'a été créé (niveaux choisis déjà tous occupés -- rien à enchaîner).
+        const justCovered = [...res.created.map(r => r.triggerLevel), ...res.skippedLevels];
+        const covered = [...occupiedLevels, ...justCovered];
+        const nextOpen = [1, 2, 3, 4].find(n => !covered.includes(n));
+
+        if (res.created.length === 0 || nextOpen === undefined) {
+          onClose();
+        } else {
+          setOccupiedLevels(covered);
+          set({ titre: "", description: "", niveaux: [nextOpen] });
+          setStep(1);
+        }
       }
-      await onSaved();
-      onClose();
     } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   }
 
@@ -469,8 +498,12 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
                   <div style={{ display: "flex", gap: 8 }}>
                     {[1, 2, 3, 4].map(n => {
                       const active = d.niveaux.includes(n);
+                      const occupied = occupiedLevels.includes(n);
                       return (
-                        <button key={n} type="button" onClick={() => { const next = active ? d.niveaux.filter(x => x !== n) : [...d.niveaux, n].sort((a, b) => a - b); set({ niveaux: next }); }} style={{ width: 44, height: 44, borderRadius: 8, border: active ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)", backgroundColor: active ? "#1A1A1A" : "#fff", color: active ? "#FFE600" : "#6B6B6B", fontSize: 15, fontWeight: 800, cursor: "pointer", transition: "all 0.15s" }}>{n}</button>
+                        <button key={n} type="button" disabled={occupied}
+                          title={occupied ? "Déjà configuré pour cette question" : undefined}
+                          onClick={() => { const next = active ? d.niveaux.filter(x => x !== n) : [...d.niveaux, n].sort((a, b) => a - b); set({ niveaux: next }); }}
+                          style={{ width: 44, height: 44, borderRadius: 8, border: active ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)", backgroundColor: occupied ? "#F0F0F0" : active ? "#1A1A1A" : "#fff", color: occupied ? "#C0C0C0" : active ? "#FFE600" : "#6B6B6B", fontSize: 15, fontWeight: 800, cursor: occupied ? "not-allowed" : "pointer", transition: "all 0.15s" }}>{n}</button>
                       );
                     })}
                   </div>
@@ -570,7 +603,10 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
         <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1A1A" }}>{isEdit ? "Modifier la recommandation" : "Nouvelle recommandation"}</div>
-            <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>Étape {step} sur {STEPS.length} — {STEPS[step - 1]}</div>
+            <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>
+              Étape {step} sur {STEPS.length} — {STEPS[step - 1]}
+              {!isEdit && occupiedLevels.length > 0 && ` · ${occupiedLevels.length}/4 niveaux configurés`}
+            </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B", padding: 4 }}><X size={18} /></button>
         </div>
