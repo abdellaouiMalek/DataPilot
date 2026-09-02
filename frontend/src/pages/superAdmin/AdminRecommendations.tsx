@@ -273,9 +273,21 @@ function categoryFromDimension(name: string): string {
 
 // ── Wizard drawer ─────────────────────────────────────────────────────────────
 
-function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClose, onSaved }: {
+// Paliers déjà pris pour une question donnée, d'après le catalogue réel --
+// utilisé pour choisir automatiquement le prochain palier libre au lieu de
+// demander à l'admin de le cocher lui-même.
+function occupiedLevelsFor(recs: FlatRecommendation[], questionId: string): number[] {
+  return recs
+    .filter(r => r.questionId === questionId || r.draftQuestionKey === questionId)
+    .map(r => r.triggerLevel);
+}
+
+function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQuestionId, onClose, onSaved }: {
   dimensions: Dimension[];
   categories: string[];
+  /** Catalogue actuel, pour connaître les paliers déjà pris par une question
+   *  et proposer directement le prochain palier libre. */
+  existingRecs: FlatRecommendation[];
   /** Présent = édition (rattachement figé, une seule ligne réelle) ; absent = création (rattachement libre, plusieurs niveaux possibles). */
   editing?: FlatRecommendation;
   /** Pré-sélectionne dimension/sous-dimension/question au montage (déclenché
@@ -301,11 +313,11 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
       for (const dim of dimensions) {
         for (const sub of dim.subDimensions) {
           if (sub.questions.some(q => q.id === presetQuestionId)) {
-            // Niveau 1 pré-coché : une question qui vient d'être créée n'a
-            // par définition aucune recommandation existante, donc le
-            // palier 1→2 est toujours libre -- l'admin arrive directement
-            // prêt à rédiger, sans repasser par la case "Niveaux".
-            return { ...makeInitialWizard(), dimensionId: dim.id, subDimensionId: sub.id, questionId: presetQuestionId, niveaux: [1] };
+            // Palier attribué directement (le prochain libre, généralement
+            // 1 pour une question qui vient d'être créée) -- l'admin arrive
+            // prêt à rédiger, sans avoir à le choisir lui-même.
+            const nextOpen = [1, 2, 3, 4].find(n => !occupiedLevelsFor(existingRecs, presetQuestionId).includes(n));
+            return { ...makeInitialWizard(), dimensionId: dim.id, subDimensionId: sub.id, questionId: presetQuestionId, niveaux: nextOpen !== undefined ? [nextOpen] : [] };
           }
         }
       }
@@ -314,13 +326,21 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
   });
   const set = (patch: Partial<WizardData>) => setD(prev => ({ ...prev, ...patch }));
 
-  // Niveaux déjà couverts pour la question courante, connus dans cette
-  // session du tiroir (recommandations qu'on vient de créer + niveaux
-  // rejetés comme déjà occupés) -- alimente l'enchaînement automatique
-  // ci-dessous et grise les cases déjà prises. Repart à zéro si la
-  // question change.
-  const [occupiedLevels, setOccupiedLevels] = useState<number[]>([]);
-  useEffect(() => { setOccupiedLevels([]); }, [d.questionId]);
+  // Paliers déjà couverts pour la question courante : ceux qui existaient
+  // déjà (existingRecs) union ceux créés dans cette session du tiroir.
+  // Attribue automatiquement le prochain palier libre dès que la question
+  // change -- il n'y a plus de case à cocher, voir l'étape 2 plus bas.
+  const [occupiedLevels, setOccupiedLevels] = useState<number[]>(() =>
+    presetQuestionId ? occupiedLevelsFor(existingRecs, presetQuestionId) : []
+  );
+  useEffect(() => {
+    if (isEdit || !d.questionId) return;
+    const occupied = occupiedLevelsFor(existingRecs, d.questionId);
+    setOccupiedLevels(occupied);
+    const nextOpen = [1, 2, 3, 4].find(n => !occupied.includes(n));
+    set({ niveaux: nextOpen !== undefined ? [nextOpen] : [] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.questionId, isEdit]);
 
   const selectedDim = dimensions.find(dim => dim.id === d.dimensionId);
   const availableSubs = selectedDim?.subDimensions ?? [];
@@ -495,29 +515,27 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
                   />
                 </div>
               )}
-              <div>
-                <label style={{ ...LBL, marginBottom: 10 }}>Niveaux déclencheurs *</label>
-                <div style={{ backgroundColor: "#F7F7F7", borderRadius: 8, padding: 16, border: "1px solid rgba(0,0,0,0.06)" }}>
-                  <p style={{ fontSize: 12, color: "#6B6B6B", marginBottom: 12, lineHeight: 1.6, margin: "0 0 12px" }}>
-                    Sélectionnez le ou les niveaux de maturité déclencheurs. Une recommandation est créée pour chaque niveau coché (niveau N → niveau N+1).
-                  </p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {[1, 2, 3, 4].map(n => {
-                      const active = d.niveaux.includes(n);
-                      const occupied = occupiedLevels.includes(n);
-                      return (
-                        <button key={n} type="button" disabled={occupied}
-                          title={occupied ? "Déjà configuré pour cette question" : undefined}
-                          onClick={() => { const next = active ? d.niveaux.filter(x => x !== n) : [...d.niveaux, n].sort((a, b) => a - b); set({ niveaux: next }); }}
-                          style={{ width: 44, height: 44, borderRadius: 8, border: active ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)", backgroundColor: occupied ? "#F0F0F0" : active ? "#1A1A1A" : "#fff", color: occupied ? "#C0C0C0" : active ? "#FFE600" : "#6B6B6B", fontSize: 15, fontWeight: 800, cursor: occupied ? "not-allowed" : "pointer", transition: "all 0.15s" }}>{n}</button>
-                      );
-                    })}
-                  </div>
-                  {d.niveaux.length > 0 && (
-                    <p style={{ fontSize: 11, color: "#2E7D32", marginTop: 10, margin: "10px 0 0", fontWeight: 600 }}>✓ Sélectionnés : {d.niveaux.join(", ")}</p>
+              {selectedSub && d.questionId && (
+                <div>
+                  <label style={{ ...LBL, marginBottom: 10 }}>Palier déclencheur</label>
+                  {d.niveaux.length > 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, backgroundColor: "#F7F7F7", borderRadius: 8, padding: "14px 16px", border: "1px solid rgba(0,0,0,0.06)" }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: "#1A1A1A", color: "#FFE600", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, flexShrink: 0 }}>{d.niveaux[0]}</div>
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1A1A1A" }}>Niveau {d.niveaux[0]} → {d.niveaux[0] + 1}</div>
+                        <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 1 }}>
+                          Attribué automatiquement — c'est le prochain palier libre pour cette question.
+                          {occupiedLevels.length > 0 && ` Déjà configurés : ${occupiedLevels.filter(n => n !== d.niveaux[0]).sort((a, b) => a - b).join(", ") || "—"}.`}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: "#FFF4DC", borderRadius: 8, padding: "12px 16px", border: "1px solid #F3D9A8", fontSize: 12, color: "#8A6A1A", lineHeight: 1.6 }}>
+                      Cette question a déjà ses 4 recommandations (niveaux {occupiedLevels.sort((a, b) => a - b).join(", ")}). Choisissez une autre question.
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -1142,6 +1160,7 @@ export function RecommendationCatalog() {
         <WizardDrawer
           dimensions={mergedDimensions}
           categories={categories}
+          existingRecs={recs}
           presetQuestionId={presetQuestionId ?? undefined}
           onClose={() => { setShowWizard(false); setPresetQuestionId(null); }}
           onSaved={load}
@@ -1149,7 +1168,7 @@ export function RecommendationCatalog() {
       )}
 
       {editRec && (
-        <WizardDrawer dimensions={mergedDimensions} categories={categories} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
+        <WizardDrawer dimensions={mergedDimensions} categories={categories} existingRecs={recs} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
       )}
 
       {deleteTarget && (
