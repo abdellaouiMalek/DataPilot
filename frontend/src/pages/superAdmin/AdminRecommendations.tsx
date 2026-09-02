@@ -33,7 +33,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   Search, Plus, X, ChevronDown, MoreHorizontal,
   Edit2, Trash2, Eye, Power,
-  RotateCcw, Info, ChevronLeft, ChevronRight, AlertTriangle,
+  RotateCcw, ChevronLeft, ChevronRight, AlertTriangle,
   CheckCircle, Shield, TrendingUp, BookOpen, Loader2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -181,47 +181,6 @@ function FSelect({ value, onChange, options, placeholder, disabled }: { value: s
   );
 }
 
-function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
-  const [show, setShow] = useState(false);
-  return (
-    <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      {children}
-      {show && (
-        <div style={{
-          position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
-          backgroundColor: "#1A1A1A", color: "#fff", borderRadius: 6, padding: "6px 10px",
-          fontSize: 11, lineHeight: 1.5, zIndex: 2000, boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-          maxWidth: 220, whiteSpace: "normal", width: "max-content",
-        }}>
-          {text}
-        </div>
-      )}
-    </span>
-  );
-}
-
-function ScoreSelector({ label, value, onChange, max = 5, tooltip }: { label: string; value: number; onChange: (v: number) => void; max?: number; tooltip?: string }) {
-  return (
-    <div>
-      <label style={{ ...LBL, display: "flex", alignItems: "center", gap: 5 }}>
-        {label}
-        {tooltip && <Tooltip text={tooltip}><Info size={12} style={{ color: "#9B9B9B", cursor: "help" }} /></Tooltip>}
-      </label>
-      <div style={{ display: "flex", gap: 4 }}>
-        {Array.from({ length: max }, (_, i) => i + 1).map(n => (
-          <button key={n} type="button" onClick={() => onChange(n)} style={{
-            width: 36, height: 36, borderRadius: 6,
-            border: value === n ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)",
-            backgroundColor: value === n ? "#1A1A1A" : "#fff",
-            color: value === n ? "#FFE600" : "#6B6B6B",
-            fontSize: 13, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
-          }}>{n}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, icon: Icon, topColor }: { label: string; value: number; sub: string; icon: LucideIcon; topColor: string }) {
@@ -241,7 +200,7 @@ function KpiCard({ label, value, sub, icon: Icon, topColor }: { label: string; v
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
-const STEPS = ["Informations générales", "Rattachement", "Classification", "Vérification"];
+const STEPS = ["Informations générales", "Rattachement", "Vérification"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -278,8 +237,14 @@ interface WizardData {
   subDimensionId: string;
   questionId: string;
   niveaux: number[];
-  type: TypeReco;
+  /** Null jusqu'à un choix explicite -- plus de valeur par défaut silencieuse,
+   *  voir step1Disabled dans WizardDrawer. */
+  type: TypeReco | null;
+  /** Non saisie par l'admin : dérivée de la dimension choisie (voir
+   *  categoryFromDimension) pour la création ; conservée telle quelle en
+   *  édition, où il n'y a plus de champ pour la modifier. */
   category: string;
+  /** Idem : fixé à 2/3 pour la création, conservé tel quel en édition. */
   effort: number;
 }
 
@@ -288,8 +253,22 @@ function makeInitialWizard(): WizardData {
     titre: "", description: "", statut: "Active",
     dimensionId: "", subDimensionId: "", questionId: "",
     niveaux: [],
-    type: "Amélioration", category: "", effort: 2,
+    type: null, category: "", effort: 2,
   };
+}
+
+// Catégorie = dérivée automatiquement de la dimension plutôt que saisie à la
+// main (un champ de moins à remplir à chaque palier) -- même style que les
+// catégories déjà en base ("gouvernance", "qualite", "securite"...).
+function categoryFromDimension(name: string): string {
+  return (
+    name
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip accents
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    || "general"
+  );
 }
 
 // ── Wizard drawer ─────────────────────────────────────────────────────────────
@@ -322,7 +301,11 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
       for (const dim of dimensions) {
         for (const sub of dim.subDimensions) {
           if (sub.questions.some(q => q.id === presetQuestionId)) {
-            return { ...makeInitialWizard(), dimensionId: dim.id, subDimensionId: sub.id, questionId: presetQuestionId };
+            // Niveau 1 pré-coché : une question qui vient d'être créée n'a
+            // par définition aucune recommandation existante, donc le
+            // palier 1→2 est toujours libre -- l'admin arrive directement
+            // prêt à rédiger, sans repasser par la case "Niveaux".
+            return { ...makeInitialWizard(), dimensionId: dim.id, subDimensionId: sub.id, questionId: presetQuestionId, niveaux: [1] };
           }
         }
       }
@@ -344,10 +327,20 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
   const selectedSub = availableSubs.find(s => s.id === d.subDimensionId);
   const availableQuestions = selectedSub?.questions ?? [];
 
+  // Catégorie dérivée de la dimension, tenue à jour automatiquement -- pas
+  // de champ à saisir (voir categoryFromDimension). Ne s'applique qu'à la
+  // création : en édition, dimensionId reste "" (rattachement figé), donc
+  // cet effet ne se déclenche jamais et la catégorie d'origine est conservée.
+  useEffect(() => {
+    if (!isEdit && selectedDim) set({ category: categoryFromDimension(selectedDim.name) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDim?.id, isEdit]);
+
   function changeDimension(id: string) { set({ dimensionId: id, subDimensionId: "", questionId: "" }); }
   function changeSub(id: string) { set({ subDimensionId: id, questionId: "" }); }
 
-  const canSave = d.titre.trim() && d.description.trim() && d.category.trim() && (isEdit || (d.questionId && d.niveaux.length > 0));
+  const step1Disabled = !d.titre.trim() || !d.description.trim() || d.type === null;
+  const canSave = d.titre.trim() && d.description.trim() && d.category.trim() && d.type !== null && (isEdit || (d.questionId && d.niveaux.length > 0));
 
   async function save() {
     if (!canSave) return;
@@ -410,6 +403,19 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
           <div>
             <label style={LBL}>Description détaillée *</label>
             <textarea value={d.description} onChange={e => set({ description: e.target.value })} placeholder="Décrivez précisément la recommandation..." style={{ ...TA, minHeight: 100 }} />
+          </div>
+          <div>
+            <label style={LBL}>Type *</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["Réglementaire", "Amélioration"] as TypeReco[]).map(t => (
+                <button key={t} type="button" onClick={() => set({ type: t })} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: d.type === t ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)", backgroundColor: d.type === t ? "#1A1A1A" : "#fff", color: d.type === t ? "#FFE600" : "#6B6B6B", transition: "all 0.15s" }}>
+                  {t === "Réglementaire" ? <Shield size={13} /> : <TrendingUp size={13} />} {t}
+                </button>
+              ))}
+            </div>
+            {d.type === null && (
+              <p style={{ fontSize: 11, color: "#B45309", marginTop: 6, margin: "6px 0 0" }}>Choisissez un type pour continuer.</p>
+            )}
           </div>
           <div>
             <label style={LBL}>Statut</label>
@@ -517,35 +523,8 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
         </div>
       );
 
-      // ── Step 3 : classification ──
-      case 3: return (
-        <div style={ROW}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div>
-              <label style={LBL}>Type *</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(["Réglementaire", "Amélioration"] as TypeReco[]).map(t => (
-                  <button key={t} type="button" onClick={() => set({ type: t })} style={{ padding: "9px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left", border: d.type === t ? "2px solid #1A1A1A" : "1px solid rgba(0,0,0,0.13)", backgroundColor: d.type === t ? "#1A1A1A" : "#fff", color: d.type === t ? "#FFE600" : "#6B6B6B", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 7 }}>
-                    {t === "Réglementaire" ? <Shield size={13} /> : <TrendingUp size={13} />} {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={LBL}>Catégorie *</label>
-              <input value={d.category} onChange={e => set({ category: e.target.value })} placeholder="ex. gouvernance, qualite, securite…" style={INP} list="rc-categories" />
-              <datalist id="rc-categories">
-                {categories.map(c => <option key={c} value={c} />)}
-              </datalist>
-            </div>
-          </div>
-
-          <ScoreSelector label="Effort requis" value={d.effort} onChange={v => set({ effort: v })} max={3} tooltip="Charge de travail et ressources nécessaires à la mise en œuvre. 3 = effort élevé." />
-        </div>
-      );
-
-      // ── Step 4 — Vérification ──
-      case 4: {
+      // ── Step 3 — Vérification ──
+      case 3: {
         const dimName = isEdit ? editing?.dimensionName : selectedDim?.name;
         const subName = isEdit ? editing?.subDimensionName : selectedSub?.name;
         const qText = isEdit ? editing?.questionText : availableQuestions.find(q => q.id === d.questionId)?.label;
@@ -562,14 +541,20 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
               </div>
               <p style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.6, margin: 0 }}>{d.description || "Aucune description renseignée."}</p>
               <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <TypeBadge value={d.type} />
+                <TypeBadge value={d.type ?? "Amélioration"} />
                 {niveaux.map(n => <span key={n} style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: "#1A1A1A", color: "#FFE600", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</span>)}
               </div>
             </div>
 
             {[
-              { title: "Rattachement au référentiel", rows: [["Dimension", dimName || "—"], ["Sous-dimension", subName || "—"], ["Question", qText || "—"], ["Niveaux déclencheurs", niveaux.length ? niveaux.join(", ") : "—"]] },
-              { title: "Classification", rows: [["Type", d.type], ["Catégorie", d.category || "—"], ["Effort", `${d.effort}/3`]] },
+              {
+                title: "Rattachement au référentiel",
+                rows: [
+                  ["Dimension", dimName || "—"], ["Sous-dimension", subName || "—"], ["Question", qText || "—"],
+                  ["Niveaux déclencheurs", niveaux.length ? niveaux.join(", ") : "—"],
+                  ["Catégorie (auto)", d.category || "—"],
+                ],
+              },
             ].map(({ title, rows }) => (
               <div key={title} style={{ backgroundColor: "#fff", borderRadius: 8, border: "1px solid rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <div style={{ padding: "9px 14px", backgroundColor: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 10, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</div>
@@ -611,13 +596,29 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B", padding: 4 }}><X size={18} /></button>
         </div>
         <div style={{ padding: "20px 24px 0", flexShrink: 0 }}><StepIndicator current={step} /></div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 24px 24px" }}>{renderStep()}</div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 24px 24px" }}>
+          {!isEdit && d.niveaux.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", marginBottom: 18 }}>
+              <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                {d.niveaux.map(n => (
+                  <div key={n} style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: "#1A1A1A", color: "#FFE600", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{n}</div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#3730A3" }}>
+                {d.niveaux.length === 1
+                  ? `Recommandation pour le niveau ${d.niveaux[0]} → ${d.niveaux[0] + 1}`
+                  : `Recommandation pour les niveaux ${d.niveaux.join(", ")}`}
+              </div>
+            </div>
+          )}
+          {renderStep()}
+        </div>
         <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, backgroundColor: "#FAFAFA" }}>
           <button onClick={onClose} disabled={saving} style={{ padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "1px solid rgba(0,0,0,0.13)", backgroundColor: "#fff", cursor: saving ? "not-allowed" : "pointer", color: "#6B6B6B" }}>Annuler</button>
           <div style={{ display: "flex", gap: 8 }}>
             {step > 1 && <BtnSecondary onClick={() => setStep(s => s - 1)}><ChevronLeft size={14} /> Retour</BtnSecondary>}
             {step < STEPS.length
-              ? <BtnPrimary onClick={() => setStep(s => s + 1)} disabled={step === 2 && step2Disabled}>Suivant <ChevronRight size={14} /></BtnPrimary>
+              ? <BtnPrimary onClick={() => setStep(s => s + 1)} disabled={(step === 1 && step1Disabled) || (step === 2 && step2Disabled)}>Suivant <ChevronRight size={14} /></BtnPrimary>
               : <button onClick={save} disabled={!canSave || saving} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#FFE600", color: "#1A1A1A", cursor: !canSave || saving ? "not-allowed" : "pointer", opacity: !canSave || saving ? 0.6 : 1 }}>
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} {isEdit ? "Enregistrer" : "Créer"}
                 </button>
