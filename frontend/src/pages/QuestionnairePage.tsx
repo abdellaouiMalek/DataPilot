@@ -10,6 +10,40 @@ import { submitAssessment } from '@/lib/assessment';
 import type { AnswerIn } from '@/lib/assessment';
 import { getProfile } from '@/lib/profile';
 import { ApiError } from '@/lib/api';
+import { getCurrentUser } from '@/lib/keycloak';
+
+interface QuestionnaireDraft {
+  bankId?: number;
+  department: string;
+  role: string;
+  currentDimensionIndex: number;
+  answers: Record<string, Record<number, number>>;
+}
+
+// Brouillon en localStorage, scopé par utilisateur -- ce questionnaire n'est
+// PAS sauvegardé côté serveur avant l'envoi final (contrairement au brouillon
+// de framework, qui l'est). Sans ça, quitter la page (retour navigateur,
+// perte de session Keycloak en cours de route, onglet fermé) perdait tout ce
+// qui avait été répondu, alors que l'indicateur "Sauvegardé à HH:MM" laissait
+// croire le contraire.
+function draftKey(sub: string | undefined): string {
+  return `datapilot:questionnaire-draft:${sub ?? 'anonymous'}`;
+}
+
+function loadDraft(sub: string | undefined, profile: { bankId?: number; department: string; role: string }): QuestionnaireDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(sub));
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as QuestionnaireDraft;
+    // N'importe qu'un brouillon du même profil (banque/service/rôle) -- un
+    // brouillon d'une évaluation différente resterait en storage mais ne
+    // doit jamais réapparaître sur une évaluation qui n'est pas la sienne.
+    if (draft.bankId !== profile.bankId || draft.department !== profile.department || draft.role !== profile.role) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+}
 
 const likertOptions = [
   { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
@@ -46,16 +80,38 @@ export function QuestionnairePage() {
   // here avoids a wasted 32-question run ending in a generic error.
   const [checkingBank, setCheckingBank] = useState(true);
 
-  const [currentDimensionIndex, setCurrentDimensionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, Record<number, number>>>({});
+  // Un utilisateur déjà connecté au moment où cette page se monte (le cas
+  // normal -- RequireAuth a déjà forcé la connexion plus haut dans l'arbre).
+  const userSub = getCurrentUser()?.sub;
+  const [currentDimensionIndex, setCurrentDimensionIndex] = useState(
+    () => loadDraft(userSub, profileData)?.currentDimensionIndex ?? 0
+  );
+  const [answers, setAnswers] = useState<Record<string, Record<number, number>>>(
+    () => loadDraft(userSub, profileData)?.answers ?? {}
+  );
   const [completing, setCompleting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [justAnswered, setJustAnswered] = useState<number | null>(null);
 
+  // Écrit le brouillon à chaque réponse -- immédiat, pas sur une minuterie
+  // fixe déconnectée de ce qui a réellement été saisi (l'ancien indicateur
+  // "Sauvegardé à HH:MM" se mettait à jour tout seul sans jamais rien
+  // persister). Rien à écrire tant qu'aucune réponse n'existe : évite
+  // d'écraser un brouillon qu'on vient de restaurer par un cycle vide.
   useEffect(() => {
-    const interval = setInterval(() => setLastSaved(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
+    if (Object.keys(answers).length === 0) return;
+    try {
+      localStorage.setItem(draftKey(userSub), JSON.stringify({
+        bankId: profileData.bankId, department: profileData.department, role: profileData.role,
+        currentDimensionIndex, answers,
+      } satisfies QuestionnaireDraft));
+      setLastSaved(new Date());
+    } catch {
+      // Storage indisponible/plein (navigation privée, quota) -- l'indicateur
+      // reste simplement sur son dernier horodatage réel au lieu de mentir.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, currentDimensionIndex]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +198,9 @@ export function QuestionnairePage() {
         answers: buildAnswerPayload(),
       });
       toast.success('Évaluation terminée !', { description: 'Votre profil de maturité est prêt.', duration: 3000 });
+      // Envoyée pour de bon -- le brouillon local n'a plus lieu d'être et ne
+      // doit pas réapparaître sur une prochaine évaluation du même profil.
+      try { localStorage.removeItem(draftKey(userSub)); } catch { /* déjà orphelin si storage indisponible */ }
       // L'objet complet reste passé pour un premier rendu immédiat, mais
       // c'est l'id de l'URL qui fait foi : rafraîchir la page la recharge
       // au lieu de la vider.
