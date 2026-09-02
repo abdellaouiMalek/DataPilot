@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
-import keycloak from '../lib/keycloak';
+import keycloak, { loginReplacingHistory } from '../lib/keycloak';
 
 /**
  * Protège une route : si l'utilisateur n'est pas connecté, le redirige vers
@@ -9,7 +9,7 @@ import keycloak from '../lib/keycloak';
 export function RequireAuth({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!keycloak.authenticated) {
-      keycloak.login({ redirectUri: window.location.href });
+      void loginReplacingHistory(window.location.href);
     }
   }, []);
 

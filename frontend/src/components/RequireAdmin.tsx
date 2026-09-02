@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
-import keycloak, { hasBackOffice } from '../lib/keycloak';
+import keycloak, { hasBackOffice, loginReplacingHistory } from '../lib/keycloak';
 import { Navbar } from './Navbar';
 
 /**
@@ -19,7 +19,7 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!keycloak.authenticated) {
-      keycloak.login({ redirectUri: window.location.href });
+      void loginReplacingHistory(window.location.href);
     }
   }, []);
 

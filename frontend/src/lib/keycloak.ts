@@ -18,6 +18,29 @@ export const login = () =>
   });
 
 /**
+ * Same effect as `keycloak.login()`, but replaces the current history entry
+ * instead of pushing a new one on top of it.
+ *
+ * `keycloak.login()` internally does
+ * `window.location.assign(await this.createLoginUrl(options))` (see
+ * node_modules/keycloak-js/lib/keycloak.js) -- assign() is a normal
+ * navigation, so it leaves Keycloak's hosted login page as its own entry in
+ * browser history. Pressing Back right after logging in then lands on that
+ * stale page (the auth code it held has already been consumed) instead of
+ * wherever the user actually was before hitting a protected route.
+ *
+ * `createLoginUrl()` builds the exact same URL (same PKCE/state setup) --
+ * this just navigates to it with replace() instead, the same way
+ * `keycloak.logout()` already does for its own redirect. Used by the
+ * RequireAuth/RequireAdmin/RequireSuperAdmin guards, which are the only
+ * place an unauthenticated visitor gets sent to Keycloak from.
+ */
+export async function loginReplacingHistory(redirectUri: string): Promise<void> {
+  const url = await keycloak.createLoginUrl({ redirectUri });
+  window.location.replace(url);
+}
+
+/**
  * Realm role granting access to the back-office.
  * Note: "admin" is now a plain business role (like consultant/validateur)
  * and grants NO back-office access — only "super_admin" does.
