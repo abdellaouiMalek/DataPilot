@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react';
 import { Select as RadixSelect } from 'radix-ui';
@@ -122,13 +122,6 @@ export function LandingPage() {
   // recopier ailleurs creerait une deuxieme verite a maintenir.
   const [lastChoice, setLastChoice] = useState<{ department: string | null; role: string | null } | null>(null);
 
-  // Admins don't take the assessment — send them straight to the back-office.
-  // The landing page ("/") is where Keycloak returns after login.
-  useEffect(() => {
-    if (isSuperAdmin()) navigate('/super-admin', { replace: true });
-    else if (isAdmin()) navigate('/admin', { replace: true });
-  }, [navigate]);
-
   useEffect(() => {
     let cancelled = false;
     Promise.all([getBanks(), getDepartments(), getRoles(), getDimensions()])
@@ -222,6 +215,17 @@ export function LandingPage() {
 
   const canProceed = selectedBank && department && role;
   const filledCount = [selectedBank, department, role].filter(Boolean).length;
+
+  // Admins don't take the assessment — send them straight to the back-office.
+  // The landing page ("/") is where Keycloak returns after login. Returning
+  // <Navigate> here (render time, after every hook above has still run in
+  // the same order every render) instead of calling navigate() from a
+  // useEffect means the redirect resolves before this component's own JSX
+  // ever paints -- the old effect-based version painted the public landing
+  // page first and only redirected on the next tick, which is exactly the
+  // "home page flashes before the dashboard" symptom this replaces.
+  if (isSuperAdmin()) return <Navigate to="/super-admin" replace />;
+  if (isAdmin()) return <Navigate to="/admin" replace />;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
