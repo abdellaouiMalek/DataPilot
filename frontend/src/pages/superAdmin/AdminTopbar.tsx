@@ -9,61 +9,34 @@
  *   `state.q`, que la page recopie dans son propre filtre, de sorte que la
  *   ligne cherchée est à l'écran à l'arrivée ;
  *
- * — la **cloche** liste ce qui appelle une action : les anomalies de
- *   configuration (les mêmes contrôles que la carte « Alertes » du tableau de
- *   bord, calculés par `app/services/admin_alerts.py`) et les actions
- *   administratives récemment refusées, sinon noyées dans le journal.
- *
- * Le lu/non-lu n'est pas persisté côté serveur : c'est une préférence par
- * personne et par navigateur, gardée en localStorage sur la clé stable de
- * chaque notification (voir `lib/adminTopbar.ts`). La pastille ne s'allume
- * donc que s'il reste quelque chose que ce compte n'a pas encore vu.
+ * — la **cloche** liste les notifications propres au compte connecté
+ *   (`/api/notifications`, voir NotificationsPanel) : le lu/non-lu, lui, est
+ *   bien persisté côté serveur -- marquer lu (au clic, ou "Tout marquer
+ *   comme lu") fait disparaître la notification pour de bon, sur tous les
+ *   appareils. Montrée dans les deux espaces (`admin` et `super-admin`),
+ *   contrairement à la recherche : le point commun n'est que back-office.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bell, Search, ChevronDown, LogOut, Settings, User,
-  Loader2, X, ArrowRight, CheckCircle2, AlertTriangle, AlertCircle,
-  Activity, type LucideIcon,
+  Loader2, X, ArrowRight, Activity,
 } from "lucide-react";
 import { logout, getCurrentUser } from "../../lib/keycloak";
 import { routeFor } from "../../lib/adminRoutes";
 import {
-  getNotifications,
-  markSeen,
   quickSearch,
-  readSeen,
-  unseenCount,
   MIN_SEARCH_LENGTH,
-  type AdminNotification,
   type SearchHit,
 } from "../../lib/adminTopbar";
+import { notificationsApi, type AppNotification } from "../../lib/notifications";
+import { NotificationsPanel } from "./NotificationsPanel";
 import { modCfg } from "../../lib/auditModules";
 
 const SEARCH_DEBOUNCE_MS = 250;
 
-const LEVELS: Record<string, { color: string; bg: string; Icon: LucideIcon }> = {
-  critical: { color: "#C62828", bg: "#FFEBEE", Icon: AlertTriangle },
-  warning:  { color: "#E65100", bg: "#FFF8E1", Icon: AlertCircle   },
-  info:     { color: "#1565C0", bg: "#E3F2FD", Icon: AlertCircle   },
-};
-
 const FALLBACK_MODULE = { color: "#6B6B6B", bg: "#F5F5F5", Icon: Activity };
-
-/** "14:32" aujourd'hui, "12/06" au-delà. Les états de configuration n'ont pas de date. */
-function whenLabel(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  const now = new Date();
-  const sameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-  return sameDay
-    ? date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
-}
 
 /**
  * @param scope Espace qui monte la barre. `"admin"` est l'espace restreint
@@ -81,55 +54,41 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
     : "AD";
-  // Les marqueurs « vu » sont rattachés au compte : deux admins sur le même
-  // poste ne doivent pas éteindre la pastille l'un de l'autre.
-  const seenScope = user?.sub || user?.username || "anonymous";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // ── Notifications ──────────────────────────────────────────────────────────
-  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
-  const [notifAvailable, setNotifAvailable] = useState(true);
+  // Chaque compte ne voit que ses propres notifications (le backend dérive
+  // le destinataire du token, jamais d'un paramètre) -- affichée dans les
+  // deux espaces, `admin` comme `super-admin`, contrairement à la recherche.
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [seen, setSeen] = useState<Set<string>>(() => readSeen(seenScope));
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Rechargé à chaque changement de page : l'admin navigue en permanence dans
   // le back-office, ce qui garde la liste fraîche sans minuteur de fond.
   useEffect(() => {
-    // Masquée hors super admin : ne pas l'appeler non plus, sinon chaque
-    // navigation d'un `admin` déclenche un 403 inutile.
-    if (scope !== "super-admin") return;
     let cancelled = false;
-    getNotifications()
-      .then(payload => {
-        if (cancelled) return;
-        setNotifications(payload.items);
-        setNotifAvailable(payload.users_available);
-      })
+    notificationsApi.list()
+      .then(items => { if (!cancelled) setNotifications(items); })
       .catch(() => { if (!cancelled) setNotifications([]); });
     return () => { cancelled = true; };
-  }, [pathname, scope]);
+  }, [pathname]);
 
-  const unread = unseenCount(notifications, seen);
+  const unread = notifications.filter(n => !n.read).length;
 
   const openNotifications = () => {
-    const next = !notifOpen;
-    setNotifOpen(next);
+    setNotifOpen(v => !v);
     setMenuOpen(false);
-    if (next && notifications.length) {
-      // On ne conserve que les clés encore vivantes : sinon la liste des
-      // « vues » grossirait indéfiniment avec des anomalies déjà corrigées.
-      const keys = notifications.map(n => n.key);
-      markSeen(seenScope, keys);
-      setSeen(new Set(keys));
-    }
   };
 
-  const openTarget = (target: string) => {
+  // La page de détail d'une version publiée existe dans les deux espaces
+  // (mêmes droits de lecture, voir VersionDetailRoute) -- seul le préfixe
+  // change selon qui a cliqué.
+  const openCircularFromNotification = (circularId: number) => {
     setNotifOpen(false);
-    navigate(routeFor(target));
+    navigate(`${scope === "admin" ? "/admin" : "/super-admin"}/versions/${circularId}`);
   };
 
   // ── Recherche rapide ───────────────────────────────────────────────────────
@@ -341,7 +300,6 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
       )}
 
       {/* ── Notifications ── */}
-      {scope === "super-admin" && (
       <div style={{ position: "relative" }} ref={notifRef}>
         <button
           onClick={openNotifications}
@@ -372,81 +330,14 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
         </button>
 
         {notifOpen && (
-          <div style={{ ...panel, width: 380, maxHeight: 440, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>Notifications</span>
-              <span style={{ fontSize: 11, color: "#9B9B9B" }}>
-                {notifications.length || "Aucune"}
-              </span>
-            </div>
-
-            {!notifAvailable && (
-              <div style={{ padding: "9px 16px", backgroundColor: "#FFF8E1", color: "#8A5300", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}>
-                <AlertCircle size={12} />
-                Annuaire injoignable : contrôles sur les comptes ignorés.
-              </div>
-            )}
-
-            <div style={{ overflowY: "auto" }}>
-              {notifications.length === 0 ? (
-                <div style={{ padding: "26px 18px", display: "flex", flexDirection: "column", alignItems: "center", gap: 9 }}>
-                  <CheckCircle2 size={22} style={{ color: "#2E7D32" }} />
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#2E7D32" }}>Rien à signaler</div>
-                  <div style={{ fontSize: 11, color: "#9B9B9B", textAlign: "center" }}>
-                    Aucune anomalie de configuration ni action refusée.
-                  </div>
-                </div>
-              ) : (
-                notifications.map((item, i) => {
-                  const level = LEVELS[item.level] ?? LEVELS.info;
-                  const mod = modCfg[item.module] ?? FALLBACK_MODULE;
-                  const Icon = mod.Icon;
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={() => openTarget(item.target)}
-                      style={{
-                        width: "100%", display: "flex", alignItems: "flex-start", gap: 10,
-                        padding: "11px 16px", border: "none", background: "none",
-                        cursor: "pointer", textAlign: "left",
-                        borderBottom: i < notifications.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
-                        borderLeft: `3px solid ${level.color}`,
-                      }}
-                      onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#FAFAFA"}
-                      onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent"}
-                    >
-                      <div style={{
-                        width: 26, height: 26, borderRadius: 7, backgroundColor: mod.bg,
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1,
-                      }}>
-                        <Icon size={12} style={{ color: mod.color }} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 500, color: "#1A1A1A", lineHeight: 1.4 }}>
-                          {item.text}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: level.color, backgroundColor: level.bg, borderRadius: 4, padding: "1px 6px" }}>
-                            {item.action}
-                          </span>
-                          <span style={{ fontSize: 10.5, color: "#9B9B9B" }}>{item.module}</span>
-                          {item.created_at && (
-                            <span style={{ fontSize: 10.5, color: "#C0C0C0", marginLeft: "auto" }}>
-                              {whenLabel(item.created_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <NotificationsPanel
+            items={notifications}
+            setItems={setNotifications}
+            onClose={() => setNotifOpen(false)}
+            onNavigateToCircular={openCircularFromNotification}
+          />
         )}
       </div>
-
-      )}
 
       {/* ── Menu compte ── */}
       <div style={{ position: "relative" }} ref={menuRef}>

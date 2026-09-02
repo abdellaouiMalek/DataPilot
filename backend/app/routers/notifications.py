@@ -27,13 +27,18 @@ async def list_notifications(
     claims: dict = Depends(verify_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Most recent first. Capped at 50 -- a notification list, not an
-    archive; there is no "load more" in the current design (see
-    NotificationsPanel), so an unbounded query isn't warranted yet."""
+    """Unread only, most recent first, capped at 50.
+
+    The bell (see NotificationsPanel) treats "read" as "dismissed": once a
+    notification is marked read -- by clicking it or via "tout marquer
+    comme lu" -- it must never come back, on this device or any other.
+    Filtering it out here rather than just style-fading it client-side is
+    what makes that permanent; the row itself is kept (read=true) as a
+    historical record, nothing is deleted."""
     user_id = claims.get("sub")
     stmt = (
         select(Notification)
-        .where(Notification.user_id == user_id)
+        .where(Notification.user_id == user_id, Notification.read.is_(False))
         .order_by(Notification.created_at.desc())
         .limit(50)
     )

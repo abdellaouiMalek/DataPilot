@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { AlertTriangle, Info, Check, CheckCheck, Clock } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -6,38 +7,72 @@ import {
 } from "../../lib/notifications";
 
 // ── Notifications Panel ───────────────────────────────────────────────────────
+//
+// "Read" is treated as "gone": the list endpoint only ever returns unread
+// rows (see backend/app/routers/notifications.py), so marking one read --
+// by clicking it or via "Tout marquer comme lu" -- is what makes it
+// disappear, permanently, everywhere. Nothing is deleted server-side, the
+// row just stops being unread.
+//
+// A notification with no `circularId` is purely informative (see
+// lib/notifications.ts) -- there is nowhere to send the user, so clicking
+// it does not close the panel. Instead, any informative notification still
+// unread when the panel closes is marked read then: the user has seen it
+// just by having the bell open, no click required.
 
 export function NotificationsPanel({ items, setItems, onClose, onNavigateToCircular }: {
   items: AppNotification[];
   setItems: React.Dispatch<React.SetStateAction<AppNotification[]>>;
   onClose: () => void;
-  /** Optionnel : une notification "nouvelle version publiée" porte un
-   * `circularId` (voir lib/notifications.ts) -- appelé en plus de
-   * markRead quand il est présent, pour amener l'utilisateur sur le
-   * détail de la version. Absent => clic reste juste "marquer lu",
-   * comme dans le design d'origine. */
+  /** Une notification "nouvelle version publiée" porte un `circularId`
+   * (voir lib/notifications.ts) -- appelé en plus de markRead quand il est
+   * présent, pour amener l'utilisateur sur le détail de la version. */
   onNavigateToCircular?: (circularId: number) => void;
 }) {
   const unread = items.filter(n => !n.read).length;
 
+  // Toujours la dernière valeur de `items` pour le nettoyage à la fermeture
+  // (voir l'effet de démontage plus bas) -- un effet à dépendances vides ne
+  // doit pas capturer une liste figée au montage.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  const dismiss = (ids: number[]) => {
+    if (ids.length === 0) return;
+    const prev = itemsRef.current;
+    setItems(p => p.filter(n => !ids.includes(n.id)));
+    Promise.all(ids.map(id => notificationsApi.markRead(id))).catch(e => {
+      setItems(prev);
+      toast.error(e instanceof Error ? e.message : "Échec de la mise à jour");
+    });
+  };
+
+  // À la fermeture du panneau (démontage -- le parent ne rend ce composant
+  // que quand la cloche est ouverte) : les informatives encore non lues
+  // s'effacent d'elles-mêmes, les actionnables restent pour un prochain clic.
+  useEffect(() => {
+    return () => {
+      const informative = itemsRef.current.filter(n => !n.read && n.circularId == null);
+      dismiss(informative.map(n => n.id));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const markAllRead = () => {
     const prev = items;
-    setItems(p => p.map(n => ({ ...n, read: true })));
+    setItems([]);
     notificationsApi.markAllRead().catch(e => {
       setItems(prev);
       toast.error(e instanceof Error ? e.message : "Échec de la mise à jour");
     });
   };
 
-  const markRead = (id: number) => {
-    const target = items.find(n => n.id === id);
-    if (!target || target.read) return; // déjà lue -- pas d'appel inutile
-    const prev = items;
-    setItems(p => p.map(n => n.id === id ? { ...n, read: true } : n));
-    notificationsApi.markRead(id).catch(e => {
-      setItems(prev);
-      toast.error(e instanceof Error ? e.message : "Échec de la mise à jour");
-    });
+  const markRead = (n: AppNotification) => {
+    dismiss([n.id]);
+    if (n.circularId != null) {
+      onNavigateToCircular?.(n.circularId);
+      onClose();
+    }
   };
 
   const iconMap: Record<string, { icon: any; color: string; bg: string }> = {
@@ -62,7 +97,7 @@ export function NotificationsPanel({ items, setItems, onClose, onNavigateToCircu
             onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#1A1A1A"}
             onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "#6B6B6B"}
           >
-            <CheckCheck size={13} /> Tout marquer lu
+            <CheckCheck size={13} /> Tout marquer comme lu
           </button>
         )}
       </div>
@@ -79,13 +114,7 @@ export function NotificationsPanel({ items, setItems, onClose, onNavigateToCircu
           return (
             <div
               key={n.id}
-              onClick={() => {
-                markRead(n.id);
-                if (n.circularId != null) {
-                  onNavigateToCircular?.(n.circularId);
-                  onClose();
-                }
-              }}
+              onClick={() => markRead(n)}
               style={{
                 display: "flex", gap: 12, padding: "12px 16px",
                 backgroundColor: n.read ? "#fff" : "#FAFAFA",
@@ -114,18 +143,6 @@ export function NotificationsPanel({ items, setItems, onClose, onNavigateToCircu
             </div>
           );
         })}
-      </div>
-
-      {/* Footer -- no dedicated "all notifications" page exists in the app
-          yet, so this stays unwired (matches the design as given rather
-          than inventing a destination for it). */}
-      <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(0,0,0,0.07)", textAlign: "center" }}>
-        <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6B6B6B" }}
-          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#1A1A1A"}
-          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "#6B6B6B"}
-        >
-          Voir toutes les notifications
-        </button>
       </div>
     </div>
   );
