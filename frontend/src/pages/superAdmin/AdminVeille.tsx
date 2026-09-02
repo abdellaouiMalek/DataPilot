@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Upload, FileText, ChevronRight, ChevronDown, Check, Edit2, XCircle,
   BookOpen, ExternalLink, RefreshCw, CheckCircle2,
@@ -1372,6 +1373,9 @@ function DeleteCircularDialog({ circular, deleting, onCancel, onConfirm }: {
 const PER_PAGE = 10;
 
 export function VeilleReglementaire() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const circularIdParam = searchParams.get("circular");
   const [circulars, setCirculars] = useState<Circular[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -1410,20 +1414,39 @@ export function VeilleReglementaire() {
 
   useEffect(() => { load(); }, []);
 
-  async function openCircular(id: number) {
+  // Le détail affiché suit le paramètre d'URL ?circular=<id> plutôt qu'un
+  // simple état local : ouvrir une circulaire pousse une entrée d'historique,
+  // donc le bouton précédent du navigateur (ou un swipe) revient proprement
+  // à la liste au lieu de sauter la page entière. Cet effet couvre aussi
+  // l'ouverture initiale, le forward/back et un lien direct vers ?circular=X.
+  useEffect(() => {
+    if (!circularIdParam) { setSelected(null); return; }
+    const id = Number(circularIdParam);
+    if (!Number.isFinite(id)) return;
+    let cancelled = false;
     setLoadingDetail(id);
-    try {
-      let circular = await regulatoryApi.getCircular(id);
-      if (circular.analysisStatus === "en_cours") {
-        toast.info("Analyse encore en cours pour cette circulaire — patientez…");
-        circular = await regulatoryApi.pollCircular(id);
+    (async () => {
+      try {
+        let circular = await regulatoryApi.getCircular(id);
+        if (circular.analysisStatus === "en_cours") {
+          toast.info("Analyse encore en cours pour cette circulaire — patientez…");
+          circular = await regulatoryApi.pollCircular(id);
+        }
+        if (!cancelled) setSelected(circular);
+      } catch (e) {
+        if (!cancelled) {
+          toast.error(e instanceof Error ? e.message : "Échec du chargement de la circulaire");
+          setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete("circular"); return next; }, { replace: true });
+        }
+      } finally {
+        if (!cancelled) setLoadingDetail(null);
       }
-      setSelected(circular);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Échec du chargement de la circulaire");
-    } finally {
-      setLoadingDetail(null);
-    }
+    })();
+    return () => { cancelled = true; };
+  }, [circularIdParam]);
+
+  function openCircular(id: number) {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set("circular", String(id)); return next; });
   }
 
   async function handleDelete(c: Circular) {
@@ -1444,7 +1467,7 @@ export function VeilleReglementaire() {
     return (
       <ImpactAnalysis
         circular={selected}
-        onBack={() => { setSelected(null); load(); }}
+        onBack={() => { navigate(-1); load(); }}
         onPublished={() => { load(); }}
       />
     );
@@ -1669,7 +1692,12 @@ export function VeilleReglementaire() {
       {showUpload && (
         <UploadModal
           onClose={() => setShowUpload(false)}
-          onDone={(circular) => { setShowUpload(false); setSelected(circular); load(); }}
+          onDone={(circular) => {
+            setShowUpload(false);
+            setSelected(circular);
+            setSearchParams(prev => { const next = new URLSearchParams(prev); next.set("circular", String(circular.id)); return next; });
+            load();
+          }}
         />
       )}
 
