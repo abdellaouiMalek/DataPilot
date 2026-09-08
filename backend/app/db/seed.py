@@ -552,7 +552,7 @@ DIMENSIONS = [
     },
 ]
 
-# Default per-question weight (1–10 scale used by the admin UI).
+# Default per-question weight (1-10 scale used by the admin UI).
 DEFAULT_QUESTION_WEIGHT = 5
 
 MATURITY_LEVELS = [

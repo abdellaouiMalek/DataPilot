@@ -3,8 +3,8 @@
  *
  * Vit dans `lib/` plutôt que dans la page « Historique & logs » : le tableau de
  * bord, le bandeau et « Mon compte » habillent les mêmes entrées. Tant que
- * cette table était exportée par la page, l'importer depuis le bandeau — chargé
- * d'emblée avec la mise en page — tirait toute la page dans le bundle initial
+ * cette table était exportée par la page, l'importer depuis le bandeau, chargé
+ * d'emblée avec la mise en page, tirait toute la page dans le bundle initial
  * et annulait son chargement à la demande.
  */
 
@@ -30,7 +30,7 @@ export const modCfg: Record<string, ModuleStyle> = {
   "Paramètres":   { color: "#3730A3", bg: "#EEF2FF", Icon: Settings      },
 };
 
-/** Pour un module inconnu — un libellé ajouté côté backend, par exemple. */
+/** Pour un module inconnu, un libellé ajouté côté backend, par exemple. */
 export const FALLBACK_MODULE: ModuleStyle = {
   color: "#6B6B6B",
   bg: "#F5F5F5",

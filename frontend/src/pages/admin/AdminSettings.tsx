@@ -6,14 +6,14 @@ import { AccountSection } from '../superAdmin/AdminAccount';
  * Réduits à « Mon compte », et c'est délibéré. La page Paramètres du super
  * admin gère deux autres domaines qui n'ont pas leur place ici :
  *
- * — la **Sécurité** écrit le realm Keycloak (durée de session, politique de
+ * - la **Sécurité** écrit le realm Keycloak (durée de session, politique de
  *   mot de passe, 2FA). Ces réglages valent pour tout le monde, y compris les
  *   super administrateurs : les confier à un admin restreint reviendrait à lui
  *   donner, par un détour, un pouvoir que son rôle lui refuse ailleurs ;
- * — les **Notifications** décident qui reçoit les alertes de la plateforme,
+ * - les **Notifications** décident qui reçoit les alertes de la plateforme,
  *   ce qui est également une décision d'échelle plateforme.
  *
- * Ne restait donc que le compte de la personne connectée — que le menu du
+ * Ne restait donc que le compte de la personne connectée, que le menu du
  * bandeau proposait déjà, mais en pointant vers `/super-admin/settings`, où
  * `RequireSuperAdmin` affichait « Accès refusé » à ce même admin.
  *

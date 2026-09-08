@@ -1,4 +1,4 @@
-"""Schemas for the back-office topbar — the notification bell and the quick search.
+"""Schemas for the back-office topbar, the notification bell and the quick search.
 
 Both are cross-module by nature: they read whatever the admin might need to
 react to or jump to, wherever it lives. Neither stores anything.
@@ -21,7 +21,7 @@ class NotificationRead(BaseModel):
     key: str
     #: "critical" | "warning" | "info"
     level: str
-    #: Functional area, in the audit trail's module vocabulary — the client
+    #: Functional area, in the audit trail's module vocabulary, the client
     #: reuses the icon it already maps for that module.
     module: str
     text: str
@@ -62,5 +62,5 @@ class SearchHit(BaseModel):
 class SearchResults(BaseModel):
     query: str
     hits: list[SearchHit]
-    #: False when Keycloak is unreachable — accounts were not searched.
+    #: False when Keycloak is unreachable, accounts were not searched.
     users_available: bool

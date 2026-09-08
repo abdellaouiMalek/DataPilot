@@ -19,7 +19,7 @@ import {
   Loader2, Minus, ShieldAlert, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
-import { getMaturityLevels } from '../lib/config';
+import { getMaturityLevels, bankLogoSrc } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
 import { getMyAssessments, questionnaireUrl } from '../lib/assessment';
 import type { AssessmentResult } from '../lib/assessment';
@@ -63,7 +63,7 @@ function Notice({ text, action }: { text: string; action?: { label: string; to: 
       {action && (
         <button
           onClick={() => navigate(action.to)}
-          className="px-5 py-2.5 rounded-lg text-sm font-bold bg-gray-900 text-white hover:bg-black transition-colors"
+          className="px-5 py-2.5 rounded-lg text-sm font-bold bg-black text-white hover:bg-[#FFE600] hover:text-black transition-colors"
         >
           {action.label}
         </button>
@@ -78,9 +78,9 @@ function Panel({ title, subtitle, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-gray-200 shadow-sm h-full">
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm h-full overflow-hidden">
       <div className="px-5 sm:px-6 py-4 border-b border-gray-100">
-        <h3 className="text-base sm:text-lg font-light text-gray-900 tracking-tight">{title}</h3>
+        <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">{title}</h3>
         {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
       </div>
       <div className="p-5 sm:p-6">{children}</div>
@@ -89,7 +89,7 @@ function Panel({ title, subtitle, children }: {
 }
 
 function Delta({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-xs text-gray-400 font-medium">—</span>;
+  if (value === null) return <span className="text-xs text-gray-400 font-medium">-</span>;
   const Icon = value > 0.001 ? TrendingUp : value < -0.001 ? TrendingDown : Minus;
   const tone = value > 0.001 ? 'text-emerald-500' : value < -0.001 ? 'text-red-400' : 'text-gray-400';
   return (
@@ -228,9 +228,9 @@ export function DashboardPage() {
     },
     {
       label: 'Niveau de maturité',
-      value: latest.maturity_label ?? band?.label ?? '—',
+      value: latest.maturity_label ?? band?.label ?? '-',
       foot: band
-        ? <span className="text-xs text-gray-500 font-medium">Palier {band.min_score} – {band.max_score}</span>
+        ? <span className="text-xs text-gray-500 font-medium">Palier {band.min_score} - {band.max_score}</span>
         : null,
     },
     {
@@ -240,7 +240,7 @@ export function DashboardPage() {
     },
     {
       label: 'Dimension la plus faible',
-      value: weakest ? weakest.score.toFixed(2) : '—',
+      value: weakest ? weakest.score.toFixed(2) : '-',
       unit: weakest ? '/ 5' : undefined,
       foot: weakest
         ? <span className="text-xs text-gray-500 font-medium truncate block" title={weakest.name}>{weakest.name}</span>
@@ -296,12 +296,19 @@ export function DashboardPage() {
           className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-gray-900 truncate">
+            {latest.bank_logo_url && (
+              <img
+                src={bankLogoSrc(latest.bank_logo_url) ?? undefined}
+                alt=""
+                className="w-9 h-9 rounded-full object-contain bg-white border border-gray-100 flex-shrink-0"
+              />
+            )}
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 truncate">
               {latest.bank}
             </h1>
             {band && (
               <span
-                className="shrink-0 px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase"
+                className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase"
                 style={{ backgroundColor: band.color, color: '#1A1A1A' }}
               >
                 {latest.maturity_label ?? band.label}
@@ -313,7 +320,7 @@ export function DashboardPage() {
               <button
                 key={action.label}
                 onClick={action.go}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-wide transition-colors ${
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold tracking-wide transition-colors ${
                   action.primary
                     ? 'bg-black text-white hover:bg-[#FFE600] hover:text-black'
                     : 'bg-white border border-gray-200 text-gray-700 hover:border-black hover:text-black'
@@ -326,18 +333,18 @@ export function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Indicateurs — tous lus sur la derniere evaluation soumise */}
+        {/* Indicateurs, tous lus sur la derniere evaluation soumise */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }}
           className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5"
         >
           {kpis.map((kpi) => (
-            <div key={kpi.label} className="bg-white border border-gray-200 p-4 sm:p-5 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-[#FFE600]" />
-              <div className="pl-2 space-y-2">
+            <div key={kpi.label} className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 sm:p-5 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#FFE600]" />
+              <div className="space-y-2 pt-1">
                 <div className="text-[10px] font-bold tracking-widest text-gray-400 uppercase truncate">{kpi.label}</div>
                 <div className="flex items-baseline gap-1.5">
-                  <div className="text-2xl sm:text-3xl font-light text-gray-900 tracking-tight truncate">{kpi.value}</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight truncate">{kpi.value}</div>
                   {kpi.unit && <span className="text-xs text-gray-400 font-medium">{kpi.unit}</span>}
                 </div>
                 <div className="min-h-[18px]">{kpi.foot}</div>
@@ -394,7 +401,7 @@ export function DashboardPage() {
                 </div>
                 <button
                   onClick={startAssessment}
-                  className="self-start shrink-0 px-5 py-2.5 text-xs font-bold tracking-wider uppercase bg-black text-white hover:bg-[#FFE600] hover:text-black transition-colors"
+                  className="self-start shrink-0 px-5 py-2.5 rounded-lg text-xs font-bold tracking-wide bg-black text-white hover:bg-[#FFE600] hover:text-black transition-colors"
                 >
                   Nouvelle évaluation
                 </button>
@@ -458,16 +465,15 @@ export function DashboardPage() {
           {/* Remplace l'ancien « Top performers » (un classement d'autres
               banques) par la lecture qui concerne reellement l'utilisateur. */}
           <div className="lg:col-span-4">
-            <div className="bg-gray-900 text-white p-5 sm:p-7 shadow-xl relative overflow-hidden h-full">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[#FFE600]/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center gap-3 border-b border-gray-700 pb-3">
-                  {previous ? <Layers className="w-4 h-4 text-[#FFE600]" /> : <ShieldAlert className="w-4 h-4 text-[#FFE600]" />}
-                  <div className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
-                    {previous ? 'Progression par dimension' : 'Points forts et axes de progrès'}
-                  </div>
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 sm:p-7 h-full">
+              <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
+                {previous ? <Layers className="w-4 h-4 text-gray-400" /> : <ShieldAlert className="w-4 h-4 text-gray-400" />}
+                <div className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+                  {previous ? 'Progression par dimension' : 'Points forts et axes de progrès'}
                 </div>
+              </div>
 
+              <div className="pt-4 space-y-4">
                 {previous ? (
                   <>
                     <p className="text-[11px] text-gray-400 leading-relaxed">
@@ -479,13 +485,13 @@ export function DashboardPage() {
                         dimension ne leur est commune.
                       </p>
                     ) : (
-                      <div className="space-y-2.5">
+                      <div className="space-y-2">
                         {profile
                           .filter((d) => d.delta !== null)
                           .sort((a, b) => (b.delta as number) - (a.delta as number))
                           .map((d) => (
-                            <div key={d.key} className="flex items-center justify-between gap-3">
-                              <span className="text-xs text-gray-300 truncate" title={d.name}>{d.name}</span>
+                            <div key={d.key} className="flex items-center justify-between gap-3 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                              <span className="text-xs font-semibold text-gray-700 truncate" title={d.name}>{d.name}</span>
                               <Delta value={d.delta} />
                             </div>
                           ))}
@@ -493,7 +499,7 @@ export function DashboardPage() {
                     )}
                   </>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {flatProfile ? (
                       <p className="text-xs text-gray-400 leading-relaxed">
                         Vos {profile.length} dimensions sont au même niveau
@@ -503,20 +509,20 @@ export function DashboardPage() {
                     ) : (
                       <>
                         {strongest && (
-                          <div>
-                            <div className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1.5">Point fort</div>
-                            <div className="text-sm font-semibold truncate" title={strongest.name}>{strongest.name}</div>
+                          <div className="px-3 py-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                            <div className="text-[10px] font-bold tracking-widest text-emerald-600 uppercase mb-1">Point fort</div>
+                            <div className="text-sm font-semibold text-gray-900 truncate" title={strongest.name}>{strongest.name}</div>
                             <div className="text-xs font-bold mt-0.5" style={{ color: bandFor(strongest.score)?.color }}>
                               {strongest.score.toFixed(2)} / 5
                             </div>
                           </div>
                         )}
                         {weakest && (
-                          <div className="pt-3 border-t border-gray-800">
-                            <div className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1.5">
+                          <div className="px-3 py-2.5 bg-red-50 rounded-lg border border-red-100">
+                            <div className="text-[10px] font-bold tracking-widest text-red-500 uppercase mb-1">
                               À renforcer en priorité
                             </div>
-                            <div className="text-sm font-semibold truncate" title={weakest.name}>{weakest.name}</div>
+                            <div className="text-sm font-semibold text-gray-900 truncate" title={weakest.name}>{weakest.name}</div>
                             <div className="text-xs font-bold mt-0.5" style={{ color: bandFor(weakest.score)?.color }}>
                               {weakest.score.toFixed(2)} / 5
                             </div>

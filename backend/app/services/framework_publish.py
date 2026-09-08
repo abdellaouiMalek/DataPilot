@@ -3,13 +3,13 @@
 The admin page edits a whole tree offline and sends it back in one piece, so
 publishing is a *reconciliation* (diff the desired tree against what's in the
 database and apply the difference) rather than a stream of CRUD calls. Doing it
-in one transaction is the point: a framework left half-applied — a question
-moved but its sub-dimension not yet created — is worse than a rejected publish.
+in one transaction is the point: a framework left half-applied, a question
+moved but its sub-dimension not yet created, is worse than a rejected publish.
 
 Deletion policy: whatever the new tree no longer contains is deleted outright,
-answers or not. Historical assessments don't depend on these rows — they read
+answers or not. Historical assessments don't depend on these rows, they read
 the questionnaire from the snapshot frozen in their own version (see
-``app.services.questionnaire_reference``) — so the live tables hold only the
+``app.services.questionnaire_reference``), so the live tables hold only the
 current questionnaire instead of every question ever asked.
 """
 
@@ -169,7 +169,7 @@ def _fmt(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     if value in (None, ""):
-        return "—"
+        return "-"
     if isinstance(value, (list, dict)):
         return "…"
     text = str(value)
@@ -252,7 +252,7 @@ def build_changelog(
     for dimension_id, dimension in new_dims.items():
         old = old_dims.get(dimension_id)
         if old is None:
-            continue  # id present but unknown upstream — treated as added below
+            continue  # id present but unknown upstream, treated as added below
         changes = _field_changes(old, dimension, DIMENSION_FIELDS)
         if changes:
             entries.append({

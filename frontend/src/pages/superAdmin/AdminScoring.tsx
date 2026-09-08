@@ -1,16 +1,16 @@
 /**
- * Référentiel de scoring — the maturity bands and dimension weights the
+ * Référentiel de scoring, the maturity bands and dimension weights the
  * scoring engine actually uses.
  *
  * Everything here is live: bands come from `maturity_levels` (read by
  * app.services.scoring.map_to_maturity_level on every submission and report)
  * and weights from `dimensions.weight`. Both are the same rows the framework
  * page and the questionnaire read, so an edit here changes how results are
- * scored and labelled — hence the explicit warnings for overlapping bands,
+ * scored and labelled, hence the explicit warnings for overlapping bands,
  * uncovered score ranges and weights that don't total 100.
  *
  * Scores are on the questionnaire's own 1→5 scale (the values respondents
- * pick), not a 0–100 percentage; the scale bounds come from the API.
+ * pick), not a 0-100 percentage; the scale bounds come from the API.
  */
 
 import { useEffect, useState } from "react";
@@ -18,6 +18,7 @@ import { Edit2, RotateCcw, X, AlertCircle, AlertTriangle, Loader2, Check } from 
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import { AdminLoader } from "@/components/AdminLoader";
+import { useConfirm } from "@/hooks/useConfirm";
 import {
   getScoringReferential,
   resetMaturityLevels,
@@ -32,7 +33,7 @@ function errorMessage(err: unknown): string {
   return "Une erreur est survenue. Vérifiez que l'API est démarrée.";
 }
 
-// 1.9 -> "1,9", 2 -> "2" — matches the French formatting used elsewhere.
+// 1.9 -> "1,9", 2 -> "2", matches the French formatting used elsewhere.
 const fmt = (value: number) =>
   new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(value);
 
@@ -46,9 +47,9 @@ const countQuestions = (dimension: Dimension) =>
 // ── Response-type rules ───────────────────────────────────────────────────────
 // Deliberately describes what actually runs, not what the framework editor
 // lets you configure: QuestionnairePage renders the same 1→5 Likert for every
-// question and the API only accepts `value` 1–5 (schemas/assessment.py), so
+// question and the API only accepts `value` 1-5 (schemas/assessment.py), so
 // only "Échelle de maturité" is scored as designed today. The other types are
-// stored and editable but their per-option points never reach the engine —
+// stored and editable but their per-option points never reach the engine, 
 // flagged here rather than left to be discovered from a wrong score.
 const RESPONSE_TYPE_RULES: Record<
   string,
@@ -144,7 +145,7 @@ function LevelModal({
     <div style={{ position: "fixed", inset: 0, zIndex: 1000, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ backgroundColor: "white", borderRadius: 8, width: 520, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
         <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ey-black)" }}>Modifier le niveau — {level.label}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ey-black)" }}>Modifier le niveau : {level.label}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ey-gray-mid)" }}><X size={18} /></button>
         </div>
 
@@ -171,7 +172,7 @@ function LevelModal({
             </div>
           </div>
           <div style={{ fontSize: 11, color: "var(--ey-gray-mid)", marginTop: -8 }}>
-            Échelle du questionnaire : {fmt(scale.min)} – {fmt(scale.max)}. Les niveaux ne peuvent pas se chevaucher.
+            Échelle du questionnaire : {fmt(scale.min)} - {fmt(scale.max)}. Les niveaux ne peuvent pas se chevaucher.
           </div>
 
           <div>
@@ -216,6 +217,7 @@ export function ScoringReferential() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [editingLevel, setEditingLevel] = useState<MaturityLevel | null>(null);
   // Dimension whose weight is being edited inline, plus its draft value.
@@ -248,11 +250,14 @@ export function ScoringReferential() {
   }, [refreshKey]);
 
   const handleReset = async () => {
-    if (!window.confirm(
-      "Restaurer les niveaux de maturité par défaut ?\n\n" +
-      "Les seuils, libellés, descriptions et couleurs personnalisés seront perdus. " +
-      "Les évaluations déjà enregistrées ne sont pas recalculées."
-    )) return;
+    if (!(await confirm({
+      title: "Restaurer les niveaux de maturité par défaut ?",
+      description:
+        "Les seuils, libellés, descriptions et couleurs personnalisés seront perdus.\n\n" +
+        "Les évaluations déjà enregistrées ne sont pas recalculées.",
+      icon: RotateCcw,
+      confirmLabel: "Restaurer",
+    }))) return;
 
     setResetting(true);
     try {
@@ -272,12 +277,26 @@ export function ScoringReferential() {
       toast.error("Pondération invalide", { description: "Saisissez un nombre positif." });
       return;
     }
+    // Same 100 % ceiling the backend enforces -- checked here too so the
+    // admin gets an immediate, specific answer instead of a failed save.
+    // Only active dimensions count toward the total, matching totalWeight
+    // above; editing an inactive one's weight can't push it over.
+    if (dimension.status === "Active") {
+      const otherTotal = totalWeight - dimension.weight;
+      const newTotal = otherTotal + weight;
+      if (newTotal > 100.01) {
+        toast.error("Total des poids dépassé", {
+          description: `${fmt(otherTotal)} % + ${fmt(weight)} % = ${fmt(newTotal)} % : le total des dimensions actives ne peut pas dépasser 100 %.`,
+        });
+        return;
+      }
+    }
     setSavingWeight(true);
     try {
       await adminApi.updateDimension(dimension.id, { weight });
       setDimensions(prev => prev.map(d => (d.id === dimension.id ? { ...d, weight } : d)));
       setEditingWeight(null);
-      toast.success("Pondération enregistrée", { description: `${dimension.name} — ${fmt(weight)} %` });
+      toast.success("Pondération enregistrée", { description: `${dimension.name}, ${fmt(weight)} %` });
     } catch (err) {
       toast.error("Échec de l'enregistrement", { description: errorMessage(err) });
     } finally {
@@ -341,7 +360,7 @@ export function ScoringReferential() {
         </button>
       </div>
 
-      {/* Configuration warnings — a band overlap mislabels results, a gap
+      {/* Configuration warnings, a band overlap mislabels results, a gap
           leaves them with no label at all. */}
       {(referential.overlaps.length > 0 || referential.gaps.length > 0) && (
         <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -362,7 +381,7 @@ export function ScoringReferential() {
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>Plages de score sans niveau</div>
                 <div style={{ fontSize: 12, color: "#92400E", marginTop: 3 }}>
-                  {referential.gaps.join(" · ")} — un score dans ces plages n'obtient aucun libellé de maturité.
+                  {referential.gaps.join(" · ")}, un score dans ces plages n'obtient aucun libellé de maturité.
                 </div>
               </div>
             </div>
@@ -373,7 +392,7 @@ export function ScoringReferential() {
       {/* Score scale visual */}
       <div style={{ ...card, padding: "18px 22px", marginBottom: 20 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ey-gray-dark)", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Échelle de score globale ({fmt(scale.min)} — {fmt(scale.max)})
+          Échelle de score globale ({fmt(scale.min)} - {fmt(scale.max)})
         </div>
         <div style={{ position: "relative", height: 20, borderRadius: 4, overflow: "hidden", display: "flex", backgroundColor: "var(--ey-gray-bg)" }}>
           {[...levels].sort((a, b) => a.min_score - b.min_score).map(level => (
@@ -391,7 +410,7 @@ export function ScoringReferential() {
           {levels.map(level => (
             <div key={level.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: level.color, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: "var(--ey-gray-mid)" }}>{level.label} ({fmt(level.min_score)}–{fmt(level.max_score)})</span>
+              <span style={{ fontSize: 11, color: "var(--ey-gray-mid)" }}>{level.label} ({fmt(level.min_score)}-{fmt(level.max_score)})</span>
             </div>
           ))}
         </div>
@@ -429,7 +448,7 @@ export function ScoringReferential() {
                   <div style={{ display: "inline-flex", alignItems: "center", backgroundColor: "var(--ey-gray-bg)", borderRadius: 4, padding: "4px 10px", fontSize: 13, fontWeight: 700, color: "var(--ey-black)" }}>{fmt(level.max_score)}</div>
                 </td>
                 <td style={{ padding: "14px 16px", maxWidth: 300 }}>
-                  <p style={{ fontSize: 12, color: "var(--ey-gray-mid)", margin: 0, lineHeight: 1.5 }}>{level.description || "—"}</p>
+                  <p style={{ fontSize: 12, color: "var(--ey-gray-mid)", margin: 0, lineHeight: 1.5 }}>{level.description || "-"}</p>
                 </td>
                 <td style={{ padding: "14px 16px" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, backgroundColor: `${level.color}33`, color: "var(--ey-black)", borderRadius: 4, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
@@ -468,7 +487,7 @@ export function ScoringReferential() {
 
           {inactiveCount > 0 && (
             <div style={{ padding: "8px 20px", borderBottom: "1px solid rgba(0,0,0,0.05)", fontSize: 11, color: "var(--ey-gray-mid)" }}>
-              {inactiveCount} dimension{inactiveCount > 1 ? "s" : ""} inactive{inactiveCount > 1 ? "s" : ""} —
+              {inactiveCount} dimension{inactiveCount > 1 ? "s" : ""} inactive{inactiveCount > 1 ? "s" : ""}, 
               non présentée{inactiveCount > 1 ? "s" : ""} aux répondants, donc hors total et hors calcul.
             </div>
           )}
@@ -580,6 +599,7 @@ export function ScoringReferential() {
           onSaved={setReferential}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

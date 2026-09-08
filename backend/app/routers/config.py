@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
 from app.models import Bank, Department, Dimension, MaturityLevel, Question, Role
-from app.schemas.config import DimensionRead, LookupRead, MaturityLevelRead
+from app.schemas.config import BankLookupRead, DimensionRead, LookupRead, MaturityLevelRead
 
 router = APIRouter(prefix="/api", tags=["config"])
 
@@ -42,7 +42,7 @@ async def list_dimensions(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.get("/banks", response_model=list[LookupRead])
+@router.get("/banks", response_model=list[BankLookupRead])
 async def list_banks(db: AsyncSession = Depends(get_db)):
     return await _list_active(db, Bank)
 

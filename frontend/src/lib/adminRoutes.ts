@@ -3,8 +3,8 @@
  *
  * The backend refers to a destination by key (`target: "users"`) rather than
  * by URL, so paths stay a front-end concern. Shared because three surfaces
- * navigate by key — the dashboard alert buttons, the topbar notification
- * bell, and the quick-search results — and a fourth copy would be the one
+ * navigate by key, the dashboard alert buttons, the topbar notification
+ * bell, and the quick-search results, and a fourth copy would be the one
  * that goes stale.
  */
 

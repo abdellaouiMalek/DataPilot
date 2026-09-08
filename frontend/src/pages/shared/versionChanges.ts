@@ -192,7 +192,7 @@ function impactToChange(impact: Impact, circularRef: string, maturityLevels: Mat
         type: "nouvelle recommandation",
         newRecommandationTitle: p.title ?? "",
         newRecommandation: edited.recommandation ?? p.recommendation_text ?? "",
-        attachedQuestion: [p.question_title, p.question_dimension].filter(Boolean).join(" — "),
+        attachedQuestion: [p.question_title, p.question_dimension].filter(Boolean).join(", "),
       };
     case "question:desactiver":
       return {
@@ -220,7 +220,7 @@ export function buildVersionSnapshot(circular: CircularDetail, maturityLevels: M
   return {
     changes,
     publishedAt: circular.publishedAt ?? circular.createdAt,
-    publishedBy: circular.publishedBy ?? "—",
+    publishedBy: circular.publishedBy ?? "-",
     circulaireRef: circular.reference,
   };
 }

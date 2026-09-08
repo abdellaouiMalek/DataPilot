@@ -1,4 +1,4 @@
-"""Platform settings — only the ones with something real behind them.
+"""Platform settings, only the ones with something real behind them.
 
 Two sections, two different sources of truth, on purpose:
 
@@ -41,7 +41,7 @@ router = APIRouter(
 TOTP_ACTION = "CONFIGURE_TOTP"
 
 # The password-policy term Keycloak uses for "expire after N days". The realm
-# policy is a single string of several terms, so it is edited surgically —
+# policy is a single string of several terms, so it is edited surgically, 
 # rewriting the whole thing would silently drop length/complexity rules an
 # operator set directly in Keycloak.
 EXPIRY_TERM = "forceExpiredPasswordChange"

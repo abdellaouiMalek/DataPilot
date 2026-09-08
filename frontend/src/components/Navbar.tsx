@@ -53,7 +53,7 @@ export function Navbar() {
               <div className="h-6 w-px bg-gray-200 hidden sm:block" />
             </>
           )}
-          {/* Espace admin restreint — affiché uniquement pour un `admin`
+          {/* Espace admin restreint, affiché uniquement pour un `admin`
               qui n'est pas super admin (ce dernier a déjà son propre lien). */}
           {!user.isSuperAdmin && user.isAdmin && (
             <>

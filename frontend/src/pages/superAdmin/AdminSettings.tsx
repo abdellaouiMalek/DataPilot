@@ -1,14 +1,14 @@
 /**
- * Paramètres — ce que la plateforme sait réellement configurer.
+ * Paramètres, ce que la plateforme sait réellement configurer.
  *
  * La page ne propose plus que des réglages ayant quelque chose derrière eux,
  * chacun avec sa propre source de vérité :
  *
- * — **Sécurité** est stockée par Keycloak sur le realm (durée de session,
+ * - **Sécurité** est stockée par Keycloak sur le realm (durée de session,
  *   politique de mot de passe, action requise TOTP). Rien n'est recopié ici :
  *   une copie locale serait la version qui se désynchronise pendant que le
  *   realm continue de décider du comportement réel ;
- * — **Notifications** relèvent de l'application, donc de sa table
+ * - **Notifications** relèvent de l'application, donc de sa table
  *   `platform_settings`.
  *
  * Ont été retirés les réglages sans implémentation possible côté application :
@@ -201,7 +201,7 @@ export function Settings() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input
-                    type="number" min={1} max={3650} placeholder="—"
+                    type="number" min={1} max={3650} placeholder="-"
                     value={security.password_expiry_days ?? ""}
                     onChange={e => setSecurity({
                       ...security,
@@ -245,7 +245,7 @@ export function Settings() {
 
               <SettingRow
                 label="Soumission d'une évaluation"
-                description="Email dès qu'une banque soumet une évaluation — la seule action de la plateforme qu'un administrateur ne déclenche jamais lui-même."
+                description="Email dès qu'une banque soumet une évaluation, la seule action de la plateforme qu'un administrateur ne déclenche jamais lui-même."
               >
                 <Toggle
                   enabled={notifications.notify_on_assessment}

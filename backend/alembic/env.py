@@ -18,10 +18,10 @@ load_dotenv()
 # access to the values within the .ini file in use.
 config = context.config
 
-# Use the app's DATABASE_URL, but with the sync driver — Alembic runs sync.
+# Use the app's DATABASE_URL, but with the sync driver: Alembic runs sync.
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
-    raise RuntimeError("DATABASE_URL is missing — set it in backend/.env")
+    raise RuntimeError("DATABASE_URL is missing, set it in backend/.env")
 sync_url = database_url.replace("+asyncpg", "+psycopg2")
 config.set_main_option("sqlalchemy.url", sync_url)
 

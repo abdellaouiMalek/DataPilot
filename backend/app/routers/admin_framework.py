@@ -6,7 +6,7 @@ live ``dimensions`` / ``sub_dimensions`` / ``questions`` tables. Publishing
 happens in a single transaction and writes an immutable
 :class:`QuestionnaireVersion` snapshot with a computed changelog.
 
-The per-entity CRUD in ``app.routers.admin`` is left in place — it's what the
+The per-entity CRUD in ``app.routers.admin`` is left in place, it's what the
 draft's tree is built from, and nothing else has to change for the editor to
 work.
 """
@@ -174,7 +174,7 @@ async def discard_draft(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
-    """Autosaves (``PUT /draft``) are intentionally not audited — they fire on
+    """Autosaves (``PUT /draft``) are intentionally not audited, they fire on
     every edit and would bury the actions that matter. Throwing the draft away
     is a decision, so that one is recorded."""
     draft = await _get_draft(db)
@@ -213,6 +213,25 @@ async def publish(
         raise HTTPException(
             status_code=400,
             detail="Le questionnaire doit contenir au moins une dimension.",
+        )
+
+    # Same 100% ceiling as the direct dimension-CRUD endpoints (admin.py),
+    # applied here too since the staged framework editor never goes through
+    # those -- it only ever writes via this one bulk publish. A dimension's
+    # weight is read everywhere else as "worth weight% of the global score",
+    # only true if active dimensions add up to 100.
+    active_weight_total = sum(
+        float(node.get("weight", 0) or 0)
+        for node in payload.tree
+        if bool(node.get("is_active", True))
+    )
+    if active_weight_total > 100.01:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Le poids total des dimensions actives dépasse 100% "
+                f"({active_weight_total:.1f}%). Ajustez les poids avant de publier."
+            ),
         )
 
     active = await _active_version(db)
@@ -265,7 +284,7 @@ async def publish(
     except HTTPException:
         await db.rollback()
         raise
-    except Exception as exc:  # noqa: BLE001 — reported verbatim to the admin
+    except Exception as exc:  # noqa: BLE001, reported verbatim to the admin
         await db.rollback()
         raise HTTPException(
             status_code=400,
@@ -294,7 +313,7 @@ async def publish(
 async def list_versions(db: AsyncSession = Depends(get_db)):
     """Newest first, archived ones included.
 
-    Snapshots are excluded — they're large and unused here. Archived versions
+    Snapshots are excluded, they're large and unused here. Archived versions
     are returned with their flag rather than filtered out: the log is small and
     the page decides what to show, so "voir les archivées" costs no round-trip.
     """
@@ -400,11 +419,11 @@ async def delete_version(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
-    """Erase a version for good — only when nothing depends on it.
+    """Erase a version for good, only when nothing depends on it.
 
     Three things can depend on one: it can be the live questionnaire, it can be
     what assessments were answered on (the FK is ``RESTRICT``, so the database
-    would refuse anyway — this just says so in French), or it can be the
+    would refuse anyway, this just says so in French), or it can be the
     version the pending draft was started from, which publishing compares
     against. Anything else obsolete should be archived, not deleted.
     """
@@ -519,7 +538,7 @@ async def restore_version(
     except HTTPException:
         await db.rollback()
         raise
-    except Exception as exc:  # noqa: BLE001 — reported verbatim to the admin
+    except Exception as exc:  # noqa: BLE001, reported verbatim to the admin
         await db.rollback()
         raise HTTPException(
             status_code=400,

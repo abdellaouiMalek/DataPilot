@@ -156,7 +156,7 @@ def summarize_changes(
 
 def _fmt_value(value: Any) -> str:
     if value is None or value == "":
-        return "—"
+        return "-"
     if isinstance(value, bool):
         return "oui" if value else "non"
     if isinstance(value, float):

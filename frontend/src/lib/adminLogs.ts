@@ -78,7 +78,7 @@ export async function exportAuditLogs(filters: AuditLogFilters = {}): Promise<vo
   // Page/per_page are meaningless for an export: it always covers the whole
   // filtered set, not the page being looked at.
   const { page: _page, perPage: _perPage, ...rest } = filters;
-  const blob = await api.getBlob(`/api/super-admin/logs/export.csv${toQuery(rest)}`);
+  const { blob } = await api.getBlob(`/api/super-admin/logs/export.csv${toQuery(rest)}`);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

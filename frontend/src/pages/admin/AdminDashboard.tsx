@@ -7,7 +7,7 @@ import { buildKpiCards, KpiCard } from "../superAdmin/AdminUsers";
 import type { KpiStats } from "../superAdmin/AdminUsers";
 
 /**
- * Tableau de bord de l'espace admin — volontairement limité aux
+ * Tableau de bord de l'espace admin, volontairement limité aux
  * indicateurs utilisateurs.
  *
  * Le tableau de bord super admin agrège aussi banques, dimensions, logs et
@@ -16,7 +16,7 @@ import type { KpiStats } from "../superAdmin/AdminUsers";
  *
  * Les comptes super admin sont exclus côté serveur (`list_users` filtre sur
  * le rôle de l'appelant), donc les compteurs ci-dessous reflètent déjà le
- * périmètre autorisé — aucun filtrage supplémentaire ici.
+ * périmètre autorisé, aucun filtrage supplémentaire ici.
  */
 export function AdminDashboard() {
   const navigate = useNavigate();

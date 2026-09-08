@@ -11,6 +11,7 @@ import {
   type LevelResponse, type ChoiceOption,
 } from "../../lib/admin";
 import { AdminLoader } from "../../components/AdminLoader";
+import { useConfirm } from "../../hooks/useConfirm";
 import { useSeededSearch } from "../../hooks/useSeededSearch";
 import { createStaging, StagingProvider, useStaging } from "./frameworkStaging";
 import {
@@ -95,8 +96,8 @@ function ModalShell({ title, subtitle, onClose, children, footer, headerExtra, w
 
 // ── Dimension modal (create / edit) ─────────────────────────────────────────
 
-function DimensionModal({ initial, onClose, onSaved }: {
-  initial?: Dimension; onClose: () => void; onSaved: () => Promise<void>;
+function DimensionModal({ dimensions, initial, onClose, onSaved }: {
+  dimensions: Dimension[]; initial?: Dimension; onClose: () => void; onSaved: () => Promise<void>;
 }) {
   const staging = useStaging();
   const [name, setName] = useState(initial?.name ?? "");
@@ -106,8 +107,16 @@ function DimensionModal({ initial, onClose, onSaved }: {
   const [status, setStatus] = useState<Status>(initial?.status ?? "Active");
   const [saving, setSaving] = useState(false);
 
+  // Same 100 % ceiling the backend enforces on publish -- checked here too
+  // so the admin sees why before clicking Créer/Enregistrer instead of
+  // after. Only active dimensions (other than this one) count toward it.
+  const otherActiveTotal = dimensions
+    .filter(d => d.status === "Active" && d.id !== initial?.id)
+    .reduce((total, d) => total + d.weight, 0);
+  const wouldExceed100 = status === "Active" && otherActiveTotal + weight > 100.01;
+
   async function save() {
-    if (!name.trim()) return;
+    if (!name.trim() || wouldExceed100) return;
     setSaving(true);
     try {
       if (initial) await staging.updateDimension(initial.id, { name, description, weight, color, status });
@@ -125,7 +134,11 @@ function DimensionModal({ initial, onClose, onSaved }: {
       onClose={onClose}
       footer={<>
         <button style={btnGhost} onClick={onClose}>Annuler</button>
-        <button style={{ ...btnPrimary, opacity: !name.trim() || saving ? 0.5 : 1 }} disabled={!name.trim() || saving} onClick={save}>
+        <button
+          style={{ ...btnPrimary, opacity: !name.trim() || saving || wouldExceed100 ? 0.5 : 1 }}
+          disabled={!name.trim() || saving || wouldExceed100}
+          onClick={save}
+        >
           {saving && <Loader2 size={14} className="animate-spin" />}{initial ? "Enregistrer" : "Créer"}
         </button>
       </>}
@@ -141,6 +154,11 @@ function DimensionModal({ initial, onClose, onSaved }: {
           <input type="color" style={{ ...inp, height: 38, padding: 4, cursor: "pointer" }} value={color} onChange={e => setColor(e.target.value)} /></div>
       </div>
       <div><label style={lbl}>Statut</label><StatusPicker value={status} onChange={setStatus} /></div>
+      {wouldExceed100 && (
+        <div style={{ padding: "10px 14px", backgroundColor: "#FDEDED", border: "1px solid #F3C6C6", borderRadius: 7, fontSize: 12, color: "#8A1F1F", fontWeight: 600 }}>
+          {otherActiveTotal.toFixed(1)} % + {weight.toFixed(1)} % = {(otherActiveTotal + weight).toFixed(1)} % : le total des dimensions actives ne peut pas dépasser 100 %.
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -426,7 +444,7 @@ function QuestionModal({ dimensions, dim, sub, initial, initialTab = "edit", onC
               <select style={inp} value={type} onChange={e => setType(e.target.value)}>
                 {RESPONSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select></div>
-            <div><label style={lbl}>Poids (1–10)</label>
+            <div><label style={lbl}>Poids (1-10)</label>
               <input type="number" min={1} max={10} style={inp} value={weight} onChange={e => setWeight(+e.target.value)} /></div>
             <div><label style={lbl}>Ordre d'affichage</label>
               <input type="number" min={1} style={inp} value={order} onChange={e => setOrder(+e.target.value)} /></div>
@@ -595,7 +613,7 @@ function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
           <select style={inp} value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
             {RESPONSE_TYPES.map(t => <option key={t}>{t}</option>)}
           </select></div>
-        <div><label style={lbl}>Poids (1–10)</label>
+        <div><label style={lbl}>Poids (1-10)</label>
           <input type="number" min={1} max={10} style={inp} value={form.weight} onChange={e => setForm(p => ({ ...p, weight: +e.target.value }))} /></div>
       </div>
 
@@ -629,7 +647,9 @@ function WizardQuestionStep({ subDimensionId, breadcrumb, onBack, onFinish }: {
 
 // ── New dimension wizard (Dimension → Sous-dimensions → Questions) ───────────
 
-function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+function NewDimensionWizard({ dimensions, onClose, onSaved }: {
+  dimensions: Dimension[]; onClose: () => void; onSaved: () => Promise<void>;
+}) {
   const staging = useStaging();
   const [step, setStep] = useState(0);
   const [dimForm, setDimForm] = useState({ name: "", description: "", weight: 10, color: "#1A1A1A" });
@@ -639,8 +659,13 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
   const [createdSubId, setCreatedSubId] = useState<string | null>(null);
   const [firstSubName, setFirstSubName] = useState("");
 
+  // A wizard-created dimension is always Active (no status step here), so
+  // the check is unconditional -- same 100 % ceiling as DimensionModal.
+  const activeTotal = dimensions.filter(d => d.status === "Active").reduce((total, d) => total + d.weight, 0);
+  const wouldExceed100 = activeTotal + dimForm.weight > 100.01;
+
   async function createDimensionAndAdvance() {
-    if (!dimForm.name.trim()) return;
+    if (!dimForm.name.trim() || wouldExceed100) return;
     setCreating(true);
     try {
       const res = await staging.createDimension(dimForm);
@@ -671,7 +696,7 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
   }
 
   const step1Disabled = creating || !subNames.some(n => n.trim());
-  const step0Disabled = creating || !dimForm.name.trim();
+  const step0Disabled = creating || !dimForm.name.trim() || wouldExceed100;
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -696,6 +721,11 @@ function NewDimensionWizard({ onClose, onSaved }: { onClose: () => void; onSaved
                 <div><label style={lbl}>Couleur</label>
                   <input type="color" style={{ ...inp, height: 38, padding: 4, cursor: "pointer" }} value={dimForm.color} onChange={e => setDimForm(p => ({ ...p, color: e.target.value }))} /></div>
               </div>
+              {wouldExceed100 && (
+                <div style={{ padding: "10px 14px", backgroundColor: "#FDEDED", border: "1px solid #F3C6C6", borderRadius: 7, fontSize: 12, color: "#8A1F1F", fontWeight: 600 }}>
+                  {activeTotal.toFixed(1)} % + {dimForm.weight.toFixed(1)} % = {(activeTotal + dimForm.weight).toFixed(1)} % : le total des dimensions actives ne peut pas dépasser 100 %.
+                </div>
+              )}
             </div>
           )}
 
@@ -815,9 +845,10 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
   onEdit: (q: Question) => void; onAdd: () => void; readOnly?: boolean;
 }) {
   const staging = useStaging();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   async function remove(q: Question) {
-    if (!window.confirm("Retirer cette question du questionnaire ?")) return;
+    if (!(await confirm({ title: "Retirer cette question du questionnaire ?" }))) return;
     try {
       await staging.deleteQuestion(q.id);
       toast.success("Question retirée", { description: "Appliqué à la publication." });
@@ -868,6 +899,7 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
       <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
         <Plus size={13} /> Ajouter une question
       </button>
+      {confirmDialog}
     </div>
   );
 }
@@ -973,6 +1005,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
   readOnly?: boolean;
 }) {
   const staging = useStaging();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [search, setSearch] = useSeededSearch();
   const [previewQ, setPreviewQ] = useState<FlatQuestion | null>(null);
   const [dimFilter, setDimFilter] = useState("Toutes les dimensions");
@@ -1017,7 +1050,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
   }
 
   async function remove(q: FlatQuestion) {
-    if (!window.confirm("Retirer cette question du questionnaire ?")) return;
+    if (!(await confirm({ title: "Retirer cette question du questionnaire ?" }))) return;
     try {
       await staging.deleteQuestion(q.id);
       toast.success("Question retirée", { description: "Appliqué à la publication." });
@@ -1121,6 +1154,7 @@ function QuestionsTable({ dimensions, onEdit, onPreview, onAdd, onChanged, readO
         </table>
       </div>
       {previewQ && <QuestionPreviewModal q={previewQ} onClose={() => setPreviewQ(null)} />}
+      {confirmDialog}
     </>
   );
 }
@@ -1282,6 +1316,7 @@ function ChangeKindBadge({ kind }: { kind: string }) {
 
 export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean } = {}) {
   const navigate = useNavigate();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -1325,7 +1360,7 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
         setPublished(live);
         setBaseVersionId(state.active_version?.id ?? null);
         skipNextSave.current = true;
-        // A staged draft wins over the live tree — that's the work in progress.
+        // A staged draft wins over the live tree, that's the work in progress.
         setDimensions(state.draft ? fromApiTree(state.draft.tree) : live);
         setDraftAuthor(state.draft?.updated_by_name ?? null);
       })
@@ -1371,10 +1406,11 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
   };
 
   async function discardChanges() {
-    if (!window.confirm(
-      "Abandonner toutes les modifications non publiées ?\n\n" +
-      "Le questionnaire revient à la dernière version publiée."
-    )) return;
+    if (!(await confirm({
+      title: "Abandonner toutes les modifications non publiées ?",
+      description: "Le questionnaire revient à la dernière version publiée.",
+      confirmLabel: "Abandonner",
+    }))) return;
     try {
       await discardDraft();
       toast.success("Modifications abandonnées");
@@ -1432,19 +1468,30 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
   const toggleSub = (id: string) => setExpandedSubs(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   async function deleteDim(d: Dimension) {
-    if (!window.confirm(`Retirer la dimension « ${d.name} » et tout son contenu ?`)) return;
+    if (!(await confirm({
+      title: "Retirer cette dimension ?",
+      description: `« ${d.name} » et tout son contenu (sous-dimensions, questions) seront retirés du questionnaire.`,
+      confirmLabel: "Retirer",
+    }))) return;
     await staging.deleteDimension(d.id);
     toast.success("Dimension retirée", { description: "Appliqué à la publication." });
   }
   async function deleteSub(s: SubDimension) {
-    if (!window.confirm(`Retirer la sous-dimension « ${s.name} » et ses questions ?`)) return;
+    if (!(await confirm({
+      title: "Retirer cette sous-dimension ?",
+      description: `« ${s.name} » et ses questions seront retirées du questionnaire.`,
+      confirmLabel: "Retirer",
+    }))) return;
     await staging.deleteSubDimension(s.id);
     toast.success("Sous-dimension retirée", { description: "Appliqué à la publication." });
   }
 
   const totalQ = dimensions.reduce((a, d) => a + d.subDimensions.reduce((b, s) => b + s.questions.length, 0), 0);
   const totalS = dimensions.reduce((a, d) => a + d.subDimensions.length, 0);
-  const totalWeight = dimensions.reduce((a, d) => a + d.weight, 0);
+  // Inactive dimensions carry no weight in the global score (see scoring.py),
+  // so they don't belong in this total either -- matches AdminScoring.tsx's
+  // own reading of "100 %" and the ceiling DimensionModal enforces.
+  const totalWeight = dimensions.filter(d => d.status === "Active").reduce((a, d) => a + d.weight, 0);
 
   return (
     <StagingProvider value={staging}>
@@ -1483,7 +1530,7 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
         </div>
       </div>
 
-      {/* Staged-changes bar — the framework only reaches respondents on publish,
+      {/* Staged-changes bar, the framework only reaches respondents on publish,
           so the page has to make "nothing is live yet" impossible to miss. */}
       {!loading && !error && (
         <div style={{
@@ -1549,13 +1596,15 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
             <div style={{ backgroundColor: "#fff", borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", padding: "18px 20px", marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A" }}>Pondérations par dimension</span>
-                <span style={{ fontSize: 11, color: "#9B9B9B" }}>{totalWeight}% répartis sur {dimensions.length} dimensions</span>
+                <span style={{ fontSize: 11, color: "#9B9B9B" }}>
+                  {totalWeight}% répartis sur {dimensions.filter(d => d.status === "Active").length} dimension{dimensions.filter(d => d.status === "Active").length > 1 ? "s" : ""} active{dimensions.filter(d => d.status === "Active").length > 1 ? "s" : ""}
+                </span>
               </div>
               <div style={{ display: "flex", height: 42, borderRadius: 6, overflow: "hidden", gap: 3, marginBottom: 14 }}>
                 {dimensions.map(d => (
                   <div
                     key={d.id}
-                    title={`${d.name} — ${d.weight}%`}
+                    title={`${d.name}, ${d.weight}%`}
                     onClick={() => toggleDim(d.id)}
                     style={{ flex: d.weight || 0.01, backgroundColor: d.color, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "filter 0.15s" }}
                     onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.12)"}
@@ -1674,9 +1723,9 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
         </>
       )}
 
-      {dimModal && <DimensionModal initial={dimModal.initial} onClose={() => setDimModal(null)} onSaved={load} />}
+      {dimModal && <DimensionModal dimensions={dimensions} initial={dimModal.initial} onClose={() => setDimModal(null)} onSaved={load} />}
       {subModal && <SubDimensionModal dim={subModal.dim} initial={subModal.initial} onClose={() => setSubModal(null)} onSaved={load} />}
-      {showNewDim && <NewDimensionWizard onClose={() => setShowNewDim(false)} onSaved={load} />}
+      {showNewDim && <NewDimensionWizard dimensions={dimensions} onClose={() => setShowNewDim(false)} onSaved={load} />}
       {newSubWizard && <NewSubDimensionWizard dim={newSubWizard.dim} onClose={() => setNewSubWizard(null)} onSaved={load} />}
       {qModal && (
         <QuestionModal
@@ -1698,6 +1747,7 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
           onConfirm={confirmPublish}
         />
       )}
+      {confirmDialog}
     </div>
     </StagingProvider>
   );

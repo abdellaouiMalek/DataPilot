@@ -4,7 +4,7 @@ One response feeds the whole page: the five KPI tiles, the trend chart, the
 role donut, the per-bank bar chart, the configuration alerts, the activity
 feed and the banks table. It is a read-only projection over data that already
 exists elsewhere (assessments, banks, the published framework, the audit
-trail, Keycloak) — nothing here is stored.
+trail, Keycloak), nothing here is stored.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ class DashboardKpis(BaseModel):
     banks: int
     new_banks_30d: int
 
-    #: Question count of the active published version — what respondents
-    #: actually see — not the live (possibly edited) framework tables.
+    #: Question count of the active published version, what respondents
+    #: actually see, not the live (possibly edited) framework tables.
     questions: int
     #: Against the previously published version. 0 when there is only one.
     questions_delta: int
@@ -45,7 +45,7 @@ class DashboardKpis(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    """One bucket of the trend chart — a day (7/30 days) or a month (12 months)."""
+    """One bucket of the trend chart, a day (7/30 days) or a month (12 months)."""
 
     label: str
     evaluations: int
@@ -64,7 +64,7 @@ class RoleSlice(BaseModel):
 
 
 class BankScore(BaseModel):
-    """One bar of the maturity chart — a bank's most recent global score."""
+    """One bar of the maturity chart, a bank's most recent global score."""
 
     name: str
     score: float
@@ -77,7 +77,7 @@ class DashboardAlert(BaseModel):
     #: counts in ``text`` move with the data; this does not, which is what
     #: lets the topbar bell remember an alert has already been seen.
     code: str
-    #: Functional area, using the audit trail's module vocabulary — so both
+    #: Functional area, using the audit trail's module vocabulary, so both
     #: surfaces can pick the icon they already map for that module.
     module: str
     #: "critical" | "warning" | "info"
@@ -109,7 +109,7 @@ class BankRow(BaseModel):
     #: Most recent global score, None when the bank has never been evaluated.
     score: Optional[float]
     #: Accounts carrying this bank's id in Keycloak. None when Keycloak is
-    #: unreachable — the column shows "—" rather than a misleading 0.
+    #: unreachable, the column shows "-" rather than a misleading 0.
     users: Optional[int]
     last_assessment_at: Optional[datetime]
 

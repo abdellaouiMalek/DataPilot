@@ -3,7 +3,7 @@
 Read-only by design: entries are written by the recorder in
 ``app.services.audit`` as a side effect of the actions being audited, never
 through this router. Filtering, paging and the stat-card totals are all done
-in SQL — the page is expected to grow well past what a client-side filter
+in SQL, the page is expected to grow well past what a client-side filter
 could handle.
 """
 
@@ -147,7 +147,7 @@ async def export_logs(
     date_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """The whole filtered set as CSV — what the page's "Exporter" button pulls."""
+    """The whole filtered set as CSV, what the page's "Exporter" button pulls."""
     stmt = _apply_filters(
         select(AuditLog), q=q, module=module, date_from=date_from, date_to=date_to
     )

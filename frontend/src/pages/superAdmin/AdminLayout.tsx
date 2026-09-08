@@ -15,7 +15,6 @@ export function AdminLayout() {
       width: "100vw",
       overflow: "hidden",
       backgroundColor: "var(--ey-gray-bg)",
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     }}>
       <AdminSidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>

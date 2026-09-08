@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
+from app.core.storage import logo_url as _logo_url
 from app.db.database import Base
 
 
@@ -29,6 +30,15 @@ class Bank(Base):
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Filename only (e.g. "12.png"), relative to app/static/logos -- see
+    # app.core.storage. Nullable: most banks won't have one uploaded yet.
+    logo_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    @property
+    def logo_url(self) -> Optional[str]:
+        """Public URL for the logo, or None. Computed rather than stored so
+        the URL scheme can change without a migration."""
+        return _logo_url(self.logo_path)
 
 
 class Department(Base):

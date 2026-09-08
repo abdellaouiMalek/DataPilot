@@ -1,7 +1,7 @@
 """Schemas for the scoring referential (maturity bands).
 
 Bands are matched against a score on the questionnaire's own scale (1→5, see
-``app.services.scoring``), not a 0–100 percentage: a band's ``min_score`` /
+``app.services.scoring``), not a 0-100 percentage: a band's ``min_score`` /
 ``max_score`` are compared directly to the weighted average of the answers.
 """
 

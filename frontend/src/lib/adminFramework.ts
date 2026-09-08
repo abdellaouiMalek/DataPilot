@@ -2,7 +2,7 @@
  * Client for staged framework editing (`/api/super-admin/framework/*`).
  *
  * The framework page never writes through: it edits a tree locally, autosaves
- * it here as a draft, and only `publish()` touches the live questionnaire —
+ * it here as a draft, and only `publish()` touches the live questionnaire, 
  * atomically, producing an immutable version snapshot with a changelog.
  *
  * The wire format is the same shape the admin API already speaks (snake_case,
@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 export interface VersionSummary {
   id: number;
   number: number;
-  /** The version currently applied to the live tables — not always the newest,
+  /** The version currently applied to the live tables, not always the newest,
    *  since restoring an older one moves the flag back to it. */
   is_active: boolean;
   /** Retired from the log's default view. Never true for the live version. */
@@ -32,7 +32,7 @@ export interface VersionSummary {
   changelog: ChangelogEntry[];
   dimension_count: number;
   question_count: number;
-  /** Assessments answered on this version — what makes restoring or deleting
+  /** Assessments answered on this version, what makes restoring or deleting
    *  it a decision rather than a guess. */
   assessment_count: number;
   created_by_name: string | null;
@@ -128,7 +128,7 @@ export const restoreVersion = (id: number) =>
   api.post<VersionDetail>(`/api/super-admin/framework/versions/${id}/restore`, {});
 
 /** Corrects a published version's label/note. The snapshot and the computed
- *  changelog stay immutable — they are the record of what was published. */
+ *  changelog stay immutable, they are the record of what was published. */
 export const updateVersionMeta = (id: number, meta: { label: string; note: string }) =>
   api.patch<VersionDetail>(`/api/super-admin/framework/versions/${id}`, meta);
 

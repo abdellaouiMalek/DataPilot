@@ -57,7 +57,7 @@ export function Section({ title, subtitle, children, noPadding, style }: {
   children: React.ReactNode;
   /** Pour une section dont le contenu gère lui-même ses marges (listes, tableaux). */
   noPadding?: boolean;
-  /** Surcharge du conteneur — sert à annuler `marginBottom` quand c'est une
+  /** Surcharge du conteneur, sert à annuler `marginBottom` quand c'est une
    *  grille parente qui gère déjà l'espacement. */
   style?: React.CSSProperties;
 }) {

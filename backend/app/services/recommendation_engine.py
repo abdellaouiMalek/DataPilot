@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -47,6 +47,7 @@ from app.services.scoring import (
 )
 from llm.generation import (
     explain_comparison,
+    explain_dimensions,
     explain_results,
     fallback_reformulation,
     reformulate_recommendation,
@@ -230,6 +231,51 @@ async def get_narrative(db: AsyncSession, assessment: Assessment) -> str:
     return narrative
 
 
+async def get_dimension_analysis(
+    db: AsyncSession, assessment: Assessment, dimensions: list[dict]
+) -> dict[str, str]:
+    """Grounded, per-dimension analysis of an assessment's results -- one
+    LLM call covering every dimension at once (see ``explain_dimensions``),
+    keyed by dimension name.
+
+    ``dimensions`` are the already-scored, already-named rows the caller
+    (the evaluation report) built for its own exhibits -- each needs
+    ``name``, ``score``, ``weight``, ``level_label`` and ``gap``. Reused
+    rather than recomputed here, so this function stays agnostic of the
+    maturity bands and the conformity threshold that produced them.
+
+    Persisted on ``assessment.dimension_analysis`` the first time it's
+    computed, same caching rationale as ``get_narrative``: a report
+    downloaded again for the same assessment never re-pays for the LLM
+    call, and the analysis survives server restarts.
+
+    Writes through its own session rather than the caller's ``db`` -- the
+    report endpoint runs this alongside ``get_narrative`` (``asyncio.gather``)
+    to overlap their two LLM calls, and a single AsyncSession is not safe for
+    two coroutines to use at once. ``db`` is only read here (the cache check
+    on the passed-in ``assessment``), never written.
+    """
+    if assessment.dimension_analysis:
+        return assessment.dimension_analysis
+
+    # Same threading rationale as get_narrative: explain_dimensions() blocks
+    # on a network call to the local LLM server.
+    analyses = await run_in_threadpool(explain_dimensions, dimensions)
+
+    async with AsyncSessionLocal() as write_db:
+        await write_db.execute(
+            update(Assessment)
+            .where(Assessment.id == assessment.id)
+            .values(dimension_analysis=analyses)
+        )
+        await write_db.commit()
+    # Keeps the object the caller already holds consistent with what was
+    # just persisted, without going through the shared session.
+    assessment.dimension_analysis = analyses
+
+    return analyses
+
+
 async def get_comparison_narrative(
     db: AsyncSession, initial: Assessment, current: Assessment
 ) -> str:
@@ -239,12 +285,17 @@ async def get_comparison_narrative(
     per-assessment narratives read side by side (what ``get_narrative``
     called twice would give you).
 
-    Not persisted like ``get_narrative``: a comparison is keyed on a pair
-    of assessment ids the user picks interactively on the Evolution page,
-    not on a single assessment, so there's no natural column to cache it
-    on; it's recomputed each time (the page already offers a "Regenerer"
-    action for a single narrative, so paying for a fresh LLM call here is
-    consistent with that).
+    When the Evolution page compares more than two assessments, the caller
+    passes the earliest and latest of the selection here -- the narrative
+    reads as "since your first evaluation", which stays accurate regardless
+    of how many evaluations sit between them.
+
+    Not persisted like ``get_narrative``: a comparison is keyed on the pair
+    of assessment ids the user's selection resolves to, not on a single
+    assessment, so there's no natural column to cache it on; it's
+    recomputed each time (the page already offers a "Regenerer" action for
+    a single narrative, so paying for a fresh LLM call here is consistent
+    with that).
     """
     # The two assessments may sit on different versions, so the name map is the
     # union of both questionnaires -- a dimension only one of them knew about

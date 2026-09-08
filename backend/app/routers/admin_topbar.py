@@ -2,7 +2,7 @@
 quick search.
 
 Both are deliberately read-only and cross-module. The bell merges two kinds of
-thing an admin should not have to go looking for — configuration states that
+thing an admin should not have to go looking for, configuration states that
 are wrong right now (from ``app.services.admin_alerts``, the same checks the
 dashboard card shows) and administrative actions that recently *failed*, which
 are otherwise buried in the audit trail. The search resolves a few characters
@@ -108,7 +108,7 @@ async def list_notifications(db: AsyncSession = Depends(get_db)):
             key=f"log:{entry.id}",
             level="critical",
             module=entry.module,
-            text=f"Action refusée — {entry.action}",
+            text=f"Action refusée, {entry.action}",
             action="Consulter",
             target="logs",
             created_at=entry.created_at,
@@ -271,7 +271,7 @@ async def _version_hits(db: AsyncSession, term: str, raw: str) -> list[SearchHit
         func.lower(QuestionnaireVersion.label).like(term, escape="\\"),
         func.lower(QuestionnaireVersion.note).like(term, escape="\\"),
     ]
-    # "v3" and "3" should both find version 3 — the number is what the UI
+    # "v3" and "3" should both find version 3, the number is what the UI
     # displays, so it is the most likely thing to be typed.
     digits = raw.lstrip("vV")
     if digits.isdigit():
@@ -297,7 +297,7 @@ async def _version_hits(db: AsyncSession, term: str, raw: str) -> list[SearchHit
                 kind="version",
                 label="Versions",
                 module=MODULE_VERSIONS,
-                title=f"v{version.number}" + (f" — {version.label}" if version.label else ""),
+                title=f"v{version.number}" + (f": {version.label}" if version.label else ""),
                 subtitle=f"{state} · {version.question_count} questions",
                 target="versions",
                 seed=version.label or f"v{version.number}",
@@ -307,11 +307,11 @@ async def _version_hits(db: AsyncSession, term: str, raw: str) -> list[SearchHit
 
 
 async def _user_hits(raw: str) -> Optional[list[SearchHit]]:
-    """None when Keycloak is unreachable — distinct from "no account matches"."""
+    """None when Keycloak is unreachable, distinct from "no account matches"."""
     try:
         users = await kc_get("/users", {"search": raw, "max": HITS_PER_KIND})
     except HTTPException:
-        logger.warning("Quick search: Keycloak unreachable — accounts not searched")
+        logger.warning("Quick search: Keycloak unreachable, accounts not searched")
         return None
 
     hits = []

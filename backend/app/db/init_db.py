@@ -8,7 +8,7 @@ Does everything needed to get an empty PostgreSQL server ready for the app:
 
 Run once after cloning & configuring ``backend/.env``:
 
-    python -m app.db.init_db                 # idempotent — safe to re-run
+    python -m app.db.init_db                 # idempotent, safe to re-run
     python -m app.db.init_db --reset         # wipe & reseed the reference tables
     python -m app.db.init_db --skip-migrations
 
@@ -28,7 +28,7 @@ from sqlalchemy.engine import make_url
 from app.db.database import DATABASE_URL
 from app.db.seed import seed
 
-# backend/  — holds alembic.ini and the alembic/ migration tree.
+# backend/, holds alembic.ini and the alembic/ migration tree.
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -39,7 +39,7 @@ async def ensure_database() -> None:
     and issues ``CREATE DATABASE`` only when missing.
     """
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is missing — set it in backend/.env")
+        raise RuntimeError("DATABASE_URL is missing, set it in backend/.env")
 
     url = make_url(DATABASE_URL)
     target = url.database
@@ -52,7 +52,7 @@ async def ensure_database() -> None:
             port=url.port or 5432,
             user=url.username,
             password=url.password,
-            database="postgres",  # maintenance db — always present
+            database="postgres",  # maintenance db, always present
         )
     except (OSError, asyncpg.PostgresError) as exc:
         raise RuntimeError(
@@ -86,7 +86,7 @@ def run_migrations() -> None:
 
 
 async def init_db(reset: bool = False, skip_migrations: bool = False) -> None:
-    print("DataPilot — initializing database")
+    print("DataPilot, initializing database")
 
     await ensure_database()
 

@@ -1,112 +1,211 @@
-{% extends "base.html" %}
+{% extends "report_base.html" %}
+{% import "report_macros.html" as m %}
 {% block content %}
 
+{# ── 01 · Synthèse de l'évolution ────────────────────────────────────── #}
 <section class="section">
-  <div class="section-title">Synthèse de l'évolution</div>
-  <div class="kpi-row">
-    <div class="kpi-card">
-      <div class="kpi-label">Score initial — {{ period_init }}</div>
-      <div class="kpi-value">{{ score_init | score1 }}<span class="unit"> / 5</span></div>
-      <span class="badge" style="background:{{ level_init.color }}22; color:{{ level_init.color }};">{{ level_init.label }}</span>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Score actuel — {{ period_curr }}</div>
-      <div class="kpi-value">{{ score_curr | score1 }}<span class="unit"> / 5</span></div>
-      <span class="badge" style="background:{{ level_curr.color }}22; color:{{ level_curr.color }};">{{ level_curr.label }}</span>
-    </div>
-    <div class="kpi-card dark">
-      <div class="kpi-label">Progression</div>
-      <div class="kpi-value">{{ delta | signed1 }}<span class="unit"> pt</span></div>
-      <span class="small" style="color: {{ '#4ADE80' if delta > 0 else ('#F87171' if delta < 0 else 'rgba(255,255,255,0.5)') }};">
+  <div class="section-head">
+    <span class="section-num">01</span>
+    <h2 class="section-name">Synthèse de l'évolution</h2>
+  </div>
+
+  {% if narrative %}{{ m.narrative_block(narrative, label='Analyse comparative · moteur EY AI') }}{% endif %}
+
+  <div class="cockpit">
+    <div class="cockpit-cell lead">
+      <div class="cockpit-label">Progression</div>
+      <div class="cockpit-value num">{{ delta | signed1 }}<span class="unit"> pt</span></div>
+      <div class="cockpit-sub">
         {{ 'En progression' if delta > 0 else ('En recul' if delta < 0 else 'Stable') }}
-      </span>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="section-title">Répartition par dimension</div>
-  <div class="kpi-row" style="margin-bottom: 4mm;">
-    <div class="kpi-card">
-      <div class="kpi-label">En progrès</div>
-      <div class="kpi-value" style="color:#2E7D32;">{{ improved_count }}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Stables</div>
-      <div class="kpi-value" style="color:#6B6B6B;">{{ stable_count }}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">En recul</div>
-      <div class="kpi-value" style="color:#CC0000;">{{ declined_count }}</div>
-    </div>
-  </div>
-
-  <div class="legend">
-    <span class="legend-item"><span class="legend-line" style="border-color:#C0C0C0;"></span>{{ period_init }}</span>
-    <span class="legend-item"><span class="legend-line" style="border-color:#1A1A1A; border-top-width: 2pt;"></span>{{ period_curr }}</span>
-  </div>
-
-  <div style="margin-top: 3mm;">
-    {% for d in dimensions %}
-    <div class="dim-row" style="display:block;">
-      <div style="display:flex; justify-content: space-between; margin-bottom: 1mm;">
-        <span class="dim-name" style="width:auto;">{{ d.name }}</span>
-        <span class="small">
-          <span class="muted">{{ d.initial | score1 }}</span>
-          &nbsp;→&nbsp;
-          <strong>{{ d.current | score1 }}</strong>
-          &nbsp;
-          <span style="color: {{ d.color }}; font-weight:700;">({{ d.delta | signed1 }})</span>
-        </span>
-      </div>
-      <div class="dim-bar-track" style="height: 2.4mm;">
-        <div style="position:absolute; height:100%; width:{{ d.initial | pct }}; background:#C0C0C0; border-radius: 1.5mm;"></div>
-      </div>
-      <div class="dim-bar-track" style="height: 2.4mm; margin-top: 0.8mm;">
-        <div class="dim-bar-fill" style="width: {{ d.current | pct }}; background: {{ d.color }};"></div>
       </div>
     </div>
-    {% endfor %}
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Score initial</div>
+      <div class="cockpit-value num">{{ score_init | score1 }}<span class="unit"> / 5</span></div>
+      <div class="cockpit-sub">{{ period_init }} · {{ level_init.label }}</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Score actuel</div>
+      <div class="cockpit-value num">{{ score_curr | score1 }}<span class="unit"> / 5</span></div>
+      <div class="cockpit-sub">{{ period_curr }} · {{ level_curr.label }}</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">En progrès</div>
+      <div class="cockpit-value num">{{ improved_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">{{ stable_count }} stable{{ 's' if stable_count > 1 else '' }}</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">En recul</div>
+      <div class="cockpit-value num">{{ declined_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">variation &gt; 0.05 pt</div>
+    </div>
   </div>
+
+  {% if score_trend %}
+  <figure class="exhibit">
+    {{ m.figure_head(1, "Score global, " ~ evaluation_count ~ " évaluations, de " ~ period_init ~ " à " ~ period_curr) }}
+    {{ m.score_trend_svg(score_trend) }}
+    <p class="exhibit-note">
+      <b>Lecture :</b> chaque point est le score global d'une évaluation compilée, dans l'ordre chronologique ;
+      le disque plein marque l'évaluation la plus récente. Trait gris pointillé : seuil de conformité retenu
+      ({{ '%.1f' | format(3.0) }}).
+    </p>
+  </figure>
+  {% endif %}
+
+  {% if findings %}{{ m.findings(findings) }}{% endif %}
 </section>
 
-{% if narrative %}
-<section class="section">
-  <div class="section-subtitle">Analyse comparative générée par le moteur EY AI</div>
-  <div class="narrative-box">{{ narrative }}</div>
-</section>
-{% endif %}
+{# ── 02 · Déplacement du profil ──────────────────────────────────────── #}
+{# `part`: every section opens on its own page, on purpose -- a reader
+   flipping through should find "02", "03", "04" each starting fresh, even
+   where that leaves blank space below a short one. `flow` stays alongside
+   it so a section that doesn't fit on one page can still spill onto the
+   next instead of overflowing it. #}
+<section class="section flow part">
+  <div class="section-head">
+    <span class="section-num">02</span>
+    <h2 class="section-name">Déplacement du profil</h2>
+  </div>
 
-<section class="section">
-  <div class="section-title">Détail par dimension</div>
-  <table>
+  {# No radar / gainers / losers here: Figure 2 below already ranks every
+     dimension by movement, and §03's table gives the exact figures --
+     a profile-shape polygon and a top-3 summary of the same numbers
+     would only repeat them a second and third time. #}
+  {% if evolution %}
+  <figure class="exhibit">
+    {{ m.figure_head(2, "Évolution par dimension, de " ~ period_init ~ " à " ~ period_curr) }}
+    {{ m.evolution_svg(evolution) }}
+    <p class="exhibit-note">
+      <b>Lecture :</b> chaque segment relie le score de {{ period_init }} (cercle creux) à celui de
+      {{ period_curr }} (disque plein) ; sa longueur est la variation et sa couleur le sens : vert en
+      progression, rouge en recul, gris stable. Trait gris pointillé : seuil de conformité retenu (3.0).
+      <b>Source :</b> évaluations {{ period_init }} et {{ period_curr }}, même référentiel EY Data Maturity
+      Assessment.
+    </p>
+  </figure>
+  {% endif %}
+</section>
+
+{# ── 03 · Détail par dimension ───────────────────────────────────────── #}
+<section class="section flow part">
+  <div class="section-head">
+    <span class="section-num">03</span>
+    <h2 class="section-name">Détail par dimension</h2>
+  </div>
+  <table class="{{ 'dense' if periods | length > 3 else '' }}">
     <thead>
       <tr>
+        <th style="width: 7mm;">N°</th>
         <th>Dimension</th>
-        <th style="width: 20mm;">Initial</th>
-        <th style="width: 20mm;">Actuel</th>
-        <th style="width: 24mm;">Variation</th>
+        {% for p in periods %}
+        <th style="text-align: right;">{{ p }}</th>
+        {% endfor %}
+        <th style="width: 20mm; text-align: right;">Variation</th>
+        <th style="width: 28mm;">Tendance</th>
       </tr>
     </thead>
     <tbody>
       {% for d in dimensions %}
       <tr>
-        <td><strong>{{ d.name }}</strong></td>
-        <td>{{ d.initial | score1 }} / 5</td>
-        <td>{{ d.current | score1 }} / 5</td>
-        <td style="color: {{ d.color }}; font-weight: 700;">{{ d.delta | signed1 }} pt</td>
+        <td class="t-rank num">{{ '%02d' | format(loop.index) }}</td>
+        <td class="t-name">{{ d.name }}</td>
+        {% for s in d.scores %}
+        <td class="t-num num"{% if not loop.last %} style="font-weight: 400; color: #6F7A88;"{% endif %}>{{ s | score1 if s is not none else '-' }}</td>
+        {% endfor %}
+        <td class="t-num num" style="color: {{ d.color }};">{{ d.delta | signed1 }}</td>
+        <td>
+          <span class="chip" style="background: {{ d.color }}1A; color: {{ d.color }};">{{ d.trend_label }}</span>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  <p class="exhibit-note" style="margin-top: 3mm;">
+    <b>Note :</b> seules les dimensions communes à la première et à la dernière évaluation de la sélection
+    sont comparées. Une variation est considérée comme significative au-delà de ±0.05 point ; en deçà, la
+    dimension est classée stable.
+  </p>
 </section>
 
-<section class="section">
-  <div class="section-subtitle">Méthodologie</div>
-  <p class="small muted">
-    Cette analyse compare deux évaluations soumises par {{ bank }} à des dates différentes, sur la base du même
-    référentiel EY Data Maturity Assessment. Seules les dimensions communes aux deux évaluations sont comparées.
-    Une variation est considérée significative au-delà de ±0.05 point ; en-deçà, la dimension est classée stable.
+{# ── 04 · Évolution des recommandations ────────────────────────────────── #}
+<section class="section flow part">
+  <div class="section-head">
+    <span class="section-num">04</span>
+    <h2 class="section-name">Évolution des recommandations</h2>
+  </div>
+  <p class="section-lead">
+    Comparaison des deux plans d'action par recommandation : ce qui a été résolu depuis {{ period_init }}, ce
+    qui reste ouvert, et ce qui a été identifié depuis.
+  </p>
+
+  <div class="reco-stats">
+    <div class="reco-stat resolved">
+      <div class="reco-stat-value num">{{ reco_resolved_count }}</div>
+      <div class="reco-stat-label">Résolues</div>
+    </div>
+    <div class="reco-stat persistent">
+      <div class="reco-stat-value num">{{ reco_persistent_count }}</div>
+      <div class="reco-stat-label">Persistantes</div>
+    </div>
+    <div class="reco-stat new">
+      <div class="reco-stat-value num">{{ reco_new_count }}</div>
+      <div class="reco-stat-label">Nouvelles</div>
+    </div>
+  </div>
+
+  {% set reco_total = reco_resolved_count + reco_persistent_count + reco_new_count %}
+  {% if reco_total > 0 %}
+  <div class="reco-bar">
+    {% if reco_resolved_count %}<div class="reco-bar-seg resolved" style="width: {{ (reco_resolved_count / reco_total * 100) | round(1) }}%;"></div>{% endif %}
+    {% if reco_persistent_count %}<div class="reco-bar-seg persistent" style="width: {{ (reco_persistent_count / reco_total * 100) | round(1) }}%;"></div>{% endif %}
+    {% if reco_new_count %}<div class="reco-bar-seg new" style="width: {{ (reco_new_count / reco_total * 100) | round(1) }}%;"></div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="reco-cols">
+    <div class="reco-col">
+      <div class="reco-col-head resolved">Résolues <span class="num">{{ reco_resolved_count }}</span></div>
+      {% for r in reco_resolved %}
+      <div class="reco-item">
+        <span class="reco-item-title">{{ r.title }}</span>
+        <span class="reco-item-meta">{{ r.dimension_name }}{% if r.regulatory_flag %}<span class="sep">·</span><span class="reg">Obligation</span>{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="muted small">Aucune : rien n'a quitté le plan sur la période.</p>
+      {% endfor %}
+    </div>
+    <div class="reco-col">
+      <div class="reco-col-head persistent">Persistantes <span class="num">{{ reco_persistent_count }}</span></div>
+      {% for r in reco_persistent %}
+      <div class="reco-item">
+        <span class="reco-item-title">{{ r.title }}</span>
+        <span class="reco-item-meta">{{ r.dimension_name }}{% if r.regulatory_flag %}<span class="sep">·</span><span class="reg">Obligation</span>{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="muted small">Aucune : rien ne reste ouvert des deux côtés.</p>
+      {% endfor %}
+    </div>
+    <div class="reco-col">
+      <div class="reco-col-head new">Nouvelles <span class="num">{{ reco_new_count }}</span></div>
+      {% for r in reco_new %}
+      <div class="reco-item">
+        <span class="reco-item-title">{{ r.title }}</span>
+        <span class="reco-item-meta">{{ r.dimension_name }}{% if r.regulatory_flag %}<span class="sep">·</span><span class="reg">Obligation</span>{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="muted small">Aucune : rien de nouveau depuis {{ period_init }}.</p>
+      {% endfor %}
+    </div>
+  </div>
+  <p class="exhibit-note" style="margin-top: 4mm;">
+    <b>Note :</b> comparaison par code de recommandation entre les deux plans d'action (celui calculé pour
+    {{ period_init }} et celui calculé pour {{ period_curr }}), tous deux issus du même référentiel. Le plan
+    complet, sa matrice impact / effort et le détail de chaque priorité font l'objet d'un rapport dédié :
+    « Plan d'action : Recommandations priorisées ».
+  </p>
+  <p class="footnote" style="margin-top: 4mm;">
+    Document confidentiel, usage interne. Cette analyse ne se substitue pas à un audit conduit par les équipes EY.
   </p>
 </section>
 

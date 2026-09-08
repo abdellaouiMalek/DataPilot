@@ -2,7 +2,7 @@
  * Client for the scoring referential endpoints (`/api/super-admin/scoring/*`).
  *
  * Bands are expressed on the questionnaire's own 1→5 scale (the same values
- * respondents pick), not a 0–100 percentage — the backend sends its bounds in
+ * respondents pick), not a 0-100 percentage, the backend sends its bounds in
  * `scale` so this page never hardcodes them.
  */
 
@@ -21,9 +21,9 @@ export interface MaturityLevel {
 export interface ScoringReferential {
   scale: { min: number; max: number };
   levels: MaturityLevel[];
-  /** Bands covering the same scores — the mapper would pick the wrong label. */
+  /** Bands covering the same scores, the mapper would pick the wrong label. */
   overlaps: string[];
-  /** Score ranges no band covers — results there get no label at all. */
+  /** Score ranges no band covers, results there get no label at all. */
   gaps: string[];
 }
 

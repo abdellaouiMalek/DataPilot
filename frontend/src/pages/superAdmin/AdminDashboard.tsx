@@ -7,16 +7,16 @@
  *
  * Deux points à connaître avant de lire les graphiques :
  *
- * — une évaluation n'existe qu'une fois soumise (rien n'est persisté pendant
+ * - une évaluation n'existe qu'une fois soumise (rien n'est persisté pendant
  *   la saisie), il n'y a donc pas de série « en cours » à tracer : la courbe
  *   suit les soumissions, les banques évaluées sur la période, et les banques
  *   nouvellement ouvertes ;
- * — « Questions publiées » compte les questions de la version active, pas
+ * - « Questions publiées » compte les questions de la version active, pas
  *   celles des tables vivantes : c'est ce que voient réellement les
  *   répondants, les éditions non publiées n'y figurent pas.
  *
  * Les comptes utilisateurs viennent de Keycloak ; s'il est injoignable le
- * backend renvoie `users_available: false` et la page affiche « — » plutôt
+ * backend renvoie `users_available: false` et la page affiche « - » plutôt
  * qu'un zéro trompeur.
  */
 
@@ -129,7 +129,7 @@ function ScoreBar({ value }: { value: number | null }) {
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: color, borderRadius: 3 }} />
       </div>
       <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 38, textAlign: "right" }}>
-        {value == null ? "—" : `${value.toFixed(1)}/5`}
+        {value == null ? "-" : `${value.toFixed(1)}/5`}
       </span>
     </div>
   );
@@ -161,7 +161,7 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-/** "14:32" pour aujourd'hui, "12/06" sinon — le fil tient sur une ligne. */
+/** "14:32" pour aujourd'hui, "12/06" sinon, le fil tient sur une ligne. */
 function activityTime(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
@@ -175,7 +175,7 @@ function activityTime(iso: string): string {
 }
 
 const dateLabel = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("fr-FR") : "—";
+  iso ? new Date(iso).toLocaleDateString("fr-FR") : "-";
 
 /** Pastille de variation d'une tuile : signe, teinte et icône cohérents. */
 function delta(count: number): { text: string; tone: keyof typeof TONES } {
@@ -222,7 +222,7 @@ export function AdminDashboard() {
   const tiles = kpis ? [
     {
       label: "Utilisateurs actifs",
-      value: usersKnown ? String(kpis.active_users) : "—",
+      value: usersKnown ? String(kpis.active_users) : "-",
       ...(usersKnown ? delta(kpis.new_users_30d) : { text: "Indisponible", tone: "neutral" as const }),
       icon: Users,
     },
@@ -240,7 +240,7 @@ export function AdminDashboard() {
     },
     {
       label: "Version active",
-      value: kpis.active_version ?? "—",
+      value: kpis.active_version ?? "-",
       text: kpis.active_version_label,
       tone: (kpis.active_version ? "info" : "down") as keyof typeof TONES,
       icon: GitBranch,
@@ -473,7 +473,7 @@ export function AdminDashboard() {
               <div style={{ display: "flex", gap: 12, padding: "12px 4px 14px", borderTop: "1px solid rgba(0,0,0,0.05)", marginTop: 4 }}>
                 {[
                   { label: "≥ 4 Maîtrisé", color: EY.black },
-                  { label: "3–4 Défini",   color: "#4A4A4A" },
+                  { label: "3-4 Défini",   color: "#4A4A4A" },
                   { label: "< 3 En dev.",  color: "#C0C0C0" },
                 ].map(l => (
                   <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -486,7 +486,7 @@ export function AdminDashboard() {
           )}
         </div>
 
-        {/* Alerts — timeline style */}
+        {/* Alerts, timeline style */}
         <div style={{ backgroundColor: "#fff", borderRadius: 12, border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <CardHeader title="Alertes de configuration" />
           {data.alerts.length === 0 ? (
@@ -594,7 +594,7 @@ export function AdminDashboard() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: EY.black }}>{b.name}</span>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 18px", fontSize: 13, color: "#4A4A4A" }}>{b.users ?? "—"}</td>
+                  <td style={{ padding: "12px 18px", fontSize: 13, color: "#4A4A4A" }}>{b.users ?? "-"}</td>
                   <td style={{ padding: "12px 18px", width: 180 }}><ScoreBar value={b.score} /></td>
                   <td style={{ padding: "12px 18px" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600,

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>{{ report_title }}</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════════════
+     Consulting report shell, cover, section furniture, exhibits, tables.
+     Kept apart from base.html (which the evaluation / comparison reports
+     still use) so this heavier editorial system can evolve on its own.
+
+     Only static strings reach the @page margin boxes: CSS generated
+     content is not escaped, so client-supplied values (bank names) are
+     deliberately confined to the document body.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  @page {
+    size: A4;
+    margin: 20mm 18mm 17mm 18mm;
+    @top-left {
+      content: "{{ report_title | safe }}";
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 7pt;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: #A6AEB9;
+    }
+    @bottom-left {
+      content: "EY Data Maturity Assessment · DataPilot";
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 7pt;
+      color: #A6AEB9;
+    }
+    @bottom-right {
+      content: counter(page) " / " counter(pages);
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 7pt;
+      font-weight: 700;
+      color: #6F7A88;
+    }
+  }
+  @page cover {
+    margin: 0;
+    @top-left { content: none; }
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #29313C;
+    font-size: 9.5pt;
+    line-height: 1.55;
+    margin: 0;
+  }
+  h1, h2, h3, p, ul, ol, figure, table { margin: 0; }
+  strong { color: #10161F; }
+
+  .eyebrow {
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #8A94A1;
+  }
+  .muted { color: #6F7A88; }
+  .small { font-size: 8pt; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ── Cover ──────────────────────────────────────────────────────── */
+  .cover {
+    page: cover;
+    width: 210mm;
+    height: 297mm;
+    background: #10161F;
+    color: #fff;
+    position: relative;
+    page-break-after: always;
+  }
+  .cover .accent-bar { height: 5mm; background: #FFE600; }
+  .cover .content { padding: 24mm 22mm 0 22mm; }
+  .cover .logo { width: 27mm; margin-bottom: 26mm; }
+  .cover .bank-badge {
+    position: absolute;
+    top: 24mm;
+    right: 22mm;
+    max-width: 42mm;
+    background: #fff;
+    border-radius: 2mm;
+    padding: 3mm 4mm;
+  }
+  .cover .bank-badge img { display: block; max-width: 34mm; max-height: 14mm; }
+  .cover .kicker {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    color: #FFE600;
+    text-transform: uppercase;
+    margin-bottom: 7mm;
+  }
+  .cover .title {
+    font-size: 26pt;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.22;
+    max-width: 138mm;
+  }
+  .cover .subtitle {
+    font-size: 11.5pt;
+    color: rgba(255,255,255,0.58);
+    margin-top: 6mm;
+    max-width: 130mm;
+  }
+  .cover .rule {
+    height: 0;
+    border-top: 1px solid rgba(255,255,255,0.16);
+    margin: 16mm 0 10mm 0;
+  }
+  .cover .meta-grid { display: flex; flex-wrap: wrap; }
+  .cover .meta-item { width: 50%; margin-bottom: 8mm; }
+  .cover .meta-label {
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.38);
+    margin-bottom: 2mm;
+  }
+  .cover .meta-value { font-size: 11.5pt; font-weight: 600; color: #fff; }
+  .cover .meta-value .unit { font-size: 8.5pt; font-weight: 400; color: rgba(255,255,255,0.45); }
+  .cover .footer {
+    position: absolute;
+    bottom: 15mm;
+    left: 22mm;
+    right: 22mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.14);
+    padding-top: 5mm;
+  }
+  .cover .footer .confidential {
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.42);
+  }
+  .cover .footer .date { font-size: 8.5pt; color: rgba(255,255,255,0.7); }
+
+  /* ── Sections ───────────────────────────────────────────────────── */
+  .section { margin-bottom: 8mm; page-break-inside: avoid; }
+  /* A run of independently-breakable blocks shouldn't be held together:
+     that strands the whole section on the next page and leaves the
+     previous one half empty. Each block still protects itself. */
+  .section.flow { page-break-inside: auto; }
+  /* Each numbered part opens its own page: a heading stranded at the foot
+     of the previous one, with its first exhibit overleaf, is the tell of a
+     document that was laid out by accident. */
+  .section.part { page-break-before: always; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    border-top: 1.6pt solid #10161F;
+    padding-top: 2.6mm;
+    margin-bottom: 4.5mm;
+    /* Never the last line on a page: a `.flow` section is free to break
+       inside itself (see above), but not to strand its own heading with
+       every bit of its content pushed to the page after. */
+    page-break-after: avoid;
+  }
+  .section-num {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #B8952A;
+    letter-spacing: 0.02em;
+    margin-right: 4mm;
+  }
+  .section-name {
+    flex: 1;
+    white-space: nowrap;
+    font-size: 13pt;
+    font-weight: 700;
+    color: #10161F;
+    letter-spacing: -0.012em;
+  }
+  .section-lead {
+    font-size: 9pt;
+    color: #5A6472;
+    max-width: 150mm;
+    margin-bottom: 4mm;
+  }
+
+  /* ── Cockpit (headline figures) ─────────────────────────────────── */
+  .cockpit {
+    display: flex;
+    background: #10161F;
+    color: #fff;
+    border-radius: 1mm;
+    overflow: hidden;
+    margin-bottom: 6mm;
+  }
+  .cockpit-cell {
+    flex: 1;
+    padding: 5mm 5mm 4.5mm 5mm;
+    border-left: 0.5pt solid rgba(255,255,255,0.13);
+  }
+  .cockpit-cell:first-child { border-left: none; }
+  .cockpit-cell.lead { background: #FFE600; color: #10161F; border-left: none; }
+  .cockpit-label {
+    font-size: 6.5pt;
+    /* Two lines' worth, always: some labels wrap and some don't, and
+       without a floor the headline figures sit at different heights
+       across the strip. */
+    min-height: 6.4mm;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 2mm;
+  }
+  .cockpit-cell.lead .cockpit-label { color: rgba(16,22,31,0.55); }
+  .cockpit-value { font-size: 22pt; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .cockpit-value .unit { font-size: 9pt; font-weight: 400; color: rgba(255,255,255,0.4); }
+  .cockpit-cell.lead .cockpit-value .unit { color: rgba(16,22,31,0.45); }
+  .cockpit-sub { font-size: 7.5pt; color: rgba(255,255,255,0.55); margin-top: 2.5mm; }
+  .cockpit-cell.lead .cockpit-sub { color: rgba(16,22,31,0.62); font-weight: 600; }
+
+  /* ── Key findings ───────────────────────────────────────────────── */
+  .findings { margin-bottom: 6mm; }
+  .finding {
+    display: flex;
+    font-size: 9pt;
+    line-height: 1.55;
+    padding: 2.4mm 0;
+    border-bottom: 0.4pt solid #EBEEF2;
+  }
+  .finding:last-child { border-bottom: none; }
+  .finding-mark {
+    width: 2mm; height: 2mm;
+    background: #B8952A;
+    margin: 1.9mm 3mm 0 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Narrative lede ─────────────────────────────────────────────── */
+  /* Editorial, not a highlighted box: the AI narrative reads as the
+     report's opening statement -- larger and calmer than body text, closed
+     off by a rule rather than a fill or a border-left accent. */
+  .lede {
+    font-size: 11pt;
+    line-height: 1.62;
+    color: #232B35;
+    margin: 2mm 0 6mm 0;
+    padding-bottom: 5mm;
+    border-bottom: 0.6pt solid #DFE3E8;
+  }
+
+  /* ── Exhibits ───────────────────────────────────────────────────── */
+  .exhibit { margin: 0 0 6mm 0; page-break-inside: avoid; }
+  .exhibit-head { border-bottom: 0.5pt solid #DFE3E8; padding-bottom: 2mm; margin-bottom: 3.5mm; }
+  .exhibit-label {
+    font-size: 6.8pt;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #B8952A;
+  }
+  .exhibit-title { font-size: 9.5pt; font-weight: 700; color: #10161F; margin-top: 1mm; }
+  .exhibit-note {
+    font-size: 7.2pt;
+    line-height: 1.5;
+    color: #7B8593;
+    margin-top: 2.5mm;
+  }
+  .exhibit-note b { color: #5A6472; font-weight: 700; }
+
+  .cols { display: flex; gap: 8mm; align-items: flex-start; }
+  .col-chart { width: 104mm; flex-shrink: 0; }
+  .col-side { flex: 1; }
+
+  /* ── Maturity scale legend ──────────────────────────────────────── */
+  .scale { display: flex; gap: 1.4mm; margin-top: 1mm; }
+  .scale-step { flex: 1; }
+  .scale-swatch { height: 2.4mm; border-radius: 0.4mm; }
+  .scale-label { font-size: 6.6pt; font-weight: 700; color: #29313C; margin-top: 1.6mm; line-height: 1.25; }
+  .scale-range { font-size: 6.4pt; color: #8A94A1; }
+
+  /* ── Ranked lists (strengths / watchpoints) ─────────────────────── */
+  .ranked { margin-top: 4mm; }
+  .ranked-row {
+    display: flex;
+    align-items: baseline;
+    font-size: 8.2pt;
+    padding: 1.6mm 0;
+    border-bottom: 0.4pt solid #EBEEF2;
+  }
+  .ranked-row:last-child { border-bottom: none; }
+  .ranked-name { flex: 1; color: #29313C; padding-right: 3mm; }
+  .ranked-score { font-weight: 700; color: #10161F; }
+
+  /* ── Tables ─────────────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-size: 6.8pt;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #8A94A1;
+    padding: 0 2.5mm 2mm 2.5mm;
+    border-bottom: 1pt solid #10161F;
+  }
+  td {
+    font-size: 8.3pt;
+    padding: 2.6mm 2.5mm;
+    border-bottom: 0.4pt solid #EBEEF2;
+    vertical-align: top;
+    color: #3A434F;
+  }
+  tr:last-child td { border-bottom: none; }
+  .t-num { text-align: right; font-weight: 700; color: #10161F; }
+  .t-rank { color: #A6AEB9; font-weight: 700; }
+  .t-name { color: #10161F; font-weight: 700; }
+  .t-note { color: #6F7A88; }
+
+  /* More evaluations than a comparison table has room for at the normal
+     size -- e.g. the N-way evolution report's detail table -- fit by
+     shrinking, not by dropping columns. */
+  table.dense th { font-size: 6.2pt; padding: 0 1.6mm 2mm 1.6mm; }
+  table.dense td { font-size: 7.4pt; padding: 2.2mm 1.6mm; }
+  table.dense .t-name { font-size: 7.6pt; }
+
+  .chip {
+    display: inline-block;
+    font-size: 6.8pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.6mm 1.8mm;
+    border-radius: 0.6mm;
+    white-space: nowrap;
+  }
+
+  /* Compact score bar dropped into a table cell, next to its number --
+     lets a page of numbers read at a glance instead of on a second pass. */
+  .score-track {
+    width: 100%;
+    height: 1.1mm;
+    background: #EBEEF2;
+    border-radius: 1mm;
+    margin-top: 1.2mm;
+    overflow: hidden;
+  }
+  .score-fill { height: 100%; border-radius: 1mm; }
+
+  /* ── Action-plan entries ────────────────────────────────────────── */
+  .entry {
+    display: flex;
+    gap: 5mm;
+    padding: 4mm 0;
+    border-top: 0.4pt solid #E4E8ED;
+    page-break-inside: avoid;
+  }
+  .entry-rank {
+    width: 9mm;
+    flex-shrink: 0;
+    font-size: 15pt;
+    font-weight: 700;
+    color: #C8CED6;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .entry-body { flex: 1; }
+  .entry-title { font-size: 9.5pt; font-weight: 700; color: #10161F; line-height: 1.35; }
+  .entry-meta {
+    font-size: 6.9pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8A94A1;
+    margin: 1.6mm 0 2.2mm 0;
+  }
+  .sep { color: #C8CED6; margin: 0 1.6mm; }
+  .entry-meta .reg { color: #9C2A24; }
+  .entry-text { font-size: 8.6pt; line-height: 1.6; color: #3A434F; }
+  .entry-why {
+    font-size: 8pt;
+    line-height: 1.55;
+    color: #6F7A88;
+    margin-top: 1.8mm;
+    padding-left: 3mm;
+    border-left: 1.2pt solid #E4E8ED;
+  }
+  .entry-why b {
+    font-weight: 700;
+    color: #8A94A1;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 6.8pt;
+  }
+
+  .footnote {
+    font-size: 7.2pt;
+    line-height: 1.55;
+    color: #7B8593;
+    border-top: 0.4pt solid #E4E8ED;
+    padding-top: 2.5mm;
+  }
+
+  /* ── Recommendation evolution (resolved / persistent / new) ───────── */
+  /* Same three-way palette used consistently below: resolved (closed since
+     the initial period) reads as a positive/green outcome, persistent
+     (still open) as gold/caution, new (surfaced since) as the report's ink
+     blue -- a plain "attention" marker, not a value judgment. */
+  .reco-stats { display: flex; gap: 4mm; margin-bottom: 3mm; }
+  .reco-stat {
+    flex: 1;
+    border-radius: 1mm;
+    padding: 4mm 5mm;
+    border-left: 2pt solid;
+    background: #F7F8FA;
+  }
+  .reco-stat.resolved { border-color: #3E7D52; }
+  .reco-stat.persistent { border-color: #B8952A; }
+  .reco-stat.new { border-color: #1F6079; }
+  .reco-stat-value { font-size: 19pt; font-weight: 700; color: #10161F; line-height: 1; }
+  .reco-stat-label {
+    font-size: 7.2pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #6F7A88; margin-top: 1.6mm;
+  }
+
+  .reco-bar { display: flex; height: 3mm; border-radius: 1.5mm; overflow: hidden; margin-bottom: 6mm; background: #EBEEF2; }
+  .reco-bar-seg.resolved { background: #3E7D52; }
+  .reco-bar-seg.persistent { background: #B8952A; }
+  .reco-bar-seg.new { background: #1F6079; }
+
+  .reco-cols { display: flex; gap: 6mm; align-items: flex-start; }
+  .reco-col { flex: 1; min-width: 0; }
+  .reco-col-head {
+    display: flex; align-items: baseline; gap: 1.6mm;
+    font-size: 7.2pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    padding-bottom: 1.8mm; margin-bottom: 2.5mm; border-bottom: 1pt solid;
+  }
+  .reco-col-head .num { font-size: 9pt; letter-spacing: normal; text-transform: none; margin-left: auto; }
+  .reco-col-head.resolved { color: #3E7D52; border-color: #3E7D52; }
+  .reco-col-head.persistent { color: #B8952A; border-color: #B8952A; }
+  .reco-col-head.new { color: #1F6079; border-color: #1F6079; }
+  .reco-item { padding: 2mm 0; border-bottom: 0.4pt solid #EBEEF2; }
+  .reco-item:last-child { border-bottom: none; }
+  .reco-item-title { display: block; font-size: 8.2pt; font-weight: 600; color: #29313C; line-height: 1.35; }
+  .reco-item-meta {
+    display: block; font-size: 6.8pt; color: #8A94A1; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-top: 0.8mm;
+  }
+  .reco-item-meta .reg { color: #9C2A24; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="accent-bar"></div>
+  {% if bank_logo_data_uri %}
+  <div class="bank-badge"><img src="{{ bank_logo_data_uri }}" alt=""></div>
+  {% endif %}
+  <div class="content">
+    <img class="logo" src="ey_logo.png" alt="EY">
+    <div class="kicker">EY Data Maturity Assessment</div>
+    <h1 class="title">{{ report_title }}</h1>
+    <p class="subtitle">{{ report_subtitle }}</p>
+
+    <div class="rule"></div>
+
+    <div class="meta-grid">
+      {% for item in cover_meta %}
+      <div class="meta-item">
+        <div class="meta-label">{{ item.label }}</div>
+        <div class="meta-value">{{ item.value }}{% if item.unit %}<span class="unit"> {{ item.unit }}</span>{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="footer">
+    <span class="confidential">Document confidentiel, usage interne</span>
+    <span class="date">Édition du {{ generated_at.strftime('%d/%m/%Y à %H:%M') }}</span>
+  </div>
+</section>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>

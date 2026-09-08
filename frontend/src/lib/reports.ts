@@ -19,17 +19,20 @@ function triggerDownload(blob: Blob, filename: string) {
 
 /** Single-assessment PDF report (cover, scores, AI narrative, recommendations). */
 export async function downloadEvaluationReport(assessmentId: number): Promise<void> {
-  const blob = await api.getBlob(`/api/assessments/${assessmentId}/report.pdf`);
-  triggerDownload(blob, `evaluation-${assessmentId}.pdf`);
+  const { blob, filename } = await api.getBlob(`/api/assessments/${assessmentId}/report.pdf`);
+  triggerDownload(blob, filename ?? `evaluation-${assessmentId}.pdf`);
 }
 
-/** Two-assessment comparison/evolution PDF report. */
-export async function downloadComparisonReport(
-  initialId: number,
-  currentId: number
-): Promise<void> {
-  const blob = await api.getBlob(
-    `/api/assessments/comparison/report.pdf?initial_id=${initialId}&current_id=${currentId}`
+/** Prioritized action plan PDF report (same plan_prioritaire the Recommendations page renders). */
+export async function downloadRecommendationsReport(assessmentId: number): Promise<void> {
+  const { blob, filename } = await api.getBlob(`/api/assessments/${assessmentId}/recommendations-report.pdf`);
+  triggerDownload(blob, filename ?? `recommandations-${assessmentId}.pdf`);
+}
+
+/** Comparison/evolution PDF report across two or more assessments. */
+export async function downloadComparisonReport(ids: number[]): Promise<void> {
+  const { blob, filename } = await api.getBlob(
+    `/api/assessments/comparison/report.pdf?ids=${ids.join(",")}`
   );
-  triggerDownload(blob, `evolution-${initialId}-${currentId}.pdf`);
+  triggerDownload(blob, filename ?? `evolution-maturite-data-${ids.join("-")}.pdf`);
 }

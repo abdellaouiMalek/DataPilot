@@ -215,7 +215,7 @@ export function QuestionnairePage() {
     }
   };
 
-  // Reached without a profile (bank/department/role) in the URL — e.g.
+  // Reached without a profile (bank/department/role) in the URL, e.g.
   // a direct link or a "Démarrer une évaluation" button that doesn't go
   // through the landing page's form. Bounce back now rather than let the
   // user answer all 32 questions only to fail at submission (bank is
@@ -471,7 +471,7 @@ export function QuestionnairePage() {
                         </div>
                       </div>
 
-                      {/* Likert scale — horizontal pill row */}
+                      {/* Likert scale, horizontal pill row */}
                       <div className="flex gap-2">
                         {likertOptions.map((option) => {
                           const isSelected = selectedValue === option.value;
@@ -534,7 +534,7 @@ export function QuestionnairePage() {
                             <span className="font-black">Niveau {selectedOption.value}/5</span>
                             <span className="opacity-60">·</span>
                             <span className="font-semibold">{selectedOption.label}</span>
-                            <span className="opacity-60">—</span>
+                            <span className="opacity-60">·</span>
                             <span>{selectedOption.sublabel}</span>
                           </motion.div>
                         )}
@@ -545,7 +545,7 @@ export function QuestionnairePage() {
               })}
             </div>
 
-            {/* ── CTA — dimension completed ── */}
+            {/* ── CTA, dimension completed ── */}
             <AnimatePresence>
               {dimCompleted && (
                 <motion.div

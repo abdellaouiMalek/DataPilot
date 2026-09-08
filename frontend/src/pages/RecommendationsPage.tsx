@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import {
-  Zap, Building2, Clock, ShieldCheck, TrendingUp, ArrowUpRight,
+  Zap, Building2, ShieldCheck, TrendingUp, ArrowUpRight,
   ChevronDown, CheckCircle2, Loader2, Download, BarChart2,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
@@ -11,10 +11,7 @@ import { FlowHeader } from '../components/FlowHeader';
 import { getRecommendations, getNarrative } from '../lib/recommendations';
 import type { RecommendationOut } from '../lib/recommendations';
 import { getDimensions } from '../lib/config';
-
-const SERIF: CSSProperties = {
-  fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif",
-};
+import { downloadRecommendationsReport } from '../lib/reports';
 
 const EFFORT_META: Record<number, { label: string; color: string }> = {
   1: { label: 'Effort faible', color: '#2E7D32' },
@@ -42,11 +39,11 @@ const EFFORT_FILTERS: { value: EffortFilter; label: string }[] = [
   { value: 3, label: 'Effort élevé' },
 ];
 
-/** A recommendation with effort 1 (low) is treated as a "quick win"; 2–3 as a structural initiative. */
+/** A recommendation with effort 1 (low) is treated as a "quick win"; 2-3 as a structural initiative. */
 const isQuickWin = (effort: number) => effort === 1;
 
 /**
- * Five-node rail for the 1–5 maturity scale: solid nodes mark levels the
+ * Five-node rail for the 1-5 maturity scale: solid nodes mark levels the
  * bank already holds, the amber node/segment marks the step this specific
  * recommendation delivers, hollow nodes mark levels still ahead.
  */
@@ -124,7 +121,7 @@ export function RecommendationsPage() {
       .catch(() => !cancelled && setLoadError(true))
       .finally(() => !cancelled && setLoading(false));
 
-    // The executive synthesis is a secondary enhancement — its failure
+    // The executive synthesis is a secondary enhancement, its failure
     // shouldn't block the (essential) recommendations list from rendering.
     getNarrative(assessmentId)
       .then((res) => !cancelled && setNarrative(res.narrative))
@@ -136,7 +133,7 @@ export function RecommendationsPage() {
   }, [assessmentId]);
 
   // The recommendations call can take several minutes (each of the top
-  // items gets a real, local LLM reformulation on CPU) — a bare spinner
+  // items gets a real, local LLM reformulation on CPU), a bare spinner
   // reads as broken past ~10s, so this surfaces elapsed time and updates
   // the message in stages to keep the wait legible.
   useEffect(() => {
@@ -155,7 +152,7 @@ export function RecommendationsPage() {
       ? 'Calcul des recommandations…'
       : loadingSeconds < 30
       ? 'Analyse de votre profil de maturité…'
-      : "Génération des reformulations par IA locale — cela peut prendre plusieurs minutes sur ce modèle…";
+      : "Génération des reformulations par IA locale, cela peut prendre plusieurs minutes sur ce modèle…";
 
   const toggleComplete = (code: string) => {
     setCompletedCodes((prev) =>
@@ -174,7 +171,6 @@ export function RecommendationsPage() {
   const lowEffortCount = recommendations.filter((r) => r.effort === 1).length;
   const structurantCount = recommendations.length - lowEffortCount;
   const regulatoryCount = recommendations.filter((r) => r.regulatory_flag).length;
-  const maxScore = Math.max(1, ...recommendations.map((r) => r.score));
 
   if (!assessmentId) {
     return (
@@ -240,7 +236,11 @@ export function RecommendationsPage() {
         <FlowHeader current="Plan d'action" />
         <div className="flex items-center justify-end">
         <button
-          onClick={() => toast.success('Génération du rapport PDF...')}
+          onClick={() => toast.promise(downloadRecommendationsReport(assessmentId), {
+            loading: 'Génération du rapport PDF…',
+            success: 'Rapport PDF téléchargé',
+            error: 'Échec du téléchargement du rapport PDF',
+          })}
           className="flex items-center gap-1.5 text-xs font-semibold border border-gray-200 text-gray-600 hover:border-gray-400 transition-colors px-3 py-2 rounded-lg"
         >
           <Download className="w-3.5 h-3.5" /> Exporter PDF
@@ -254,7 +254,7 @@ export function RecommendationsPage() {
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
             <div>
               <p className="text-[10px] font-bold tracking-[0.25em] text-gray-400 mb-3">
-                PLAN D'ACTION — RÉF. DOSSIER #{assessmentId}
+                PLAN D'ACTION, RÉF. DOSSIER #{assessmentId}
               </p>
               <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight leading-tight mb-3">
                 Recommandations <span className="text-gray-400 font-light">priorisées</span>
@@ -264,12 +264,11 @@ export function RecommendationsPage() {
                 accélérer votre transformation data et atteindre la conformité BCT.
               </p>
 
-              {/* Executive synthesis — the LLM-authored narrative of the bank's
-                  results, set in the serif "analysis voice" to read as written
-                  counsel rather than interface copy. */}
+              {/* Executive synthesis, the LLM-authored narrative of the bank's
+                  results, set off with a left rule to read as written counsel
+                  rather than interface copy. */}
               {narrative && (
                 <p
-                  style={SERIF}
                   className="mt-5 max-w-xl text-sm sm:text-base text-gray-700 leading-relaxed border-l-2 border-[#FFE600] pl-4"
                 >
                   {narrative}
@@ -343,7 +342,6 @@ export function RecommendationsPage() {
               const dimensionLabel =
                 dimensionNames[rec.dimension_id] ?? CATEGORY_LABELS[rec.category] ?? rec.category;
               const effortMeta = EFFORT_META[rec.effort];
-              const scoreBarWidth = Math.max(6, (rec.score / maxScore) * 100);
 
               return (
                 <motion.div
@@ -454,14 +452,14 @@ export function RecommendationsPage() {
 
                               <div>
                                 <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400 mb-2">DESCRIPTION</p>
-                                <p style={SERIF} className="text-sm text-gray-700 leading-relaxed">
+                                <p className="text-sm text-gray-700 leading-relaxed">
                                   {rec.texte_reformule}
                                 </p>
                               </div>
 
                               <div>
                                 <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400 mb-2">POURQUOI CETTE PRIORITÉ</p>
-                                <p style={SERIF} className="text-sm italic text-gray-600 leading-relaxed">
+                                <p className="text-sm italic text-gray-600 leading-relaxed">
                                   {rec.justification}
                                 </p>
                               </div>
@@ -489,30 +487,30 @@ export function RecommendationsPage() {
                               )}
                             </div>
 
-                            {/* Metrics panel */}
+                            {/* Facts panel -- score and rank dropped: both just restate
+                                what the collapsed row already showed (its position in
+                                the list, sorted by that same score), so expanding the
+                                card added nothing here that wasn't already on screen. */}
                             <div className="bg-gray-50 rounded-xl p-5 space-y-4 border border-gray-100 h-fit">
-                              <p className="text-[10px] font-bold tracking-[0.16em] text-gray-400">MÉTRIQUES</p>
-                              {[
-                                { label: 'Dimension', val: dimensionLabel, icon: Building2 },
-                                { label: 'Effort', val: effortMeta.label, icon: BarChart2 },
-                                { label: 'Score', val: rec.score.toFixed(2), icon: TrendingUp },
-                                { label: 'Priorité', val: isQW ? 'Quick Win' : 'Structurant', icon: Zap },
-                                { label: 'Rang', val: `#${rec.rank}`, icon: Clock },
-                              ].map((m) => (
-                                <div key={m.label} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    <m.icon className="w-3.5 h-3.5" />
-                                    {m.label}
+                              <div>
+                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                                  <Building2 className="w-3.5 h-3.5" /> Dimension
+                                </div>
+                                <span className="text-xs font-semibold text-gray-800 leading-snug">{dimensionLabel}</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                                    <BarChart2 className="w-3.5 h-3.5" /> Effort
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-800">{m.val}</span>
+                                  <span className="text-xs font-semibold text-gray-800">{effortMeta.label}</span>
                                 </div>
-                              ))}
-                              <div className="pt-1">
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-mono">Score relatif</span>
-                                </div>
-                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                                  <div className="h-full bg-gray-900 rounded-full" style={{ width: `${scoreBarWidth}%` }} />
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+                                    <Zap className="w-3.5 h-3.5" /> Priorité
+                                  </div>
+                                  <span className="text-xs font-semibold text-gray-800">{isQW ? 'Quick Win' : 'Structurant'}</span>
                                 </div>
                               </div>
                             </div>
@@ -526,28 +524,6 @@ export function RecommendationsPage() {
             })}
           </div>
         )}
-
-        {/* ── CTA ── */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="mt-8 bg-gray-900 rounded-2xl p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5"
-        >
-          <div>
-            <p className="text-base font-bold text-white mb-1">Prêt à modéliser l'impact ?</p>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Simulez les gains potentiels de ces recommandations sur vos métriques business.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate(`/simulation/${assessmentId}`)}
-            className="flex items-center gap-2.5 bg-[#FFE600] hover:bg-[#f5d800] text-black px-6 py-3 text-sm font-bold rounded-xl transition-colors shrink-0"
-          >
-            Lancer une simulation
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
-        </motion.div>
 
       </div>
     </div>

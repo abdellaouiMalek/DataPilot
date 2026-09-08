@@ -1,106 +1,108 @@
-{% extends "base.html" %}
+{% extends "report_base.html" %}
+{% import "report_macros.html" as m %}
 {% block content %}
 
+{# ── 01 · Synthèse exécutive ─────────────────────────────────────────── #}
 <section class="section">
-  <div class="section-title">Synthèse exécutive</div>
-  <div class="kpi-row">
-    <div class="kpi-card dark">
-      <div class="kpi-label">Score global de maturité</div>
-      <div class="kpi-value">{{ score_global | score1 }}<span class="unit"> / 5</span></div>
-      <span class="badge" style="background:{{ maturity_color }}22; color:{{ maturity_color }};">{{ maturity_label }}</span>
+  <div class="section-head">
+    <span class="section-num">01</span>
+    <h2 class="section-name">Synthèse exécutive</h2>
+  </div>
+
+  {% if narrative %}{{ m.narrative_block(narrative) }}{% endif %}
+
+  <div class="cockpit">
+    <div class="cockpit-cell lead">
+      <div class="cockpit-label">Score global</div>
+      <div class="cockpit-value num">{{ score_global | score1 }}<span class="unit"> / 5</span></div>
+      <div class="cockpit-sub">Niveau {{ maturity_label }}</div>
     </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Dimensions à consolider</div>
-      <div class="kpi-value">{{ weaknesses | length }}<span class="unit"> / {{ dimensions | length }}</span></div>
-      <span class="small muted">Score &lt; 3.0 / 5</span>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Dimensions évaluées</div>
+      <div class="cockpit-value num">{{ dimension_count }}</div>
+      <div class="cockpit-sub">référentiel EY</div>
     </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Dimensions maîtrisées</div>
-      <div class="kpi-value">{{ strengths | length }}<span class="unit"> / {{ dimensions | length }}</span></div>
-      <span class="small muted">Score &ge; 3.5 / 5</span>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Dimensions conformes</div>
+      <div class="cockpit-value num">{{ strong_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">Score &ge; 3.5</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Dimensions à risque</div>
+      <div class="cockpit-value num">{{ weak_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">Score &lt; 3.0</div>
     </div>
   </div>
+
+  {% if findings %}{{ m.findings(findings) }}{% endif %}
 </section>
 
-{% if narrative %}
+{# ── 02 · Profil de maturité ─────────────────────────────────────────── #}
+{# No `part`: follows §01 on the same page when there's room left, same
+   flow-not-force logic already applied to §03/§04 below. #}
 <section class="section">
-  <div class="section-subtitle">Analyse générée par le moteur EY AI</div>
-  <div class="narrative-box">{{ narrative }}</div>
-</section>
-{% endif %}
-
-<section class="section">
-  <div class="section-title">Résultats par dimension</div>
-  <div>
-    {% for d in dimensions %}
-    <div class="dim-row">
-      <div class="dim-name">{{ d.name }}</div>
-      <div class="dim-bar-track">
-        <div class="dim-bar-fill" style="width: {{ d.score | pct }}; background: {{ d.color }};"></div>
-      </div>
-      <div class="dim-score">{{ d.score | score1 }}</div>
-    </div>
-    {% endfor %}
+  <div class="section-head">
+    <span class="section-num">02</span>
+    <h2 class="section-name">Profil de maturité</h2>
   </div>
-</section>
 
-<section class="section">
-  <div class="section-title">Détail des scores</div>
-  <table>
-    <thead>
-      <tr>
-        <th>Dimension</th>
-        <th style="width: 22mm;">Poids</th>
-        <th style="width: 22mm;">Score</th>
-        <th style="width: 32mm;">Niveau</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in dimensions %}
-      <tr>
-        <td><strong>{{ d.name }}</strong></td>
-        <td>{{ d.weight }}%</td>
-        <td>{{ d.score | score1 }} / 5</td>
-        <td>
-          <span class="badge" style="background:{{ d.level_color }}22; color:{{ d.level_color }};">{{ d.level_label }}</span>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
+  <div class="cols">
+    <div class="col-chart">
+      {% if radar %}
+      <figure class="exhibit">
+        {{ m.figure_head(1, "Profil par dimension, échelle 1 à 5") }}
+        {{ m.radar_svg(radar, width_mm=84) }}
+      </figure>
+      {% endif %}
+    </div>
+    <div class="col-side">
+      {{ m.scale_legend(scale) }}
+      {% if strengths %}{{ m.ranked_list("Points d'appui", strengths) }}{% endif %}
+      {% if watchpoints %}{{ m.ranked_list("Points de vigilance", watchpoints, colored=true) }}{% endif %}
+    </div>
+  </div>
 
-{% if recommendations %}
-<section class="section">
-  <div class="section-title">Recommandations prioritaires</div>
-  <p class="small muted" style="margin-bottom: 3.5mm;">
-    Actions à plus fort impact pour progresser d'un niveau de maturité sur chaque dimension, classées par pertinence.
+  {# Full width, not squeezed under the 104mm chart column: the same three
+     lines read in two at this width, and read as the figure's caption
+     rather than as filler under the radar. #}
+  <p class="exhibit-note" style="margin-top: 2mm;">
+    <b>Lecture :</b> chaque axe porte le score de la dimension sur l'échelle 1 (Initial) à 5 (Optimisé). Le tracé
+    plein est le profil de l'établissement ; le tracé pointillé or, sa moyenne pondérée ({{ score_global | score1 }}).
+    Un axe situé à l'intérieur du pointillé est en retrait du profil moyen.
   </p>
-  {% for r in recommendations %}
-  <div class="rec-card">
-    <div class="rec-head">
-      <div><span class="rec-rank">{{ r.rank }}</span><span class="rec-title">{{ r.title }}</span></div>
-    </div>
-    <div class="rec-text">{{ r.text }}</div>
-    <div class="rec-tags">
-      <span class="tag">{{ r.dimension_name }}</span>
-      <span class="tag">{{ r.category }}</span>
-      <span class="tag">Effort {{ r.effort }}/3</span>
-      {% if r.regulatory_flag %}<span class="tag regulatory">Réglementaire</span>{% endif %}
-    </div>
-  </div>
-  {% endfor %}
 </section>
-{% endif %}
 
-<section class="section">
-  <div class="section-subtitle">Méthodologie</div>
-  <p class="small muted">
-    Le score de maturité (0 à 5) résulte de l'agrégation pondérée des réponses au questionnaire EY Data Maturity
-    Assessment, réparties sur {{ dimensions | length }} dimensions. Chaque dimension est notée sur la base des
-    réponses aux questions qui la composent, pondérées par leur importance relative. Le niveau de maturité global
-    associe ce score à l'échelle de référence EY (Initial, En développement, Défini, Maîtrisé, Optimisé).
+{# ── 03 · Détail par dimension ───────────────────────────────────────── #}
+{# No `part`: this follows §02 on the same page instead of forcing a new
+   one -- the radar + legend leave enough room above the table that they
+   read as one page together rather than as two half-empty ones. #}
+<section class="section flow">
+  <div class="section-head">
+    <span class="section-num">03</span>
+    <h2 class="section-name">Détail par dimension</h2>
+  </div>
+  {{ m.dimension_table(dimensions) }}
+  <p class="exhibit-note" style="margin-top: 3mm;">
+    <b>Note :</b> le poids est celui de la dimension dans le calcul du score global, tel que figé dans la
+    version du questionnaire utilisée pour cette évaluation. Le plan d'action associé, classé par impact
+    et effort de mise en œuvre, fait l'objet d'un rapport dédié : « Plan d'action : Recommandations priorisées ».
   </p>
+</section>
+
+{# ── 04 · Analyse détaillée par dimension ──────────────────────────────── #}
+{# No `part` here either: forcing a new page stranded §03's closing note
+   alone on an otherwise-blank page once §02/§03 shared page 3 above -- this
+   way it fills that leftover space instead. #}
+<section class="section flow">
+  <div class="section-head">
+    <span class="section-num">04</span>
+    <h2 class="section-name">Analyse détaillée par dimension</h2>
+  </div>
+  <p class="section-lead">
+    Lecture métier de chaque score du tableau précédent, dimension par dimension, générée par le moteur EY AI
+    à partir des seuls chiffres ci-dessus, sans autre donnée.
+  </p>
+  {{ m.dimension_analyses(dimensions) }}
 </section>
 
 {% endblock %}

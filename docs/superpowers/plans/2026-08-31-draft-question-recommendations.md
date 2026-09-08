@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let a super-admin create a question in "Gestion du Framework" and immediately configure its recommendations in "Catalogue des recommandations" — both staying entirely in draft, persisted server-side, until the admin's next explicit framework publish promotes the question and its recommendations to live together, atomically.
+**Goal:** Let a super-admin create a question in "Gestion du Framework" and immediately configure its recommendations in "Catalogue des recommandations", both staying entirely in draft, persisted server-side, until the admin's next explicit framework publish promotes the question and its recommendations to live together, atomically.
 
-**Architecture:** `Recommendation.question_id` becomes nullable; a new `draft_question_key` column lets a recommendation reference a not-yet-published question by the same temp id string the framework editor already uses (`"new-q-<uuid>"`, made collision-safe). A draft row (`question_id IS NULL`) is structurally invisible to the recommendation engine — verified against the actual query, no engine changes needed. Publishing promotes matching draft rows to their real `question_id` inside the transaction `apply_tree()`/`publish()` already run; discarding or editing the draft away reconciles/deletes orphaned draft rows through the same autosave/discard endpoints that already exist.
+**Architecture:** `Recommendation.question_id` becomes nullable; a new `draft_question_key` column lets a recommendation reference a not-yet-published question by the same temp id string the framework editor already uses (`"new-q-<uuid>"`, made collision-safe). A draft row (`question_id IS NULL`) is structurally invisible to the recommendation engine, verified against the actual query, no engine changes needed. Publishing promotes matching draft rows to their real `question_id` inside the transaction `apply_tree()`/`publish()` already run; discarding or editing the draft away reconciles/deletes orphaned draft rows through the same autosave/discard endpoints that already exist.
 
-**Tech Stack:** FastAPI + SQLAlchemy (async) + Alembic + Postgres; React + TypeScript + react-router-dom, no test framework on either side (this codebase's convention is manual assert-based scripts for backend pure logic — see `backend/tests/test_action_plan.py` — and `tsc --noEmit` + manual click-through for frontend; this plan follows the same conventions rather than introducing new tooling).
+**Tech Stack:** FastAPI + SQLAlchemy (async) + Alembic + Postgres; React + TypeScript + react-router-dom, no test framework on either side (this codebase's convention is manual assert-based scripts for backend pure logic, see `backend/tests/test_action_plan.py`, and `tsc --noEmit` + manual click-through for frontend; this plan follows the same conventions rather than introducing new tooling).
 
 **Spec:** `docs/superpowers/specs/2026-08-31-draft-question-recommendations-design.md`
 
 ## Global Constraints
 
-- No automatic framework publication and no automatic questionnaire version creation may ever be triggered by "Configurer les recommandations" — verify by reading the code path, not just by manual click-through.
-- Draft recommendations (`question_id IS NULL`) must never be reachable by `recommendation_engine.load_reference()` / `scoring.py`'s selection functions. This holds structurally (see spec) — do not add a parallel `is_active`-style filter as a substitute; the exclusion is `question_id IS NULL`.
+- No automatic framework publication and no automatic questionnaire version creation may ever be triggered by "Configurer les recommandations", verify by reading the code path, not just by manual click-through.
+- Draft recommendations (`question_id IS NULL`) must never be reachable by `recommendation_engine.load_reference()` / `scoring.py`'s selection functions. This holds structurally (see spec), do not add a parallel `is_active`-style filter as a substitute; the exclusion is `question_id IS NULL`.
 - Every promotion/cleanup step at publish time must run inside the transaction `publish()` already owns (single `db.commit()`, existing `except` rolls back everything). Never add a second commit.
-- Existing behavior for real (`question_id` set) recommendations — create, patch, delete, list — must not change at all.
+- Existing behavior for real (`question_id` set) recommendations, create, patch, delete, list, must not change at all.
 - Editing an already-published question in the framework draft (real numeric id, not a temp one) must not touch any `Recommendation` row.
-- Hard-delete orphaned draft recommendations (never archive) — they were never real/published.
+- Hard-delete orphaned draft recommendations (never archive), they were never real/published.
 - DB-touching verification scripts written during this plan are throwaway: write them under the project's scratchpad, run them against the real dev Postgres (already running via `docker compose`), confirm output, then delete the script. Do not commit them. Pure-logic tests (no DB) follow `backend/tests/test_action_plan.py`'s committed, `assert`-based, `def main()` style.
 
 ---
@@ -25,23 +25,23 @@
 ## File Structure
 
 Backend:
-- **Modify** `backend/app/models/recommendation.py` — nullable `question_id`, new `draft_question_key` column, new CHECK constraint + partial unique index.
-- **Create** `backend/alembic/versions/<generated>_recommendation_draft_question_key.py` — the migration for the above.
-- **Modify** `backend/app/services/framework_publish.py` — `apply_tree()` returns a temp-id→real-id mapping; new `find_draft_question`, `collect_question_ids`, `promote_draft_recommendations`, `delete_orphaned_draft_recommendations` helpers.
-- **Modify** `backend/app/schemas/admin.py` — `RecommendationCreate` gets `draft_question_key` + an exactly-one-of validator; `RecommendationAdminRead` gets `draft_question_key`, `question_id` widened to optional.
-- **Modify** `backend/app/routers/admin.py` — `POST /recommendations` branches on which field is set.
-- **Modify** `backend/app/routers/admin_framework.py` — `publish()` promotes + cleans up; `discard_draft()` and `save_draft()` clean up / reconcile.
-- **Create** `backend/tests/test_draft_recommendations_helpers.py` — pure-logic tests for `find_draft_question`/`collect_question_ids` (no DB), following `test_action_plan.py`'s style.
+- **Modify** `backend/app/models/recommendation.py`, nullable `question_id`, new `draft_question_key` column, new CHECK constraint + partial unique index.
+- **Create** `backend/alembic/versions/<generated>_recommendation_draft_question_key.py`, the migration for the above.
+- **Modify** `backend/app/services/framework_publish.py`, `apply_tree()` returns a temp-id→real-id mapping; new `find_draft_question`, `collect_question_ids`, `promote_draft_recommendations`, `delete_orphaned_draft_recommendations` helpers.
+- **Modify** `backend/app/schemas/admin.py`, `RecommendationCreate` gets `draft_question_key` + an exactly-one-of validator; `RecommendationAdminRead` gets `draft_question_key`, `question_id` widened to optional.
+- **Modify** `backend/app/routers/admin.py`, `POST /recommendations` branches on which field is set.
+- **Modify** `backend/app/routers/admin_framework.py`, `publish()` promotes + cleans up; `discard_draft()` and `save_draft()` clean up / reconcile.
+- **Create** `backend/tests/test_draft_recommendations_helpers.py`, pure-logic tests for `find_draft_question`/`collect_question_ids` (no DB), following `test_action_plan.py`'s style.
 
 Frontend:
-- **Modify** `frontend/src/pages/superAdmin/frameworkStaging.tsx` — UUID-based temp ids.
-- **Modify** `frontend/src/lib/admin.ts` — widen `Recommendation`/`ApiRecommendation` types, add `createDraftRecommendations`.
-- **Modify** `frontend/src/pages/superAdmin/AdminDimensions.tsx` — `QuestionModal` success view; `DimensionsManagement` hand-off (save draft, navigate).
-- **Modify** `frontend/src/pages/superAdmin/AdminRecommendations.tsx` — fetch + merge the framework draft, draft badges, deep-link consumption, `WizardDrawer` save branching.
+- **Modify** `frontend/src/pages/superAdmin/frameworkStaging.tsx`, UUID-based temp ids.
+- **Modify** `frontend/src/lib/admin.ts`, widen `Recommendation`/`ApiRecommendation` types, add `createDraftRecommendations`.
+- **Modify** `frontend/src/pages/superAdmin/AdminDimensions.tsx`, `QuestionModal` success view; `DimensionsManagement` hand-off (save draft, navigate).
+- **Modify** `frontend/src/pages/superAdmin/AdminRecommendations.tsx`, fetch + merge the framework draft, draft badges, deep-link consumption, `WizardDrawer` save branching.
 
 ---
 
-## Task 1: Data model — nullable `question_id`, `draft_question_key` column
+## Task 1: Data model, nullable `question_id`, `draft_question_key` column
 
 **Files:**
 - Modify: `backend/app/models/recommendation.py`
@@ -249,7 +249,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Run it and confirm all four lines print `OK:` — every rollback means the earlier bad inserts never persisted, and the final cleanup is a no-op safety net (belt-and-suspenders since each bad insert was already rolled back). Delete the script afterward.
+Run it and confirm all four lines print `OK:`, every rollback means the earlier bad inserts never persisted, and the final cleanup is a no-op safety net (belt-and-suspenders since each bad insert was already rolled back). Delete the script afterward.
 
 - [ ] **Step 4: Commit**
 
@@ -267,7 +267,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Draft-tree helpers — `find_draft_question`, `collect_question_ids`
+## Task 2: Draft-tree helpers, `find_draft_question`, `collect_question_ids`
 
 **Files:**
 - Modify: `backend/app/services/framework_publish.py`
@@ -463,7 +463,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: `apply_tree(db, tree) -> dict[str, int]` (was `-> None`). Task 4/7 consume this return value. `restore_version()` (the other caller, in `admin_framework.py`) doesn't need to change — it already ignores the return value; verified it only ever passes a `build_snapshot()`-produced tree, which contains no temp ids, so the returned dict is always `{}` there.
+- Produces: `apply_tree(db, tree) -> dict[str, int]` (was `-> None`). Task 4/7 consume this return value. `restore_version()` (the other caller, in `admin_framework.py`) doesn't need to change, it already ignores the return value; verified it only ever passes a `build_snapshot()`-produced tree, which contains no temp ids, so the returned dict is always `{}` there.
 
 - [ ] **Step 1: Change the signature and capture promotions**
 
@@ -826,7 +826,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `<scratchpad>/verify_task5.py` (this one is quick/pure enough to just run directly, no DB — not worth a committed test file on its own since Task 6's endpoint tests will exercise the same validation over HTTP):
+Create `<scratchpad>/verify_task5.py` (this one is quick/pure enough to just run directly, no DB, not worth a committed test file on its own since Task 6's endpoint tests will exercise the same validation over HTTP):
 
 ```python
 import sys
@@ -859,7 +859,7 @@ print("OK: draft_question_key alone accepted")
 ```bash
 cd backend && ./.venv/Scripts/python.exe <path-to-script>
 ```
-Expected: `TypeError`/validation error on the *first* call already, since `question_id` is currently required and non-optional — confirms the schema hasn't been updated yet.
+Expected: `TypeError`/validation error on the *first* call already, since `question_id` is currently required and non-optional, confirms the schema hasn't been updated yet.
 
 - [ ] **Step 3: Implement the schema change**
 
@@ -1032,7 +1032,7 @@ async def create_recommendations(
     for level in levels:
         # chk_trigger_level_range / uq_question_trigger: an out-of-range or
         # already-occupied level is skipped rather than failing the whole
-        # batch — see RecommendationBatchCreateResult docstring.
+        # batch, see RecommendationBatchCreateResult docstring.
         if level not in range(1, 5) or level in occupied:
             skipped.append(level)
             continue
@@ -1104,7 +1104,7 @@ async def create_recommendations(
         if found is None:
             raise HTTPException(
                 status_code=404,
-                detail="Question de brouillon introuvable — le brouillon a peut-être changé.",
+                detail="Question de brouillon introuvable, le brouillon a peut-être changé.",
             )
         _dim_node, _sub_node, question_node = found
         question_label = question_node.get("text", "")
@@ -1128,7 +1128,7 @@ async def create_recommendations(
         # chk_trigger_level_range / uq_question_trigger (or its draft
         # equivalent, uq_draft_question_trigger): an out-of-range or
         # already-occupied level is skipped rather than failing the whole
-        # batch — see RecommendationBatchCreateResult docstring.
+        # batch, see RecommendationBatchCreateResult docstring.
         if level not in range(1, 5) or level in occupied:
             skipped.append(level)
             continue
@@ -1317,7 +1317,7 @@ Change to:
         after = await build_snapshot(db)
 ```
 
-No other change in `publish()` — the existing single `await db.commit()` later in the function covers these writes too, and the existing `except` still rolls everything back together.
+No other change in `publish()`, the existing single `await db.commit()` later in the function covers these writes too, and the existing `except` still rolls everything back together.
 
 - [ ] **Step 3: Verify end-to-end with a throwaway script**
 
@@ -1408,7 +1408,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Run it. Expected: every `OK:`/status assertion passes; the two draft recommendations end up with real `question_id`, `draft_question_key = None`, and codes like `D1Q<realid>-1` / `D1Q<realid>-2`. Note this leaves one extra `QuestionnaireVersion` row in the dev DB (harmless — it's just a real publish, matching what the feature is supposed to do); delete the script afterward.
+Run it. Expected: every `OK:`/status assertion passes; the two draft recommendations end up with real `question_id`, `draft_question_key = None`, and codes like `D1Q<realid>-1` / `D1Q<realid>-2`. Note this leaves one extra `QuestionnaireVersion` row in the dev DB (harmless, it's just a real publish, matching what the feature is supposed to do); delete the script afterward.
 
 - [ ] **Step 4: Commit**
 
@@ -1444,7 +1444,7 @@ async def discard_draft(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
-    """Autosaves (``PUT /draft``) are intentionally not audited — they fire on
+    """Autosaves (``PUT /draft``) are intentionally not audited, they fire on
     every edit and would bury the actions that matter. Throwing the draft away
     is a decision, so that one is recorded."""
     draft = await _get_draft(db)
@@ -1469,7 +1469,7 @@ async def discard_draft(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
-    """Autosaves (``PUT /draft``) are intentionally not audited — they fire on
+    """Autosaves (``PUT /draft``) are intentionally not audited, they fire on
     every edit and would bury the actions that matter. Throwing the draft away
     is a decision, so that one is recorded."""
     draft = await _get_draft(db)
@@ -1548,7 +1548,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Run it. Expected: `draft recommendation created`, `draft discarded`, `OK: draft recommendation removed along with the discarded draft`. No cleanup needed — the script's own assertion is that nothing is left. Delete the script afterward.
+Run it. Expected: `draft recommendation created`, `draft discarded`, `OK: draft recommendation removed along with the discarded draft`. No cleanup needed, the script's own assertion is that nothing is left. Delete the script afterward.
 
 - [ ] **Step 3: Commit**
 
@@ -1737,13 +1737,13 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 10: Frontend — collision-safe temp ids
+## Task 10: Frontend, collision-safe temp ids
 
 **Files:**
 - Modify: `frontend/src/pages/superAdmin/frameworkStaging.tsx:25-26`
 
 **Interfaces:**
-- Produces: `newId(prefix)` generates a UUID-suffixed id, globally unique — no seeding/collision handling needed anywhere else. `isNewId` unchanged, still `id.startsWith("new-")`.
+- Produces: `newId(prefix)` generates a UUID-suffixed id, globally unique, no seeding/collision handling needed anywhere else. `isNewId` unchanged, still `id.startsWith("new-")`.
 
 - [ ] **Step 1: Make the change**
 
@@ -1769,7 +1769,7 @@ const newId = (prefix: string) => `new-${prefix}-${crypto.randomUUID()}`;
 ```bash
 cd frontend && npx tsc --noEmit -p .
 ```
-Expected: no errors (no `counter` references remain anywhere in the file — grep to confirm):
+Expected: no errors (no `counter` references remain anywhere in the file, grep to confirm):
 ```bash
 grep -n "counter" src/pages/superAdmin/frameworkStaging.tsx
 ```
@@ -1961,7 +1961,7 @@ Add right after it, inside the same `adminApi` object:
 ```bash
 cd frontend && npx tsc --noEmit -p .
 ```
-Expected: no errors. (This will surface every place `Recommendation.questionId`/`ApiRecommendation.question_id` was assumed non-null, which is exactly Tasks 13/14's job to fix — if `tsc` errors inside `AdminRecommendations.tsx` at this point, that's expected and gets resolved there, not here.)
+Expected: no errors. (This will surface every place `Recommendation.questionId`/`ApiRecommendation.question_id` was assumed non-null, which is exactly Tasks 13/14's job to fix, if `tsc` errors inside `AdminRecommendations.tsx` at this point, that's expected and gets resolved there, not here.)
 
 - [ ] **Step 4: Commit**
 
@@ -1986,7 +1986,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `saveDraft` (already imported), `staging.createQuestion` (already available).
-- Produces: `QuestionModal` gains an `onConfigureRecommendations?: (tempId: string) => void` prop; on successful create, shows a success view instead of closing. `DimensionsManagement` supplies the handler, which saves the draft immediately and navigates to `/super-admin/recommendations?draftQuestionId=<tempId>` — no `PublishDialog`, no `publishFramework`, ever.
+- Produces: `QuestionModal` gains an `onConfigureRecommendations?: (tempId: string) => void` prop; on successful create, shows a success view instead of closing. `DimensionsManagement` supplies the handler, which saves the draft immediately and navigates to `/super-admin/recommendations?draftQuestionId=<tempId>`, no `PublishDialog`, no `publishFramework`, ever.
 
 - [ ] **Step 1: Add the router import**
 
@@ -2139,7 +2139,7 @@ Change to:
       {tab === "edit" ? (
 ```
 
-(`Check` and `ArrowRight` are already imported at the top of this file — confirmed in the existing `lucide-react` import list.)
+(`Check` and `ArrowRight` are already imported at the top of this file, confirmed in the existing `lucide-react` import list.)
 
 - [ ] **Step 4: `DimensionsManagement` supplies the handler**
 
@@ -2208,9 +2208,9 @@ Expected: no errors.
 Manual click-through (dev server already running at `localhost:5173`):
 1. Go to `/super-admin/dimensions`, open any sub-dimension, click "+ Ajouter une question".
 2. Fill in a label, click "Créer".
-3. Confirm the modal switches to the success view: green checkmark, "Question ajoutée avec succès", the question's label, `Terminer` and `Configurer les recommandations →` buttons — no `PublishDialog` anywhere.
-4. Click `Terminer` — confirm the modal closes and the question shows up in the tree, still unpublished ("N modifications non publiées" / dirty indicator still shows it as pending, exactly as creating a question does today).
-5. Repeat, this time clicking `Configurer les recommandations →` — confirm the browser navigates to `/super-admin/recommendations?draftQuestionId=new-q-<uuid>` and that **no publish dialog ever appeared** and the framework's pending-changes count is unaffected by this click (still shows the question as an unpublished draft change if you navigate back to `/super-admin/dimensions`).
+3. Confirm the modal switches to the success view: green checkmark, "Question ajoutée avec succès", the question's label, `Terminer` and `Configurer les recommandations →` buttons, no `PublishDialog` anywhere.
+4. Click `Terminer`, confirm the modal closes and the question shows up in the tree, still unpublished ("N modifications non publiées" / dirty indicator still shows it as pending, exactly as creating a question does today).
+5. Repeat, this time clicking `Configurer les recommandations →`, confirm the browser navigates to `/super-admin/recommendations?draftQuestionId=new-q-<uuid>` and that **no publish dialog ever appeared** and the framework's pending-changes count is unaffected by this click (still shows the question as an unpublished draft change if you navigate back to `/super-admin/dimensions`).
 
 - [ ] **Step 6: Commit**
 
@@ -2302,10 +2302,10 @@ function flattenRecommendations(recs: Recommendation[], dimensions: Dimension[])
     const ctx = byQuestion.get(r.questionId);
     return {
       ...r,
-      dimensionName: ctx?.dim.name ?? "—",
+      dimensionName: ctx?.dim.name ?? "-",
       dimensionColor: ctx?.dim.color ?? "#9B9B9B",
-      subDimensionName: ctx?.subName ?? "—",
-      questionText: ctx?.text ?? "—",
+      subDimensionName: ctx?.subName ?? "-",
+      questionText: ctx?.text ?? "-",
     };
   });
 }
@@ -2339,10 +2339,10 @@ function flattenRecommendations(recs: Recommendation[], dimensions: Dimension[])
     const ctx = byQuestion.get(key);
     return {
       ...r,
-      dimensionName: ctx?.dim.name ?? "—",
+      dimensionName: ctx?.dim.name ?? "-",
       dimensionColor: ctx?.dim.color ?? "#9B9B9B",
-      subDimensionName: ctx?.subName ?? "—",
-      questionText: ctx?.text ?? "—",
+      subDimensionName: ctx?.subName ?? "-",
+      questionText: ctx?.text ?? "-",
       isDraft: r.questionId === null,
     };
   });
@@ -2461,7 +2461,7 @@ export function RecommendationCatalog() {
       setPresetQuestionId(draftQuestionId);
       setShowWizard(true);
     } else {
-      toast.warning("Question de brouillon introuvable — le brouillon a peut-être changé.");
+      toast.warning("Question de brouillon introuvable, le brouillon a peut-être changé.");
     }
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete("draftQuestionId"); return next; }, { replace: true });
   }, [searchParams, loading, mergedDimensions, setSearchParams]);
@@ -2524,7 +2524,7 @@ Change to:
         <WizardDrawer dimensions={mergedDimensions} categories={categories} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
 ```
 
-For the draft badge in the recommendation list/table (wherever the row shows `code`/`title` — this file renders both a card grid and a table view; add the badge next to the code in both). Find the existing badge component pattern near the top:
+For the draft badge in the recommendation list/table (wherever the row shows `code`/`title`, this file renders both a card grid and a table view; add the badge next to the code in both). Find the existing badge component pattern near the top:
 ```ts
 function StatutBadge({ value }: { value: Status }) {
 ```
@@ -2538,18 +2538,18 @@ function DraftBadge() {
   );
 }
 ```
-Then, in each place the row's `code` is rendered (grep `r.code` / `rec.code` in this file to find both the grid-card and table-row spots), render `{rec.isDraft && <DraftBadge />}` immediately next to it — same pattern as `<StatutBadge value={rec.status} />` used nearby.
+Then, in each place the row's `code` is rendered (grep `r.code` / `rec.code` in this file to find both the grid-card and table-row spots), render `{rec.isDraft && <DraftBadge />}` immediately next to it, same pattern as `<StatutBadge value={rec.status} />` used nearby.
 
 - [ ] **Step 5: Verify**
 
 ```bash
 cd frontend && npx tsc --noEmit -p .
 ```
-Expected: no errors yet from this task (Task 14 fixes `WizardDrawer`'s own prop type and save logic — until then, `tsc` will flag `presetQuestionId` as an unknown prop on `WizardDrawer`; that's expected and resolved in Task 14, so if running standalone, note the specific error is `Property 'presetQuestionId' does not exist` and nothing else).
+Expected: no errors yet from this task (Task 14 fixes `WizardDrawer`'s own prop type and save logic, until then, `tsc` will flag `presetQuestionId` as an unknown prop on `WizardDrawer`; that's expected and resolved in Task 14, so if running standalone, note the specific error is `Property 'presetQuestionId' does not exist` and nothing else).
 
 - [ ] **Step 6: Commit**
 
-Hold this commit until Task 14 is done (they're two edits of the same render tree — `WizardDrawer` doesn't compile cleanly with a `presetQuestionId` prop it doesn't accept yet). Proceed directly to Task 14, then commit both together as directed there.
+Hold this commit until Task 14 is done (they're two edits of the same render tree, `WizardDrawer` doesn't compile cleanly with a `presetQuestionId` prop it doesn't accept yet). Proceed directly to Task 14, then commit both together as directed there.
 
 ---
 
@@ -2624,7 +2624,7 @@ function WizardDrawer({ dimensions, categories, editing, presetQuestionId, onClo
   });
 ```
 
-(`editing.questionId ?? editing.draftQuestionKey` also fixes the edit-mode case for a not-yet-published recommendation being edited — a draft row's `editing.questionId` is now `null` after Task 11's type change, so this keeps edit mode working for both.)
+(`editing.questionId ?? editing.draftQuestionKey` also fixes the edit-mode case for a not-yet-published recommendation being edited, a draft row's `editing.questionId` is now `null` after Task 11's type change, so this keeps edit mode working for both.)
 
 - [ ] **Step 2: Branch `save()` on whether the question is a draft**
 
@@ -2786,24 +2786,24 @@ Change to (Dimension and Sous-dimension `FSelect`s get the same `[Brouillon]`-su
               )}
 ```
 
-(Matching by display name after stripping the suffix is the same "match by name" pattern this component already used for every `FSelect` before this change — not a new fragility; two real dimensions sharing a name would already have collided in the original code.)
+(Matching by display name after stripping the suffix is the same "match by name" pattern this component already used for every `FSelect` before this change, not a new fragility; two real dimensions sharing a name would already have collided in the original code.)
 
 - [ ] **Step 4: Verify**
 
 ```bash
 cd frontend && npx tsc --noEmit -p .
 ```
-Expected: no errors — this resolves the `presetQuestionId` prop error Task 13 left outstanding.
+Expected: no errors, this resolves the `presetQuestionId` prop error Task 13 left outstanding.
 
 Manual click-through, continuing from Task 12's step 5:
-1. After being routed to `/super-admin/recommendations?draftQuestionId=...`, confirm the wizard auto-opens with Step 2 already showing the right Dimension / Sous-dimension / Question (marked `[Brouillon]` in the question field) — no search needed.
+1. After being routed to `/super-admin/recommendations?draftQuestionId=...`, confirm the wizard auto-opens with Step 2 already showing the right Dimension / Sous-dimension / Question (marked `[Brouillon]` in the question field), no search needed.
 2. Fill in Step 1 (titre/description) and Step 3 (type/catégorie/effort), pick a level, click through to Step 4, click "Créer".
 3. Confirm success, and that the new recommendation appears in the catalog list with a "Brouillon" badge next to its code.
 4. Reload the page, confirm the draft recommendation is still there (persisted, not just React state).
-5. Open "Ajouter une recommandation" manually (no deep-link) — confirm the Dimension/Sous-dimension/Question selects also list the same draft question, marked `[Brouillon]`, and that picking a **real** published question and creating a recommendation still works exactly as before (today's path, unchanged).
+5. Open "Ajouter une recommandation" manually (no deep-link), confirm the Dimension/Sous-dimension/Question selects also list the same draft question, marked `[Brouillon]`, and that picking a **real** published question and creating a recommendation still works exactly as before (today's path, unchanged).
 6. Go back to `/super-admin/dimensions`, publish the framework (this is the one point in this whole flow where a real publish happens, deliberately, via the existing dialog). Confirm: the question is now live, and back on `/super-admin/recommendations`, the recommendation created in step 2 above no longer shows "Brouillon" and its code has changed from `DRAFT-...` to the real `D<n>Q<id>-<level>` format.
 
-- [ ] **Step 5: Commit** (covers both Task 13 and Task 14 — see Task 13's Step 6)
+- [ ] **Step 5: Commit** (covers both Task 13 and Task 14, see Task 13's Step 6)
 
 ```bash
 git add frontend/src/pages/superAdmin/AdminRecommendations.tsx
@@ -2823,9 +2823,9 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Final end-to-end verification (after all 14 tasks)
 
-- [ ] Re-run `cd backend && ./.venv/Scripts/python.exe -m alembic current` — confirm it matches the new migration's revision id, single head.
-- [ ] Re-run `cd backend && ./.venv/Scripts/python.exe tests/test_draft_recommendations_helpers.py` and `python tests/test_action_plan.py` — both still pass (nothing in this plan touches `action_plan.py`, this just confirms no accidental breakage).
-- [ ] `cd frontend && npx tsc --noEmit -p .` — zero errors.
-- [ ] `cd frontend && npx vite build` — production build still succeeds (matches the verification style used earlier in this project for `keycloakify-starter`; do the same for the main `frontend/` app here).
+- [ ] Re-run `cd backend && ./.venv/Scripts/python.exe -m alembic current`, confirm it matches the new migration's revision id, single head.
+- [ ] Re-run `cd backend && ./.venv/Scripts/python.exe tests/test_draft_recommendations_helpers.py` and `python tests/test_action_plan.py`, both still pass (nothing in this plan touches `action_plan.py`, this just confirms no accidental breakage).
+- [ ] `cd frontend && npx tsc --noEmit -p .`, zero errors.
+- [ ] `cd frontend && npx vite build`, production build still succeeds (matches the verification style used earlier in this project for `keycloakify-starter`; do the same for the main `frontend/` app here).
 - [ ] Full manual walkthrough of the desired behavior from the spec's Context section, start to finish, in one sitting: create question → success view → Configurer les recommandations → catalog opens pre-filled → create 2-3 recommendations at different levels → refresh the browser (confirm nothing lost) → go back to Gestion du Framework, confirm the question is still there as an unpublished draft change → publish → confirm the question is live and its recommendations are live with real codes, no `Brouillon` badge.
-- [ ] Confirm a discard scenario once: create a draft question, add a draft recommendation to it, then go back to Gestion du Framework and click "Abandonner les modifications" — confirm both the question and its draft recommendation are gone (check `/super-admin/recommendations`, the recommendation should no longer be listed at all).
+- [ ] Confirm a discard scenario once: create a draft question, add a draft recommendation to it, then go back to Gestion du Framework and click "Abandonner les modifications", confirm both the question and its draft recommendation are gone (check `/super-admin/recommendations`, the recommendation should no longer be listed at all).

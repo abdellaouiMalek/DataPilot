@@ -3,13 +3,13 @@
  *
  * Deux fonctions réelles, en plus du menu compte :
  *
- * — la **recherche rapide** interroge `/api/super-admin/search`, qui balaie
+ * - la **recherche rapide** interroge `/api/super-admin/search`, qui balaie
  *   banques, comptes, dimensions, sous-dimensions, questions et versions.
  *   Ouvrir un résultat ne se contente pas d'aller sur la page : on lui passe
  *   `state.q`, que la page recopie dans son propre filtre, de sorte que la
  *   ligne cherchée est à l'écran à l'arrivée ;
  *
- * — la **cloche** liste les notifications propres au compte connecté
+ * - la **cloche** liste les notifications propres au compte connecté
  *   (`/api/notifications`, voir NotificationsPanel) : le lu/non-lu, lui, est
  *   bien persisté côté serveur -- marquer lu (au clic, ou "Tout marquer
  *   comme lu") fait disparaître la notification pour de bon, sur tous les
@@ -315,7 +315,7 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
           onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = notifOpen ? "#EFEFEF" : "#F7F7F7"}
         >
           <Bell size={16} />
-          {/* La pastille ne s'allume que s'il reste du non-vu — jamais en dur. */}
+          {/* La pastille ne s'allume que s'il reste du non-vu, jamais en dur. */}
           {unread > 0 && (
             <span style={{
               position: "absolute", top: -4, right: -4,

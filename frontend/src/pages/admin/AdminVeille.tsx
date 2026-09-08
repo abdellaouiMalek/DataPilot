@@ -10,6 +10,7 @@ import {
   type Circular, type CircularDetail, type Impact, type ImpactAction, type AssociatedRecommendation,
 } from "../../lib/regulatory";
 import { getMaturityLevels, type MaturityLevel } from "../../lib/config";
+import { useConfirm } from "../../hooks/useConfirm";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "Date non détectée";
@@ -317,7 +318,7 @@ function ProposedDetails({
                   <div style={{ display: "grid", gridTemplateColumns: active.recommendation ? "1fr 1fr" : "1fr", gap: 8 }}>
                     <div style={{ backgroundColor: "#fff", border: `1px solid ${isEditing ? "#3730A3" : `${active.color}22`}`, borderLeft: `3px solid ${active.color}`, borderRadius: 8, padding: "10px 12px" }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: active.color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                        Réponse type — Niveau {active.level}
+                        Réponse type, Niveau {active.level}
                       </div>
                       {isEditing ? (
                         <textarea
@@ -459,7 +460,7 @@ function ProposedDetails({
         {(p.question_title || p.question_code) && (
           <div style={{ fontSize: 12, color: "#4A4A4A", lineHeight: 1.5 }}>
             Rattachée à la question <strong style={{ color: "#1A1A1A" }}>{p.question_title || p.question_code}</strong>
-            {p.question_dimension && <> — dimension <strong style={{ color: "#1A1A1A" }}>{p.question_dimension}</strong></>}
+            {p.question_dimension && <> (dimension <strong style={{ color: "#1A1A1A" }}>{p.question_dimension}</strong>)</>}
           </div>
         )}
       </div>
@@ -550,7 +551,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
       // whatever impact_count happens to exist yet (0), or the admin sees
       // a false "0 exigences détectées" even though the real result shows
       // up later in the list (which polls its own live status).
-      toast.info("L'analyse prend plus de temps que prévu — elle continue en arrière-plan. Retrouvez cette circulaire dans la liste une fois terminée.");
+      toast.info("L'analyse prend plus de temps que prévu, elle continue en arrière-plan. Retrouvez cette circulaire dans la liste une fois terminée.");
       onClose();
       return;
     }
@@ -698,7 +699,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                   Lecture du document…
                 </div>
                 <div style={{ fontSize: 12, color: "#9B9B9B", maxWidth: 320 }}>
-                  L'IA analyse le contenu (texte ou OCR, français ou arabe) et identifie les exigences réglementaires en arrière-plan. Cela peut prendre une à quelques minutes sur ce modèle local — vous pouvez fermer cette fenêtre, l'analyse continue.
+                  L'IA analyse le contenu (texte ou OCR, français ou arabe) et identifie les exigences réglementaires en arrière-plan. Cela peut prendre une à quelques minutes sur ce modèle local, vous pouvez fermer cette fenêtre, l'analyse continue.
                 </div>
               </div>
               <div style={{ width: "100%", height: 4, backgroundColor: "#F0F0F0", borderRadius: 2, overflow: "hidden", position: "relative" }}>
@@ -736,7 +737,7 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: (circul
                 {[
                   { label: "Référence", value: result.reference },
                   { label: "Date d'import", value: formatDate(result.publicationDate) },
-                  { label: "Thème", value: result.theme || "—" },
+                  { label: "Thème", value: result.theme || "-" },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", backgroundColor: "#F7F7F7", borderRadius: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.04em", width: 130, flexShrink: 0 }}>{label}</span>
@@ -919,7 +920,7 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
             onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "#9B9B9B"}
           >Veille réglementaire</button>
           <ChevronRight size={13} />
-          <span style={{ color: "#1A1A1A", fontWeight: 600 }}>Analyse — {circular.reference}</span>
+          <span style={{ color: "#1A1A1A", fontWeight: 600 }}>Analyse : {circular.reference}</span>
         </div>
 
         <div style={{ ...card, padding: "14px 20px", marginBottom: 22, display: "flex", alignItems: "center", gap: 20 }}>
@@ -1084,11 +1085,11 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                   <div style={{ padding: "11px 18px", borderBottom: "1px solid #F2F2F2", display: "flex", gap: 24 }}>
                     <div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#C0C0C0", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Dimension concernée</div>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: "#3A3A3A" }}>{dimension || "—"}</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "#3A3A3A" }}>{dimension || "-"}</div>
                     </div>
                     <div style={{ borderLeft: "1px solid #F0F0F0", paddingLeft: 24 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#C0C0C0", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Référence</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A", fontFamily: "monospace" }}>{element || "—"}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1A1A", fontFamily: "monospace" }}>{element || "-"}</div>
                     </div>
                   </div>
 
@@ -1111,7 +1112,7 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                   <div style={{ padding: "11px 18px", backgroundColor: c.action ? "#FAFAFA" : "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     {isEditing ? (
                       <>
-                        <span style={{ fontSize: 11, color: "#3730A3", fontWeight: 500 }}>Mode édition — modifiez les champs ci-dessus</span>
+                        <span style={{ fontSize: 11, color: "#3730A3", fontWeight: 500 }}>Mode édition, modifiez les champs ci-dessus</span>
                         <div style={{ display: "flex", gap: 7 }}>
                           <button onClick={() => setEditingId(null)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1.5px solid #E0E0E0", backgroundColor: "#fff", color: "#4A4A4A", cursor: "pointer" }}>
                             <X size={12} /> Annuler
@@ -1127,8 +1128,8 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                           <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: actionColor! }} />
                           <span style={{ fontSize: 12, fontWeight: 600, color: actionColor! }}>
                             {isActivationFlag
-                              ? (c.action === "accepté" ? "Marquée comme réglementaire — sera intégrée au référentiel" : "Non qualifiée comme réglementaire")
-                              : (c.action === "accepté" ? "Acceptée — sera intégrée au référentiel" : "Rejetée — non intégrée")}
+                              ? (c.action === "accepté" ? "Marquée comme réglementaire, sera intégrée au référentiel" : "Non qualifiée comme réglementaire")
+                              : (c.action === "accepté" ? "Acceptée, sera intégrée au référentiel" : "Rejetée, non intégrée")}
                           </span>
                         </div>
                         <button onClick={() => setAction(c.id, null)} style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", background: "#fff", border: "1px solid #E0E0E0", borderRadius: 5, padding: "5px 12px", cursor: "pointer", flexShrink: 0 }}>
@@ -1139,7 +1140,7 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
                       <>
                         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                           <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: actionColor! }} />
-                          <span style={{ fontSize: 12, fontWeight: 600, color: actionColor! }}>Modifié — en attente de validation finale</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: actionColor! }}>Modifié, en attente de validation finale</span>
                         </div>
                         <div style={{ display: "flex", gap: 7 }}>
                           <button onClick={() => setAction(c.id, null)} style={{ fontSize: 11, fontWeight: 600, color: "#9B9B9B", background: "#fff", border: "1px solid #E0E0E0", borderRadius: 5, padding: "5px 12px", cursor: "pointer" }}>Annuler</button>
@@ -1201,7 +1202,7 @@ function ImpactAnalysis({ circular, onBack, onPublished }: {
       <div style={{ position: "sticky", bottom: 0, backgroundColor: "#fff", borderTop: "1px solid rgba(0,0,0,0.08)", padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 10 }}>
         <div style={{ fontSize: 12, color: allActioned ? "#2E7D32" : "#9B9B9B" }}>
           {allActioned
-            ? "✓ Toutes les exigences traitées — prêt à publier. Les banques concernées seront invitées à se réévaluer."
+            ? "✓ Toutes les exigences traitées, prêt à publier. Les banques concernées seront invitées à se réévaluer."
             : `${total - done} exigence${total - done > 1 ? "s" : ""} en attente de validation.`}
         </div>
         <button
@@ -1230,6 +1231,7 @@ export function VeilleReglementaire() {
   const [showUpload, setShowUpload] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   async function reindex() {
     setReindexing(true);
@@ -1263,7 +1265,7 @@ export function VeilleReglementaire() {
     try {
       let circular = await regulatoryApi.getCircular(id);
       if (circular.analysisStatus === "en_cours") {
-        toast.info("Analyse encore en cours pour cette circulaire — patientez…");
+        toast.info("Analyse encore en cours pour cette circulaire, patientez…");
         circular = await regulatoryApi.pollCircular(id);
       }
       setSelected(circular);
@@ -1275,7 +1277,12 @@ export function VeilleReglementaire() {
   }
 
   async function handleDelete(c: Circular) {
-    if (!window.confirm(`Supprimer la circulaire « ${c.reference} » ? Cette action est irréversible.`)) return;
+    if (!(await confirm({
+      title: "Supprimer cette circulaire ?",
+      description: `Vous êtes sur le point de supprimer « ${c.reference} ». Cette action est irréversible.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+    }))) return;
     setDeletingId(c.id);
     try {
       await regulatoryApi.deleteCircular(c.id);
@@ -1459,7 +1466,7 @@ export function VeilleReglementaire() {
       )}
 
       <div style={{ marginTop: 24, textAlign: "right" }}>
-        <span style={{ fontSize: 11, color: "#C0C0C0", fontStyle: "italic" }}>Usage interne EY — confidentiel</span>
+        <span style={{ fontSize: 11, color: "#C0C0C0", fontStyle: "italic" }}>Usage interne EY, confidentiel</span>
       </div>
 
       {showUpload && (
@@ -1468,6 +1475,8 @@ export function VeilleReglementaire() {
           onDone={(circular) => { setShowUpload(false); setSelected(circular); load(); }}
         />
       )}
+
+      {confirmDialog}
     </div>
   );
 }

@@ -1,0 +1,113 @@
+{% extends "report_base.html" %}
+{% import "report_macros.html" as m %}
+{% block content %}
+
+{# ── 01 · Synthèse exécutive ─────────────────────────────────────────── #}
+<section class="section">
+  <div class="section-head">
+    <span class="section-num">01</span>
+    <h2 class="section-name">Synthèse exécutive</h2>
+  </div>
+
+  <div class="cockpit">
+    <div class="cockpit-cell lead">
+      <div class="cockpit-label">Score global</div>
+      <div class="cockpit-value num">{{ score_global | score1 }}<span class="unit"> / 5</span></div>
+      <div class="cockpit-sub">Niveau {{ maturity_label }}</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Dimensions conformes</div>
+      <div class="cockpit-value num">{{ strong_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">Score &ge; 3.5</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Dimensions à risque</div>
+      <div class="cockpit-value num">{{ weak_count }}<span class="unit"> / {{ dimension_count }}</span></div>
+      <div class="cockpit-sub">Score &lt; 3.0</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Initiatives priorisées</div>
+      <div class="cockpit-value num">{{ total_count }}</div>
+      <div class="cockpit-sub">dont {{ quick_win_count }} à effort faible</div>
+    </div>
+    <div class="cockpit-cell">
+      <div class="cockpit-label">Obligations réglementaires</div>
+      <div class="cockpit-value num">{{ regulatory_count }}</div>
+      <div class="cockpit-sub">traitées en priorité</div>
+    </div>
+  </div>
+
+  {% if findings %}{{ m.findings(findings) }}{% endif %}
+  {% if narrative %}{{ m.narrative_block(narrative) }}{% endif %}
+</section>
+
+{# ── 02 · Profil de maturité ─────────────────────────────────────────── #}
+<section class="section part">
+  <div class="section-head">
+    <span class="section-num">02</span>
+    <h2 class="section-name">Profil de maturité</h2>
+  </div>
+
+  <div class="cols">
+    <div class="col-chart">
+      {% if radar %}
+      <figure class="exhibit">
+        {{ m.figure_head(1, "Profil par dimension, échelle 1 à 5") }}
+        {{ m.radar_svg(radar) }}
+        <p class="exhibit-note">
+          <b>Lecture :</b> chaque axe porte le score de la dimension sur l'échelle 1 (Initial) à 5 (Optimisé).
+          Le tracé plein est le profil de l'établissement ; le tracé pointillé or, sa moyenne pondérée
+          ({{ score_global | score1 }}). Un axe situé à l'intérieur du pointillé est en retrait du profil moyen.
+        </p>
+      </figure>
+      {% endif %}
+    </div>
+    <div class="col-side">
+      {{ m.scale_legend(scale) }}
+      {% if strengths %}{{ m.ranked_list("Points d'appui", strengths) }}{% endif %}
+      {% if watchpoints %}{{ m.ranked_list("Points de vigilance", watchpoints, colored=true) }}{% endif %}
+    </div>
+  </div>
+  {# No bar chart or per-dimension table here: both restate, at length, the
+     same scores the evaluation report already breaks down in full -- this
+     report's own job is the action plan below, not a second edition of
+     the score detail. #}
+</section>
+
+{# ── 03 · Plan d'action prioritaire ──────────────────────────────────── #}
+<section class="section flow part">
+  <div class="section-head">
+    <span class="section-num">03</span>
+    <h2 class="section-name">Plan d'action prioritaire</h2>
+  </div>
+
+  {% if recommendations %}
+  <p class="section-lead">
+    {{ total_count }} initiative{{ 's' if total_count > 1 else '' }} retenue{{ 's' if total_count > 1 else '' }}
+    sur l'ensemble des recommandations candidates, classée{{ 's' if total_count > 1 else '' }} par impact estimé
+    sur la progression de maturité. Les obligations réglementaires sont conservées quel que soit leur rang.
+  </p>
+
+  {% if matrix %}
+  <figure class="exhibit">
+    {{ m.figure_head(2, "Matrice impact / effort des initiatives") }}
+    {{ m.matrix_svg(matrix) }}
+    <p class="exhibit-note">
+      <b>Lecture :</b> chaque pastille porte le rang de l'initiative dans le plan. L'axe horizontal donne
+      l'effort de mise en œuvre, l'axe vertical l'impact estimé par le modèle de classement. Les initiatives
+      cerclées d'or portent une obligation réglementaire.
+    </p>
+  </figure>
+  {% endif %}
+
+  <div class="eyebrow" style="margin-bottom: 1mm;">Détail des initiatives</div>
+  {{ m.plan_entries(recommendations) }}
+  {% else %}
+  <p class="muted">
+    Aucune initiative n'est requise : l'établissement atteint le niveau attendu sur l'ensemble des dimensions
+    évaluées.
+  </p>
+  {% endif %}
+</section>
+
+{% endblock %}

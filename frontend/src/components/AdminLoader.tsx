@@ -3,13 +3,13 @@
  *
  * Deux détails qui font l'essentiel de l'effet :
  *
- * — **l'apparition est retardée.** Depuis que les appels Keycloak passent par
+ * - **l'apparition est retardée.** Depuis que les appels Keycloak passent par
  *   un client partagé, les pages répondent en quelques dizaines de
  *   millisecondes ; un indicateur affiché immédiatement clignoterait à chaque
  *   navigation, ce qui se remarque bien plus qu'une brève page vide. Le voile
  *   ne se révèle donc qu'au-delà de `delay` (250 ms par défaut) : en dessous,
  *   la page arrive avant lui et rien ne clignote ;
- * — **il occupe la place de la page**, pas un coin de l'écran. Le châssis
+ * - **il occupe la place de la page**, pas un coin de l'écran. Le châssis
  *   (menu latéral, bandeau) reste peint autour ; seul le contenu attend.
  */
 

@@ -61,7 +61,7 @@ function NouvelleQuestionDetail({ c }: { c: VersionChange }) {
           {active && (
             <div style={{ display: "grid", gridTemplateColumns: active.recommandation ? "1fr 1fr" : "1fr", gap: 10 }}>
               <div style={{ backgroundColor: "#fff", borderLeft: `3px solid ${LEVEL_COLORS[lvl]}`, border: `1px solid ${LEVEL_COLORS[lvl]}25`, borderRadius: 6, padding: "10px 14px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#ABABAB", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>Réponse attendue — N{lvl}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#ABABAB", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>Réponse attendue, N{lvl}</div>
                 <p style={{ fontSize: 12, color: "#3A3A3A", lineHeight: 1.6, margin: 0 }}>{active.answer}</p>
               </div>
               {active.recommandation && (

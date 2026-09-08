@@ -2,7 +2,7 @@
 
 Deliberately *not* a second copy of ``/api/profile``: editing one's name or
 email still goes through that endpoint, which every authenticated user shares.
-What lives here is the part only a back-office account has — when it last
+What lives here is the part only a back-office account has, when it last
 signed in, and what it has actually done to the platform, read back from the
 audit trail by Keycloak ``sub`` so a rename never detaches an admin from their
 own history.
@@ -149,7 +149,7 @@ async def reset_own_password(
 
     Same mechanism the users page uses on someone else (Keycloak cannot mail a
     password itself, so the backend does), pointed at the caller. The password
-    is never returned in the response nor written to the trail — only the fact
+    is never returned in the response nor written to the trail, only the fact
     that a reset was requested.
     """
     user_id = _sub(claims)

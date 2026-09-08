@@ -1,10 +1,17 @@
 """Jinja2 + WeasyPrint report rendering.
 
-Two report types, both rendered from HTML/CSS templates in
+Three report types, all rendered from HTML/CSS templates in
 ``app/templates/pdf/``:
 
-- ``evaluation_report.html``  -- a single assessment's results.
-- ``comparison_report.html``  -- two assessments (an evolution) compared.
+- ``evaluation_report.html``      -- a single assessment's results.
+- ``recommendations_report.html`` -- the prioritised action plan.
+- ``comparison_report.html``      -- two assessments (an evolution) compared.
+
+They share ``report_base.html`` (page furniture and the design system) and
+``report_macros.html`` (the exhibits), so a figure means the same thing in
+whichever report a reader picks up. Chart geometry is pre-computed in
+``app.services.report_charts`` -- WeasyPrint renders inline SVG but runs no
+JavaScript, so nothing can be drawn by a chart library at render time.
 
 WeasyPrint does the actual HTML -> PDF rendering; on Windows it needs the
 native Pango/cairo/GObject libraries, which pip doesn't ship (see
@@ -71,7 +78,7 @@ _env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),
 )
-_env.filters["score1"] = lambda v: f"{v:.1f}" if v is not None else "—"
+_env.filters["score1"] = lambda v: f"{v:.1f}" if v is not None else "-"
 _env.filters["pct"] = lambda v: f"{v * 20:.0f}%" if v is not None else "0%"  # /5 -> %
 _env.filters["signed1"] = lambda v: f"{'+' if v > 0 else ''}{v:.1f}"
 

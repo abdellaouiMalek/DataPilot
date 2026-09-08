@@ -2,7 +2,7 @@
  * Client for the back-office account page (`/api/back-office/profile`).
  *
  * Only the administrator-specific part lives here. Editing one's name, email
- * or organisation still goes through `lib/profile.ts` — that endpoint is
+ * or organisation still goes through `lib/profile.ts`, that endpoint is
  * shared with every authenticated user, and duplicating the write path would
  * mean two places that can put a person's details into Keycloak.
  */
@@ -26,7 +26,7 @@ export interface AdminProfileOverview {
   role: string | null;
   email_verified: boolean;
   created_at: string | null;
-  /** null when the event log is unavailable or has expired — unknown, not "never". */
+  /** null when the event log is unavailable or has expired, unknown, not "never". */
   last_login: string | null;
   actions_total: number;
   actions_30d: number;

@@ -5,11 +5,22 @@ does NOT carry two settings the app depends on. This script (re)applies them
 via the Admin API using the imported ``datapilot-backend`` service account
 (which holds ``manage-realm``):
 
-1. ``unmanagedAttributePolicy = ENABLED`` — without it, Keycloak silently
+1. ``unmanagedAttributePolicy = ENABLED``, without it, Keycloak silently
    strips the custom user attributes the admin module relies on
    (``archived``, ``organization``).
-2. Realm SMTP — copied from the ``SMTP_*`` vars in ``backend/.env`` so
+2. Realm SMTP, copied from the ``SMTP_*`` vars in ``backend/.env`` so
    Keycloak's own email flows work too. Skipped if no SMTP creds are set.
+3. ``resetPasswordAllowed = True``, so the login page's "Mot de passe
+   oublié ?" link (already in the login theme, conditional on this same
+   flag) actually renders and Keycloak's own reset-email flow is reachable
+   -- an instance provisioned before this flag was flipped in the realm
+   import file would otherwise still have it off.
+4. French as the realm's only/default locale, so pages we haven't custom-
+   built (email templates, OTP, terms, error pages) and Keycloak-generated
+   text inside our own pages (password-policy errors, etc.) render in
+   French instead of Keycloak's English default -- an instance provisioned
+   before this was flipped in the realm import file would otherwise still
+   have internationalization off.
 
 Idempotent: safe to run any number of times.
 
@@ -80,11 +91,49 @@ async def ensure_realm_smtp() -> None:
     print(f"- realm SMTP: configured ({SMTP_HOST}, from {SMTP_USER})")
 
 
+async def ensure_reset_password_allowed() -> None:
+    """The login theme's "Mot de passe oublié ?" link only renders when this
+    is on (``{realm.resetPasswordAllowed && (...)}`` in login.ftl); the
+    import file now ships with it enabled, but an instance provisioned from
+    an older copy of that file still has it off until this runs."""
+    realm = await kc_get("")
+    if realm.get("resetPasswordAllowed"):
+        print("- reset password: already allowed")
+        return
+    realm["resetPasswordAllowed"] = True
+    await kc_put("", realm)
+    print("- reset password: enabled")
+
+
+async def ensure_french_locale() -> None:
+    """Keycloak ships built-in French translations for everything it
+    generates itself; they're just off by default. Without this, only the
+    text we've hand-written into the custom login theme is French -- any
+    page we haven't custom-built (email templates, OTP, terms, error
+    pages) and any message Keycloak injects into our own pages
+    (password-policy errors, etc.) falls back to English."""
+    realm = await kc_get("")
+    if (
+        realm.get("internationalizationEnabled")
+        and realm.get("defaultLocale") == "fr"
+        and realm.get("supportedLocales") == ["fr"]
+    ):
+        print("- french locale: already enabled")
+        return
+    realm["internationalizationEnabled"] = True
+    realm["supportedLocales"] = ["fr"]
+    realm["defaultLocale"] = "fr"
+    await kc_put("", realm)
+    print("- french locale: enabled (fr)")
+
+
 async def main() -> None:
     print("Bootstrapping Keycloak realm settings…")
     await ensure_unmanaged_attributes()
     await ensure_login_events()
     await ensure_realm_smtp()
+    await ensure_reset_password_allowed()
+    await ensure_french_locale()
     print("Done.")
 
 

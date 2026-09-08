@@ -78,10 +78,10 @@ function flattenRecommendations(recs: Recommendation[], dimensions: Dimension[])
     const ctx = byQuestion.get(key);
     return {
       ...r,
-      dimensionName: ctx?.dim.name ?? "—",
+      dimensionName: ctx?.dim.name ?? "-",
       dimensionColor: ctx?.dim.color ?? "#9B9B9B",
-      subDimensionName: ctx?.subName ?? "—",
-      questionText: ctx?.text ?? "—",
+      subDimensionName: ctx?.subName ?? "-",
+      questionText: ctx?.text ?? "-",
       isDraft: r.questionId === null,
     };
   });
@@ -460,7 +460,7 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
                 ["Dimension", editing?.dimensionName],
                 ["Sous-dimension", editing?.subDimensionName],
                 ["Question", editing?.questionText],
-                ["Niveau déclencheur", editing ? `Niveau ${editing.triggerLevel} → Niveau ${editing.targetLevel}` : "—"],
+                ["Niveau déclencheur", editing ? `Niveau ${editing.triggerLevel} → Niveau ${editing.targetLevel}` : "-"],
                 ["Code", editing?.code],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", gap: 12 }}>
@@ -524,8 +524,8 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
                       <div>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1A1A1A" }}>Niveau {d.niveaux[0]} → {d.niveaux[0] + 1}</div>
                         <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 1 }}>
-                          Attribué automatiquement — c'est le prochain palier libre pour cette question.
-                          {occupiedLevels.length > 0 && ` Déjà configurés : ${occupiedLevels.filter(n => n !== d.niveaux[0]).sort((a, b) => a - b).join(", ") || "—"}.`}
+                          Attribué automatiquement, c'est le prochain palier libre pour cette question.
+                          {occupiedLevels.length > 0 && ` Déjà configurés : ${occupiedLevels.filter(n => n !== d.niveaux[0]).sort((a, b) => a - b).join(", ") || "-"}.`}
                         </div>
                       </div>
                     </div>
@@ -541,7 +541,7 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
         </div>
       );
 
-      // ── Step 3 — Vérification ──
+      // ── Step 3, Vérification ──
       case 3: {
         const dimName = isEdit ? editing?.dimensionName : selectedDim?.name;
         const subName = isEdit ? editing?.subDimensionName : selectedSub?.name;
@@ -552,7 +552,7 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
             <div style={{ backgroundColor: "#F7F7F7", borderRadius: 10, padding: 16, border: "1px solid rgba(0,0,0,0.08)" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Aperçu</div>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{d.titre || "—"}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{d.titre || "-"}</div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <StatutBadge value={d.statut} />
                 </div>
@@ -568,9 +568,9 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
               {
                 title: "Rattachement au référentiel",
                 rows: [
-                  ["Dimension", dimName || "—"], ["Sous-dimension", subName || "—"], ["Question", qText || "—"],
-                  ["Niveaux déclencheurs", niveaux.length ? niveaux.join(", ") : "—"],
-                  ["Catégorie (auto)", d.category || "—"],
+                  ["Dimension", dimName || "-"], ["Sous-dimension", subName || "-"], ["Question", qText || "-"],
+                  ["Niveaux déclencheurs", niveaux.length ? niveaux.join(", ") : "-"],
+                  ["Catégorie (auto)", d.category || "-"],
                 ],
               },
             ].map(({ title, rows }) => (
@@ -607,7 +607,7 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1A1A" }}>{isEdit ? "Modifier la recommandation" : "Nouvelle recommandation"}</div>
             <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>
-              Étape {step} sur {STEPS.length} — {STEPS[step - 1]}
+              Étape {step} sur {STEPS.length} - {STEPS[step - 1]}
               {!isEdit && occupiedLevels.length > 0 && ` · ${occupiedLevels.length}/4 niveaux configurés`}
             </div>
           </div>
@@ -663,7 +663,7 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: FlatRecommendation; onClos
   const GridRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px solid #F7F7F7" }}>
       <span style={{ fontSize: 11, color: "#9B9B9B", width: 140, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500, flex: 1 }}>{value || "—"}</span>
+      <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500, flex: 1 }}>{value || "-"}</span>
     </div>
   );
 
@@ -705,7 +705,7 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: FlatRecommendation; onClos
         <div style={{ flex: 1, overflowY: "auto", padding: "22px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
 
           <Section title="Description">
-            <p style={{ fontSize: 13, color: "#3A3A3A", lineHeight: 1.75, margin: 0 }}>{rec.text || "—"}</p>
+            <p style={{ fontSize: 13, color: "#3A3A3A", lineHeight: 1.75, margin: 0 }}>{rec.text || "-"}</p>
           </Section>
 
           <Section title="Rattachement au référentiel">
@@ -891,7 +891,7 @@ export function RecommendationCatalog() {
       setPresetQuestionId(draftQuestionId);
       setShowWizard(true);
     } else {
-      toast.warning("Question de brouillon introuvable — le brouillon a peut-être changé.");
+      toast.warning("Question de brouillon introuvable, le brouillon a peut-être changé.");
     }
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete("draftQuestionId"); return next; }, { replace: true });
   }, [searchParams, loading, loadError, mergedDimensions, setSearchParams]);
@@ -1134,7 +1134,7 @@ export function RecommendationCatalog() {
 
             <div style={{ padding: "11px 16px", borderTop: "1px solid #F0F0F0", display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FAFAFA" }}>
               <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-                <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> résultat{filtered.length !== 1 ? "s" : ""} — page <strong style={{ color: "#1A1A1A" }}>{page}</strong> / {totalPages}
+                <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> résultat{filtered.length !== 1 ? "s" : ""}, page <strong style={{ color: "#1A1A1A" }}>{page}</strong> / {totalPages}
               </span>
               <div style={{ display: "flex", gap: 4 }}>
                 <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ display: "flex", alignItems: "center", gap: 3, padding: "5px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500, border: "1px solid #E5E5E5", backgroundColor: "#fff", color: page === 1 ? "#D0D0D0" : "#4A4A4A", cursor: page === 1 ? "default" : "pointer" }}>

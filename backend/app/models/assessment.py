@@ -28,7 +28,7 @@ class Assessment(Base):
     __tablename__ = "assessments"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    # RESTRICT: banks with assessments can't be hard-deleted — archive instead.
+    # RESTRICT: banks with assessments can't be hard-deleted, archive instead.
     bank_id: Mapped[int] = mapped_column(
         ForeignKey("banks.id", ondelete="RESTRICT"), index=True
     )
@@ -64,6 +64,12 @@ class Assessment(Base):
     # prewarm task right after submission or on first view.
     narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Cached LLM-authored per-dimension analysis, {dimension_name: text} --
+    # see app.services.recommendation_engine.get_dimension_analysis. Same
+    # cache-once-then-persist rationale and prewarm as `narrative` above;
+    # a dict rather than one string since each dimension gets its own text.
+    dimension_analysis: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -78,7 +84,7 @@ class Assessment(Base):
 
 
 class Answer(Base):
-    """A single Likert response (1–5) to one question within an assessment."""
+    """A single Likert response (1-5) to one question within an assessment."""
 
     __tablename__ = "answers"
 

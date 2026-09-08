@@ -1,4 +1,4 @@
-"""Back-office dashboard — one aggregated read behind the whole landing page.
+"""Back-office dashboard, one aggregated read behind the whole landing page.
 
 Nothing here is stored: every figure is a projection over data another module
 already owns (assessments, banks, the published framework, the scoring bands,
@@ -85,7 +85,7 @@ DELTA_WINDOW_DAYS = 30
 MAX_BANK_BARS = 8
 MAX_ACTIVITY = 8
 
-# Slice for accounts holding none of the business roles — real users the donut
+# Slice for accounts holding none of the business roles, real users the donut
 # would otherwise silently drop, making its centre total disagree with the tile.
 ROLE_NONE = "none"
 
@@ -106,7 +106,7 @@ def _buckets(range_key: str) -> tuple[list[Any], list[str], datetime, Any]:
     """(keys, labels, window start, key-of-datetime) for the requested range.
 
     Bucketing happens in Python rather than SQL: the windows are small, and the
-    keys have to line up with a fixed set of labels anyway — a ``date_trunc``
+    keys have to line up with a fixed set of labels anyway, a ``date_trunc``
     group-by only returns the buckets that have rows, which would collapse
     quiet days out of the chart instead of drawing them at zero.
     """
@@ -184,7 +184,7 @@ async def _keycloak_snapshot() -> Optional[tuple[list[dict], dict[str, str]]]:
         )
     except HTTPException:
         logger.warning(
-            "Dashboard: Keycloak admin API unreachable — user metrics omitted"
+            "Dashboard: Keycloak admin API unreachable, user metrics omitted"
         )
         return None
     return users, roles

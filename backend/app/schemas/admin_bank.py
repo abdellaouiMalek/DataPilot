@@ -17,6 +17,7 @@ class BankAdminRead(BaseModel):
     description: str
     is_active: bool
     archived: bool
+    logo_url: Optional[str] = None
     # Derived lifecycle + evaluation state: Archivé / Désactivé / Actif / En attente
     status: str
     created_at: Optional[datetime]

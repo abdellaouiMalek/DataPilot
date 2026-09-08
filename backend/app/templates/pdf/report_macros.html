@@ -1,0 +1,279 @@
+{# ═══════════════════════════════════════════════════════════════════════
+   Shared report components.
+
+   The exhibits are identical across the three reports on purpose: a figure
+   should mean the same thing whichever document a reader picks up. Only the
+   captions and the "Lecture :" notes differ, so those stay in each template
+   and everything below is imported.
+
+   Geometry comes pre-computed from app/services/report_charts.py, these
+   macros only loop over coordinates.
+   ═══════════════════════════════════════════════════════════════════════ #}
+
+{% macro figure_head(number, title) %}
+<div class="exhibit-head">
+  <div class="exhibit-label">Figure {{ number }}</div>
+  <div class="exhibit-title">{{ title }}</div>
+</div>
+{% endmacro %}
+
+
+{% macro radar_svg(radar, width_mm=104) %}
+<svg width="{{ width_mm }}mm" height="{{ (width_mm * radar.height / radar.width) | round(2) }}mm"
+     viewBox="0 0 {{ radar.width }} {{ radar.height }}">
+  {% for ring in radar.rings %}
+  <polygon points="{{ ring.points }}" fill="none"
+           stroke="{{ '#C7CDD5' if ring.level == 5 else '#E8EBEF' }}" stroke-width="0.9" />
+  {% endfor %}
+  {% for ax in radar.axes %}
+  <line x1="{{ radar.cx }}" y1="{{ radar.cy }}" x2="{{ ax.x2 }}" y2="{{ ax.y2 }}"
+        stroke="#E8EBEF" stroke-width="0.9" />
+  {% endfor %}
+  {% if radar.reference_ring %}
+  <polygon points="{{ radar.reference_ring }}" fill="none" stroke="#B8952A"
+           stroke-width="1.1" stroke-dasharray="4 2.6" />
+  {% endif %}
+  {% if radar.overlay_polygon %}
+  <polygon points="{{ radar.overlay_polygon }}" fill="none" stroke="#9AA3AE"
+           stroke-width="1.4" stroke-dasharray="4 2.6" stroke-linejoin="round" />
+  {% endif %}
+  <polygon points="{{ radar.polygon }}" fill="#10161F" fill-opacity="0.09"
+           stroke="#10161F" stroke-width="1.9" stroke-linejoin="round" />
+  {% for v in radar.vertices %}
+  <circle cx="{{ v.x }}" cy="{{ v.y }}" r="2.6" fill="#10161F" />
+  {% endfor %}
+  {% for s in radar.scale_labels %}
+  <text x="{{ s.x }}" y="{{ s.y }}" text-anchor="middle" font-size="7"
+        fill="#AEB6C0" font-family="'Helvetica Neue', Arial, sans-serif">{{ s.text }}</text>
+  {% endfor %}
+  {% for label in radar.labels %}
+    {% for line in label.lines %}
+    <text x="{{ line.x }}" y="{{ line.y }}" text-anchor="{{ label.anchor }}" font-size="9.2"
+          fill="#3A434F" font-family="'Helvetica Neue', Arial, sans-serif">{{ line.text }}</text>
+    {% endfor %}
+  {% endfor %}
+</svg>
+{% endmacro %}
+
+
+
+{% macro evolution_svg(chart, width_mm=174) %}
+<svg width="{{ width_mm }}mm" height="{{ (width_mm * chart.height / chart.width) | round(2) }}mm"
+     viewBox="0 0 {{ chart.width }} {{ chart.height }}">
+  {% for tick in chart.ticks %}
+  <line x1="{{ tick.x }}" y1="{{ chart.top }}" x2="{{ tick.x }}" y2="{{ chart.baseline }}"
+        stroke="#E8EBEF" stroke-width="0.8" />
+  {% endfor %}
+  <line x1="{{ chart.threshold_x }}" y1="{{ chart.top }}" x2="{{ chart.threshold_x }}"
+        y2="{{ chart.baseline }}" stroke="#6F7A88" stroke-width="1.2" stroke-dasharray="3 2.5" />
+  {% for row in chart.rows %}
+  <line x1="{{ row.x_initial }}" y1="{{ row.cy }}" x2="{{ row.x_current }}" y2="{{ row.cy }}"
+        stroke="{{ row.color }}" stroke-width="2.4" />
+  <circle cx="{{ row.x_initial }}" cy="{{ row.cy }}" r="3.6" fill="#FFFFFF"
+          stroke="#9AA3AE" stroke-width="1.3" />
+  <circle cx="{{ row.x_current }}" cy="{{ row.cy }}" r="4.4" fill="{{ row.color }}" />
+  {% endfor %}
+  <line x1="{{ chart.plot_x0 }}" y1="{{ chart.baseline }}" x2="{{ chart.plot_x1 }}"
+        y2="{{ chart.baseline }}" stroke="#10161F" stroke-width="1" />
+  {% for tick in chart.ticks %}
+  <text x="{{ tick.x }}" y="{{ tick.y_label }}" text-anchor="middle" font-size="9"
+        fill="#8A94A1" font-family="'Helvetica Neue', Arial, sans-serif">{{ tick.label }}</text>
+  {% endfor %}
+  {% for item in chart.legend %}
+  {% if item.filled %}
+  <circle cx="{{ item.cx }}" cy="{{ item.cy }}" r="4.4" fill="#10161F" />
+  {% else %}
+  <circle cx="{{ item.cx }}" cy="{{ item.cy }}" r="3.6" fill="#FFFFFF"
+          stroke="#9AA3AE" stroke-width="1.3" />
+  {% endif %}
+  <text x="{{ item.text_x }}" y="{{ item.text_y }}" font-size="8.6"
+        fill="{{ '#10161F' if item.filled else '#6F7A88' }}"
+        font-family="'Helvetica Neue', Arial, sans-serif">{{ item.label }}</text>
+  {% endfor %}
+  {% for row in chart.rows %}
+    {% for line in row.label_lines %}
+    <text x="{{ row.label_x }}" y="{{ line.y }}" text-anchor="end" font-size="9.4"
+          fill="#3A434F" font-family="'Helvetica Neue', Arial, sans-serif">{{ line.text }}</text>
+    {% endfor %}
+  <text x="{{ chart.initial_x }}" y="{{ row.value_y }}" text-anchor="end" font-size="9.4"
+        fill="#8A94A1" font-family="'Helvetica Neue', Arial, sans-serif">{{ row.initial_value }}</text>
+  <text x="{{ chart.current_x }}" y="{{ row.value_y }}" text-anchor="end" font-size="10.4"
+        font-weight="700" fill="#10161F"
+        font-family="'Helvetica Neue', Arial, sans-serif">{{ row.current_value }}</text>
+  {% endfor %}
+</svg>
+{% endmacro %}
+
+
+{% macro score_trend_svg(chart, width_mm=174) %}
+<svg width="{{ width_mm }}mm" height="{{ (width_mm * chart.height / chart.width) | round(2) }}mm"
+     viewBox="0 0 {{ chart.width }} {{ chart.height }}">
+  {% for tick in chart.ticks %}
+  <line x1="{{ chart.plot_x0 }}" y1="{{ tick.y }}" x2="{{ chart.plot_x1 }}" y2="{{ tick.y }}"
+        stroke="#F1F3F5" stroke-width="0.8" />
+  <text x="{{ (chart.plot_x0 | float) - 6 }}" y="{{ tick.y }}" text-anchor="end" dy="0.32em" font-size="8"
+        fill="#8A94A1" font-family="'Helvetica Neue', Arial, sans-serif">{{ tick.label }}</text>
+  {% endfor %}
+  <line x1="{{ chart.plot_x0 }}" y1="{{ chart.threshold_y }}" x2="{{ chart.plot_x1 }}" y2="{{ chart.threshold_y }}"
+        stroke="#8A94A1" stroke-width="1" stroke-dasharray="3 2.5" />
+  <polyline points="{{ chart.polyline }}" fill="none" stroke="#10161F" stroke-width="2.2"
+            stroke-linejoin="round" stroke-linecap="round" />
+  {% for d in chart.dots %}
+  <circle cx="{{ d.x }}" cy="{{ d.y }}" r="{{ d.r }}" fill="{{ '#FFE600' if d.filled else '#FFFFFF' }}"
+          stroke="#10161F" stroke-width="{{ '2' if d.filled else '1.4' }}" />
+  <text x="{{ d.x }}" y="{{ d.value_y }}" text-anchor="middle" font-size="9" font-weight="700"
+        fill="#10161F" font-family="'Helvetica Neue', Arial, sans-serif">{{ d.value }}</text>
+  <text x="{{ d.label_x }}" y="{{ d.label_y }}" text-anchor="middle" font-size="7.6"
+        fill="#8A94A1" font-family="'Helvetica Neue', Arial, sans-serif">{{ d.label }}</text>
+  {% endfor %}
+  <line x1="{{ chart.plot_x0 }}" y1="{{ chart.baseline }}" x2="{{ chart.plot_x1 }}" y2="{{ chart.baseline }}"
+        stroke="#10161F" stroke-width="1" />
+</svg>
+{% endmacro %}
+
+
+{% macro matrix_svg(matrix, width_mm=174) %}
+<svg width="{{ width_mm }}mm" height="{{ (width_mm * matrix.height / matrix.width) | round(2) }}mm"
+     viewBox="0 0 {{ matrix.width }} {{ matrix.height }}">
+  <line x1="{{ matrix.divider_x }}" y1="{{ matrix.y0 }}" x2="{{ matrix.divider_x }}" y2="{{ matrix.y1 }}"
+        stroke="#E8EBEF" stroke-width="1" stroke-dasharray="3 2.5" />
+  <line x1="{{ matrix.x0 }}" y1="{{ matrix.divider_y }}" x2="{{ matrix.x1 }}" y2="{{ matrix.divider_y }}"
+        stroke="#E8EBEF" stroke-width="1" stroke-dasharray="3 2.5" />
+  {% for q in matrix.quadrants %}
+  <text x="{{ q.x }}" y="{{ q.y }}" text-anchor="{{ q.anchor }}" font-size="8" font-weight="700"
+        fill="#B9C0C9" letter-spacing="1.1"
+        font-family="'Helvetica Neue', Arial, sans-serif">{{ q.text | upper }}</text>
+  {% endfor %}
+  <line x1="{{ matrix.x0 }}" y1="{{ matrix.y0 }}" x2="{{ matrix.x0 }}" y2="{{ matrix.y1 }}"
+        stroke="#10161F" stroke-width="1" />
+  <line x1="{{ matrix.x0 }}" y1="{{ matrix.y1 }}" x2="{{ matrix.x1 }}" y2="{{ matrix.y1 }}"
+        stroke="#10161F" stroke-width="1" />
+  {% for p in matrix.points %}
+    {% if p.regulatory %}
+    <circle cx="{{ p.x }}" cy="{{ p.y }}" r="12.4" fill="none" stroke="#B8952A" stroke-width="1.4" />
+    {% endif %}
+  <circle cx="{{ p.x }}" cy="{{ p.y }}" r="9.4" fill="#10161F" />
+  <text x="{{ p.x }}" y="{{ p.y }}" text-anchor="middle" dy="0.34em" font-size="9" font-weight="700"
+        fill="#FFE600" font-family="'Helvetica Neue', Arial, sans-serif">{{ p.rank }}</text>
+  {% endfor %}
+  {% for tick in matrix.ticks %}
+  <text x="{{ tick.x }}" y="{{ tick.y }}" text-anchor="middle" font-size="9"
+        fill="#6F7A88" font-family="'Helvetica Neue', Arial, sans-serif">{{ tick.label }}</text>
+  {% endfor %}
+  <text x="{{ matrix.x0 }}" y="16" text-anchor="start" font-size="8" font-weight="700" letter-spacing="1.1"
+        fill="#8A94A1" font-family="'Helvetica Neue', Arial, sans-serif">IMPACT ESTIMÉ ↑</text>
+</svg>
+{% endmacro %}
+
+
+{% macro scale_legend(scale) %}
+<div class="eyebrow" style="margin-bottom: 2.5mm;">Échelle de maturité</div>
+<div class="scale">
+  {% for band in scale %}
+  <div class="scale-step">
+    <div class="scale-swatch" style="background: {{ band.color }};"></div>
+    <div class="scale-label">{{ band.label }}</div>
+    <div class="scale-range num">{{ band.range }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro ranked_list(title, rows, colored=false) %}
+<div class="ranked">
+  <div class="eyebrow" style="margin-bottom: 1.5mm;">{{ title }}</div>
+  {% for d in rows %}
+  <div class="ranked-row">
+    <span class="ranked-name">{{ d.name }}</span>
+    <span class="ranked-score num"{% if colored %} style="color: {{ d.color }};"{% endif %}>{{ d.score | score1 }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro findings(items) %}
+<div class="findings">
+  {% for f in items %}
+  <div class="finding">
+    <span class="finding-mark"></span>
+    <div><strong>{{ f.lead }}</strong> {{ f.text }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro narrative_block(narrative, label='Analyse · moteur EY AI') %}
+<div class="eyebrow" style="margin-bottom: 2mm;">{{ label }}</div>
+<p class="lede">{{ narrative }}</p>
+{% endmacro %}
+
+
+{% macro dimension_table(dimensions) %}
+<table>
+  <thead>
+    <tr>
+      <th style="width: 8mm;">N°</th>
+      <th style="width: 44mm;">Dimension</th>
+      <th style="width: 14mm; text-align: right;">Poids</th>
+      <th style="width: 20mm; text-align: right;">Score</th>
+      <th style="width: 26mm;">Niveau</th>
+      <th>Interprétation</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in dimensions %}
+    <tr>
+      <td class="t-rank num">{{ '%02d' | format(d.index) }}</td>
+      <td class="t-name">{{ d.name }}</td>
+      <td class="t-num num" style="font-weight: 400; color: #6F7A88;">{{ d.weight }} %</td>
+      <td class="t-num num">
+        {{ d.score | score1 }}
+        <div class="score-track"><div class="score-fill" style="width: {{ (d.score / 5 * 100) | round(1) }}%; background: {{ d.color }};"></div></div>
+      </td>
+      <td>
+        <span class="chip" style="background: {{ d.color }}1A; color: {{ d.color }};">{{ d.level_label }}</span>
+      </td>
+      <td class="t-note">{{ d.explanation or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+
+{% macro dimension_analyses(dimensions) %}
+{% for d in dimensions %}
+<div class="entry">
+  <div class="entry-rank num">{{ '%02d' | format(d.index) }}</div>
+  <div class="entry-body">
+    <div class="entry-title">{{ d.name }}</div>
+    <div class="entry-meta">
+      {{ d.score | score1 }} / 5<span class="sep">·</span><span style="color: {{ d.color }};">{{ d.level_label }}</span><span class="sep">·</span>Poids {{ d.weight }} % du score global
+    </div>
+    <div class="entry-text">{{ d.analysis }}</div>
+  </div>
+</div>
+{% endfor %}
+{% endmacro %}
+
+
+{% macro plan_entries(recommendations) %}
+{% for r in recommendations %}
+<div class="entry">
+  <div class="entry-rank num">{{ '%02d' | format(r.rank) }}</div>
+  <div class="entry-body">
+    <div class="entry-title">{{ r.title }}</div>
+    <div class="entry-meta">
+      {{ r.dimension_name }}<span class="sep">·</span>{{ r.effort_label }}<span class="sep">·</span>Niveau {{ r.trigger_level }} &rarr; {{ r.target_level }}{% if r.regulatory_flag %}<span class="sep">·</span><span class="reg">Obligation réglementaire</span>{% endif %}
+    </div>
+    <div class="entry-text">{{ r.text }}</div>
+    {% if r.justification %}
+    <div class="entry-why"><b>Pourquoi ce rang</b><br>{{ r.justification }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endmacro %}

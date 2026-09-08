@@ -39,6 +39,10 @@ yarn-error.log*
 pnpm-debug.log*
 
 
+# ---- Uploaded assets (backend) ----
+backend/app/static/logos/*
+!backend/app/static/logos/.gitkeep
+
 # ---- Keycloak (local theme deploy / DB backup / realm import) ----
 # Ignore everything under keycloak/ EXCEPT the realm import file (kept for compose bootstrap)
 keycloak/*

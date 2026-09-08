@@ -4,7 +4,7 @@ Identity lives entirely in Keycloak (no local users table). Business roles are
 Keycloak realm roles; the UI's French labels map 1:1 to them. Passwords are
 never seen by the admin: creation and reset generate a random temporary
 password (``temporary: true`` forces a change at first login) that the backend
-emails directly to the user — Keycloak itself cannot email passwords, so the
+emails directly to the user, Keycloak itself cannot email passwords, so the
 mail goes out via ``app.core.mailer``.
 """
 
@@ -253,7 +253,7 @@ async def _last_login_by_user() -> dict[str, datetime]:
 
     Requires ``eventsEnabled`` on the realm (set by ``app.keycloak_bootstrap``)
     and the ``view-events`` role on the service account. Degrades to an empty
-    map (column shows "—") instead of breaking the list when either is missing.
+    map (column shows "-") instead of breaking the list when either is missing.
     Events come newest-first, so the first occurrence per user wins.
     """
     try:
@@ -366,7 +366,7 @@ async def _email_credentials(
             "Votre mot de passe DataPilot vient d'être réinitialisé.\n\n"
             f"    Identifiant : {to}\n"
             f"    Mot de passe temporaire : {password}\n\n"
-            f"Connectez-vous sur {APP_URL} — vous devrez choisir un nouveau mot de passe "
+            f"Connectez-vous sur {APP_URL}, vous devrez choisir un nouveau mot de passe "
             "lors de votre première connexion.\n\n"
             "Ce message a été généré automatiquement, merci de ne pas y répondre."
         )
@@ -439,7 +439,7 @@ async def create_user(
         attributes[CREATED_BY_ATTR] = [creator_sub]
 
     representation: dict[str, Any] = {
-        # A stable, opaque username decoupled from email — the realm has
+        # A stable, opaque username decoupled from email, the realm has
         # loginWithEmailAllowed, so this doesn't affect login. Deriving it from
         # email instead created a footgun: usernames can't be edited afterward
         # (editUsernameAllowed is off), so a changed email left a stale
@@ -463,7 +463,7 @@ async def create_user(
 
     # Role/password setup isn't transactional with the user-creation call above.
     # If either step fails (e.g. a transient Keycloak hiccup), the account would
-    # otherwise be left half-configured — invisible to the admin but blocking a
+    # otherwise be left half-configured, invisible to the admin but blocking a
     # retry with a duplicate-email 409. Roll it back so failure here is all-or-nothing.
     try:
         await _set_business_role(user_id, payload.role)
@@ -480,7 +480,7 @@ async def create_user(
 
     # No credentials email for an account born archived: it can't log in, and a
     # reset can be sent after restoration. Otherwise, the account exists even if
-    # the email fails — tell the admin how to recover instead of failing as if
+    # the email fails, tell the admin how to recover instead of failing as if
     # nothing was created.
     if payload.status != "Archivé":
         try:
@@ -536,7 +536,7 @@ async def update_user(
     previous = _audit_snapshot(user, await _user_role(user_id))
     # username is intentionally left untouched: the realm has editUsernameAllowed
     # disabled (admin API edits are rejected too), and login works by email
-    # anyway (loginWithEmailAllowed) — see create_user for why username is no
+    # anyway (loginWithEmailAllowed), see create_user for why username is no
     # longer derived from email at all.
     user.update(
         {
@@ -671,7 +671,7 @@ async def reset_user_password(
     await _email_credentials(
         email, user.get("firstName") or "", temp_password, created=False
     )
-    # The password itself is never recorded — only that a reset was sent.
+    # The password itself is never recorded, only that a reset was sent.
     await audit.record(
         module=MODULE_USERS,
         action="Réinitialisation du mot de passe",

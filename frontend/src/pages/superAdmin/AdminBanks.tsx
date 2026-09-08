@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Search, Plus, Edit2, ChevronDown, X,
-  Building2, CheckCircle2,
+  Building2, CheckCircle2, ImagePlus,
   MoreHorizontal, Download,
   Trash2, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listBanks, createBank, updateBank, setBankActive, setBankArchived,
+  uploadBankLogo, deleteBankLogo, bankLogoSrc,
 } from "@/lib/adminBanks";
 import { AdminLoader } from "@/components/AdminLoader";
 import { useSeededSearch } from "@/hooks/useSeededSearch";
@@ -25,6 +26,7 @@ interface Bank {
   description: string;
   isActive: boolean;
   archived: boolean;
+  logoUrl: string | null;
   status: string;
   addedAt: string;
   score: number | null;
@@ -36,19 +38,20 @@ function toBank(b: AdminBank): Bank {
   return {
     id: b.id,
     name: b.name,
-    country: b.country || "—",
-    sector: b.sector || "—",
+    country: b.country || "-",
+    sector: b.sector || "-",
     contact: b.contact || "",
     description: b.description || "",
     isActive: b.is_active,
     archived: b.archived,
+    logoUrl: b.logo_url,
     status: b.status,
-    addedAt: b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "—",
+    addedAt: b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "-",
     score: b.score,
     assessmentsCount: b.assessments_count,
     lastAssessmentAt: b.last_assessment_at
       ? new Date(b.last_assessment_at).toLocaleDateString("fr-FR")
-      : "—",
+      : "-",
   };
 }
 
@@ -59,6 +62,10 @@ function errorMessage(err: unknown): string {
 
 const statuses = ["Tous les statuts", "Actif", "Désactivé", "Archivé"];
 
+// Mirrors the backend's app.core.storage allowlist.
+const ALLOWED_LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
 // ── Total card ────────────────────────────────────────────────────────────────
 
 function TotalCard({ banks }: { banks: Bank[] }) {
@@ -68,7 +75,7 @@ function TotalCard({ banks }: { banks: Bank[] }) {
   const scored = visible.filter(b => b.score != null);
   const avgScore = scored.length
     ? (scored.reduce((a, b) => a + (b.score as number), 0) / scored.length).toFixed(1)
-    : "—";
+    : "-";
   const inactive = visible.filter(b => b.status === "Désactivé").length;
 
   return (
@@ -83,7 +90,7 @@ function TotalCard({ banks }: { banks: Bank[] }) {
       onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = "0 6px 20px rgba(0,0,0,0.10)"; el.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = "0 1px 6px rgba(0,0,0,0.05)"; el.style.transform = "translateY(0)"; }}
     >
-      {/* Left — dark block */}
+      {/* Left, dark block */}
       <div style={{ backgroundColor: "#1A1A1A", padding: "22px 28px", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 160 }}>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Total</div>
         <div style={{ fontSize: 48, fontWeight: 900, color: "#FFE600", letterSpacing: "-0.04em", lineHeight: 1 }}>{total}</div>
@@ -93,7 +100,7 @@ function TotalCard({ banks }: { banks: Bank[] }) {
       {/* Divider */}
       <div style={{ width: 1, backgroundColor: "rgba(0,0,0,0.07)" }} />
 
-      {/* Right — 3 stats inline */}
+      {/* Right, 3 stats inline */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "20px 28px", gap: 0 }}>
         {[
           { value: actif,    label: "Actives",     sub: `sur ${total} banques` },
@@ -130,15 +137,83 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
-function BankModal({ bank, onClose, onSaved }: { bank?: Bank | null; onClose: () => void; onSaved: () => void }) {
+function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | null; onClose: () => void; onSaved: () => void; onLogoChanged: () => void }) {
   const [form, setForm] = useState({
     name: bank?.name || "",
-    country: bank && bank.country !== "—" ? bank.country : "Tunisie",
-    sector: bank && bank.sector !== "—" ? bank.sector : "",
+    country: bank && bank.country !== "-" ? bank.country : "Tunisie",
+    sector: bank && bank.sector !== "-" ? bank.sector : "",
     contact: bank?.contact || "",
     description: bank?.description || "",
   });
   const [saving, setSaving] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(bank?.logoUrl ?? null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  // No bank id yet while creating: the file is held here and only actually
+  // uploaded once the bank exists (right after it's created).
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingLogoFile) {
+      setPendingPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingLogoFile);
+    setPendingPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingLogoFile]);
+
+  const avatarSrc = pendingPreview ?? bankLogoSrc(logoUrl);
+
+  const handleLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow picking the same file again later
+    if (!file) return;
+    if (!ALLOWED_LOGO_TYPES.has(file.type)) {
+      toast.error("Fichier invalide", { description: "Format non supporté (PNG, JPG ou WebP uniquement)." });
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error("Fichier invalide", { description: "Le fichier dépasse 2 Mo." });
+      return;
+    }
+    if (!bank) {
+      // Creating: nothing to attach the file to yet, hold it for submit.
+      setPendingLogoFile(file);
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const updated = await uploadBankLogo(bank.id, file);
+      setLogoUrl(updated.logo_url);
+      onLogoChanged();
+      toast.success("Logo mis à jour", { description: bank.name });
+    } catch (err) {
+      toast.error("Échec de l'envoi du logo", { description: errorMessage(err) });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (pendingLogoFile) {
+      setPendingLogoFile(null);
+      return;
+    }
+    if (!bank) return;
+    setLogoBusy(true);
+    try {
+      await deleteBankLogo(bank.id);
+      setLogoUrl(null);
+      onLogoChanged();
+      toast.success("Logo supprimé", { description: bank.name });
+    } catch (err) {
+      toast.error("Échec de la suppression", { description: errorMessage(err) });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
@@ -158,7 +233,18 @@ function BankModal({ bank, onClose, onSaved }: { bank?: Bank | null; onClose: ()
         await updateBank(bank.id, payload);
         toast.success("Banque mise à jour", { description: payload.name });
       } else {
-        await createBank(payload);
+        const created = await createBank(payload);
+        if (pendingLogoFile) {
+          try {
+            await uploadBankLogo(created.id, pendingLogoFile);
+          } catch (err) {
+            toast.error("Banque ajoutée, mais l'envoi du logo a échoué", {
+              description: `${errorMessage(err)} Vous pourrez réessayer depuis « Modifier ».`,
+            });
+            onSaved();
+            return;
+          }
+        }
         toast.success("Banque ajoutée", { description: payload.name });
       }
       onSaved();
@@ -181,6 +267,35 @@ function BankModal({ bank, onClose, onSaved }: { bank?: Bank | null; onClose: ()
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
         </div>
         <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={lbl}>Logo</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <BankAvatar name={form.name || "?"} src={avatarSrc} size={52} />
+              <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoPick} style={{ display: "none" }} />
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={logoBusy}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: logoBusy ? "wait" : "pointer", color: "#1A1A1A" }}
+              >
+                <ImagePlus size={13} /> {avatarSrc ? "Changer" : "Ajouter un logo"}
+              </button>
+              {avatarSrc && (
+                <button
+                  type="button"
+                  onClick={handleLogoRemove}
+                  disabled={logoBusy}
+                  style={{ padding: "7px 11px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,0.12)", backgroundColor: "#fff", cursor: logoBusy ? "wait" : "pointer", color: "#CC0000" }}
+                >
+                  Retirer
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 6 }}>
+              PNG, JPG ou WebP, 2 Mo maximum.
+              {!bank && pendingLogoFile && " Envoyé dès la création de la banque."}
+            </div>
+          </div>
           <div>
             <label style={lbl}>Nom de la banque *</label>
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="ex. BIAT" autoComplete="off" style={inp} />
@@ -225,6 +340,26 @@ function BankModal({ bank, onClose, onSaved }: { bank?: Bank | null; onClose: ()
 
 const avatarColors = ["#1A1A1A","#0277BD","#2E7D32","#6B21A8","#B45309","#9A3412","#0369A1","#065F46","#7C2D12","#1E3A5F","#4C1D95","#134E4A"];
 const avatarColor = (name: string) => avatarColors[name.charCodeAt(0) % avatarColors.length];
+
+/** The uploaded logo when there is one, otherwise the same colored-initials
+ * placeholder used everywhere a bank has no logo yet. `src` is a ready-to-use
+ * URL (already resolved against the API origin, or a local blob: preview). */
+function BankAvatar({ name, src, size = 34 }: { name: string; src: string | null; size?: number }) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "contain", background: "#fff", border: "1px solid rgba(0,0,0,0.08)", flexShrink: 0 }}
+      />
+    );
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", backgroundColor: avatarColor(name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.32, fontWeight: 800, color: "#fff", flexShrink: 0, letterSpacing: "0.02em" }}>
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -336,7 +471,7 @@ export function BankManagement() {
 
     ws.mergeCells("A2:I2");
     const sub = ws.getCell("A2");
-    sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — ${rows.length} banque${rows.length > 1 ? "s" : ""}`;
+    sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, ${rows.length} banque${rows.length > 1 ? "s" : ""}`;
     sub.font = { size: 10, color: { argb: "FF6B6B6B" } };
 
     const header = ws.getRow(3);
@@ -351,7 +486,7 @@ export function BankManagement() {
 
     for (const b of rows) {
       const row = ws.addRow([
-        b.name, b.country, b.sector, b.contact || "—",
+        b.name, b.country, b.sector, b.contact || "-",
         b.score != null ? `${b.score.toFixed(1)}/5` : "Non évalué",
         b.assessmentsCount, b.lastAssessmentAt, b.status, b.addedAt,
       ]);
@@ -444,9 +579,7 @@ export function BankManagement() {
                 {/* Banque */}
                 <td style={{ padding: "13px 16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", backgroundColor: avatarColor(bank.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0, letterSpacing: "0.02em" }}>
-                      {bank.name.slice(0, 2).toUpperCase()}
-                    </div>
+                    <BankAvatar name={bank.name} src={bankLogoSrc(bank.logoUrl)} />
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1A1A" }}>{bank.name}</div>
                   </div>
                 </td>
@@ -481,7 +614,7 @@ export function BankManagement() {
                 <td style={{ padding: "13px 16px", fontSize: 12, color: "#4A4A4A", whiteSpace: "nowrap" }}>
                   {bank.assessmentsCount > 0
                     ? <>{bank.assessmentsCount} · <span style={{ color: "#9B9B9B" }}>dern. {bank.lastAssessmentAt}</span></>
-                    : <span style={{ color: "#C0C0C0" }}>—</span>}
+                    : <span style={{ color: "#C0C0C0" }}>-</span>}
                 </td>
 
                 {/* Statut */}
@@ -577,7 +710,7 @@ export function BankManagement() {
             <span style={{ fontSize: 12, color: "#9B9B9B" }}>
               Affichage de{" "}
               <strong style={{ color: "#1A1A1A" }}>
-                {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{(currentPage - 1) * pageSize + paged.length}
+                {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{(currentPage - 1) * pageSize + paged.length}
               </strong>{" "}
               sur <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> banque{filtered.length !== 1 ? "s" : ""}
             </span>
@@ -628,6 +761,7 @@ export function BankManagement() {
             setShowModal(false);
             reload();
           }}
+          onLogoChanged={reload}
         />
       )}
     </div>

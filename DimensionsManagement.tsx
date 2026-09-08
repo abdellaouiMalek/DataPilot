@@ -287,7 +287,7 @@ function QuestionForm({ dimName, subDimName, onBack, onSave, isLast }: {
           </select>
         </div>
         <div>
-          <label style={lbl}>Poids (1–10)</label>
+          <label style={lbl}>Poids (1-10)</label>
           <input type="number" min={1} max={10} value={form.weight} onChange={e => setForm(p => ({ ...p, weight: +e.target.value }))} style={inp} />
         </div>
       </div>
@@ -368,7 +368,7 @@ function QuestionEditModal({ question, dimName, subDimName, onClose }: {
               </select>
             </div>
             <div>
-              <label style={lbl}>Poids (1–10)</label>
+              <label style={lbl}>Poids (1-10)</label>
               <input type="number" min={1} max={10} value={form.weight} onChange={e => setForm(p => ({ ...p, weight: +e.target.value }))} style={inp} />
             </div>
             <div>
@@ -671,7 +671,7 @@ export function DimensionsManagement() {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>Pondérations par dimension</span>
           <span style={{ fontSize: 11, color: "#9B9B9B" }}>{dimensions.reduce((a, d) => a + d.weight, 0)}% répartis sur {dimensions.length} dimensions</span>
         </div>
-        {/* Tall segmented bar — pourcentage centré dans chaque segment */}
+        {/* Tall segmented bar, pourcentage centré dans chaque segment */}
         <div style={{ display: "flex", height: 42, borderRadius: 6, overflow: "hidden", gap: 3, marginBottom: 12 }}>
           {dimensions.map(d => (
             <div
@@ -810,7 +810,7 @@ export function DimensionsManagement() {
         <div style={{ position: "fixed", inset: 0, zIndex: 1000, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ backgroundColor: "#fff", borderRadius: 10, width: 480, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.14)", overflow: "hidden" }}>
             <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>Modifier — {editDim.name}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>Modifier, {editDim.name}</div>
               <button onClick={() => setEditDim(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={16} /></button>
             </div>
             <div style={{ padding: "22px", display: "flex", flexDirection: "column", gap: 14 }}>

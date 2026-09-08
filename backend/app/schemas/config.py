@@ -36,6 +36,12 @@ class LookupRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BankLookupRead(LookupRead):
+    """Banks carry a logo the plain lookup shape doesn't need."""
+
+    logo_url: Optional[str] = None
+
+
 class MaturityLevelRead(BaseModel):
     id: int
     label: str

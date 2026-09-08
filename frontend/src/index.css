@@ -1,13 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..700;1,14..32,400..700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-sans: Arial, sans-serif;
-    --font-display: Arial, sans-serif;
-    --font-body: Arial, sans-serif;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -136,11 +136,11 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
   html {
     font-size: 16px;
-    font-family: Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 
   input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
@@ -164,7 +164,7 @@
 
   /* Inputs that live inside a styled wrapper (e.g. the admin search bar):
      the wrapper carries the border/background, so the inner input must stay
-     invisible on focus — no white fill, no ring. */
+     invisible on focus, no white fill, no ring. */
   input[data-plain-focus]:focus {
     background-color: transparent !important;
     box-shadow: none !important;
@@ -174,7 +174,7 @@
 
 /* ── Search field ───────────────────────────────────────────────────────────
    A filled, borderless input with the icon floating over it and a soft halo
-   in place of an outline — so there is one surface, never a box inside a box.
+   in place of an outline, so there is one surface, never a box inside a box.
    The 2px border is transparent on purpose: it reserves the space the focus
    state colours in, so nothing shifts when the field is activated. */
 

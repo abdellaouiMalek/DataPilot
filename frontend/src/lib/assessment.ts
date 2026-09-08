@@ -32,6 +32,7 @@ export interface AssessmentResult {
   id: number;
   bank_id: number;
   bank: string;
+  bank_logo_url: string | null;
   department: string | null;
   evaluator_role: string | null;
   score_global: number | null;
@@ -59,7 +60,7 @@ export const getMyAssessments = () =>
 /**
  * Une évaluation, par son id.
  *
- * C'est ce qui rend `/results/:id`, `/recommendations/:id` et `/simulation/:id`
+ * C'est ce qui rend `/results/:id` et `/recommendations/:id`
  * rechargeables : la page se reconstruit depuis l'URL au lieu de dépendre de
  * l'état du routeur, que le navigateur jette à chaque rafraîchissement.
  * 404 si l'évaluation appartient à une autre banque.

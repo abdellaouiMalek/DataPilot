@@ -5,11 +5,11 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ArrowRight, Sparkles, Check, Loader2, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ArrowRight, Sparkles, Check, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
 import { FlowHeader } from '../components/FlowHeader';
-import { getMaturityLevels } from '../lib/config';
+import { getMaturityLevels, bankLogoSrc } from '../lib/config';
 import type { MaturityLevel } from '../lib/config';
 import { getMyAssessments } from '../lib/assessment';
 import type { AssessmentResult } from '../lib/assessment';
@@ -52,9 +52,6 @@ export function EvolutionPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [initId, setInitId] = useState<number | null>(null);
-  const [currId, setCurrId] = useState<number | null>(null);
-
   const [narrative, setNarrative] = useState<string | null>(null);
   const [narrStatus, setNarrStatus] = useState<NarrStatus>('idle');
   const [stream, setStream] = useState('');
@@ -71,7 +68,7 @@ export function EvolutionPage() {
       .catch(() => !cancelled && setLoadError(true))
       .finally(() => !cancelled && setLoading(false));
 
-    // The full trend line is a secondary enhancement — its failure shouldn't
+    // The full trend line is a secondary enhancement, its failure shouldn't
     // block the (essential) dimension comparison from rendering.
     getMyAssessments()
       .then((mine) => !cancelled && setAllAssessments(mine))
@@ -83,19 +80,16 @@ export function EvolutionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (sortedSelected.length >= 2) {
-      setInitId(sortedSelected[0].id);
-      setCurrId(sortedSelected[sortedSelected.length - 1].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedSelected]);
+  // The N compared evaluations reduce to the same two bookends the radar,
+  // KPI strip and AI narrative already knew how to read before this page
+  // supported more than a pair: the earliest and the latest of the
+  // selection. Evaluations in between only feed the trend chart and the
+  // per-dimension table's extra columns.
+  const stateInit = sortedSelected[0];
+  const stateCurr = sortedSelected[sortedSelected.length - 1];
 
-  const stateInit = sortedSelected.find((a) => a.id === initId) ?? sortedSelected[0];
-  const stateCurr = sortedSelected.find((a) => a.id === currId) ?? sortedSelected[sortedSelected.length - 1];
-
-  // Executive synthesis — a single LLM-authored analysis of the evolution
-  // between the two selected periods together (not one narrative per
+  // Executive synthesis, a single LLM-authored analysis of the evolution
+  // between the two bookend periods together (not one narrative per
   // period read side by side), streamed in.
   useEffect(() => {
     if (!stateInit || !stateCurr) return;
@@ -194,20 +188,30 @@ export function EvolutionPage() {
   const levelCurr = getMaturityLevel(scoreCurr);
   const bank = stateCurr.bank;
 
-  // Only compare dimensions present on both selected assessments — the
-  // questionnaire's dimension set can change between submissions.
-  const dimMap = new Map<string, { name: string; initial: number | null; current: number | null }>();
-  for (const d of stateInit.dimension_scores) {
-    dimMap.set(d.key, { name: d.name, initial: d.score, current: null });
-  }
-  for (const d of stateCurr.dimension_scores) {
-    const existing = dimMap.get(d.key);
-    if (existing) existing.current = d.score;
-    else dimMap.set(d.key, { name: d.name, initial: null, current: d.score });
-  }
+  // A score per compared evaluation, oldest to newest, keyed by dimension --
+  // the detail table shows every period, but a dimension only counts as
+  // "compared" (and only figures in the radar/variation/KPI figures) when
+  // both bookends scored it, since the questionnaire's dimension set can
+  // change between submissions and the bookends are what everything else
+  // here reads movement off.
+  const dimMap = new Map<string, { name: string; scores: (number | null)[] }>();
+  sortedSelected.forEach((a, i) => {
+    for (const d of a.dimension_scores) {
+      if (!dimMap.has(d.key)) {
+        dimMap.set(d.key, { name: d.name, scores: new Array<number | null>(sortedSelected.length).fill(null) });
+      }
+      dimMap.get(d.key)!.scores[i] = d.score;
+    }
+  });
   const dimensionScores = Array.from(dimMap.entries())
-    .filter(([, v]) => v.initial !== null && v.current !== null)
-    .map(([key, v]) => ({ key, dim: v.name, initial: v.initial as number, current: v.current as number }));
+    .filter(([, v]) => v.scores[0] !== null && v.scores[v.scores.length - 1] !== null)
+    .map(([key, v]) => ({
+      key,
+      dim: v.name,
+      scores: v.scores,
+      initial: v.scores[0] as number,
+      current: v.scores[v.scores.length - 1] as number,
+    }));
 
   const radarData = dimensionScores.map((d) => ({ dimension: d.dim, initial: d.initial, current: d.current, fullMark: 5 }));
 
@@ -215,9 +219,18 @@ export function EvolutionPage() {
   const stable = dimensionScores.filter((d) => Math.abs(d.current - d.initial) <= 0.05).length;
   const declined = dimensionScores.filter((d) => d.current - d.initial < -0.05).length;
 
-  const historicalTrend = [...allAssessments]
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((a) => ({ period: formatMonthYear(a.created_at), score: a.score_global ?? 0 }));
+  // The detail table below gets one narrow column per compared evaluation,
+  // so its grid template (and minimum scroll width) scale with N -- built
+  // at runtime, hence inline styles rather than a Tailwind arbitrary class.
+  const periodCount = sortedSelected.length;
+  const tableGridTemplate = `1.4fr repeat(${periodCount}, 60px) 96px 180px`;
+  const tableMinWidth = 460 + periodCount * 68;
+
+  // The N compared evaluations, not the bank's full history -- this chart
+  // is the on-screen equivalent of the PDF report's score-trend figure.
+  const historicalTrend = sortedSelected.map((a) => ({
+    period: formatMonthYear(a.created_at), score: a.score_global ?? 0,
+  }));
 
   const aiActive = narrStatus === 'loading' || narrStatus === 'streaming';
 
@@ -231,11 +244,11 @@ export function EvolutionPage() {
             Pas de bouton de retour ici : les deux maillons du fil restent
             cliquables, et la place de droite revient à l'action de la page. */}
         <FlowHeader
-          current={`Évolution — ${bank}`}
+          current={`Évolution, ${bank}`}
           parent={{ label: 'Mes évaluations', to: '/historique' }}
           action={(
             <button
-              onClick={() => toast.promise(downloadComparisonReport(stateInit.id, stateCurr.id), {
+              onClick={() => toast.promise(downloadComparisonReport(sortedSelected.map((a) => a.id)), {
                 loading: 'Génération du rapport PDF…',
                 success: 'Rapport PDF téléchargé',
                 error: 'Échec du téléchargement du rapport PDF',
@@ -252,44 +265,30 @@ export function EvolutionPage() {
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
           className="bg-white border border-gray-200 rounded-xl px-7 py-5 flex flex-col md:flex-row md:items-center justify-between gap-5"
         >
-          <div>
-            <p className="text-[9px] font-bold tracking-[0.22em] text-gray-400 mb-1">ANALYSE D'ÉVOLUTION</p>
-            <h1 className="text-lg font-bold text-gray-900">{bank}</h1>
+          <div className="flex items-center gap-3 min-w-0">
+            {stateCurr.bank_logo_url && (
+              <img
+                src={bankLogoSrc(stateCurr.bank_logo_url) ?? undefined}
+                alt=""
+                className="w-9 h-9 rounded-full object-contain bg-white border border-gray-100 flex-shrink-0"
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-[9px] font-bold tracking-[0.22em] text-gray-400 mb-1">ANALYSE D'ÉVOLUTION</p>
+              <h1 className="text-lg font-bold text-gray-900 truncate">{bank}</h1>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400">PÉRIODE INITIALE</span>
-              <div className="relative">
-                <select
-                  value={stateInit.id}
-                  onChange={(e) => setInitId(Number(e.target.value))}
-                  className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm text-gray-700 font-medium focus:outline-none focus:border-gray-400 cursor-pointer"
-                >
-                  {sortedSelected.map((a) => (
-                    <option key={a.id} value={a.id}>{formatMonthYear(a.created_at)} · {(a.score_global ?? 0).toFixed(1)}/5</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400">ÉVALUATIONS COMPARÉES</span>
+              <span className="text-sm font-bold text-gray-900 tabular-nums">{sortedSelected.length}</span>
             </div>
-
-            <ArrowRight className="w-4 h-4 text-gray-300 mt-4 shrink-0" />
-
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400">PÉRIODE ACTUELLE</span>
-              <div className="relative">
-                <select
-                  value={stateCurr.id}
-                  onChange={(e) => setCurrId(Number(e.target.value))}
-                  className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm text-gray-700 font-medium focus:outline-none focus:border-gray-400 cursor-pointer"
-                >
-                  {sortedSelected.map((a) => (
-                    <option key={a.id} value={a.id}>{formatMonthYear(a.created_at)} · {(a.score_global ?? 0).toFixed(1)}/5</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+            <div className="w-px h-8 bg-gray-100" />
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm font-medium text-gray-500">{formatMonthYear(stateInit.created_at)}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <span className="text-sm font-bold text-gray-900">{formatMonthYear(stateCurr.created_at)}</span>
             </div>
           </div>
         </motion.div>
@@ -325,21 +324,22 @@ export function EvolutionPage() {
             <p className="text-[9px] text-gray-400 mt-2 font-medium">{formatMonthYear(stateCurr.created_at)}</p>
           </div>
 
-          <div className="bg-gray-900 rounded-xl px-5 py-5 flex flex-col">
-            <p className="text-[9px] font-bold tracking-[0.18em] text-white/35 mb-3">PROGRESSION</p>
+          <div className="bg-white border border-gray-200 rounded-xl px-5 py-5 flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-[#FFE600]" />
+            <p className="text-[9px] font-bold tracking-[0.18em] text-gray-400 mb-3 mt-1">PROGRESSION</p>
             <div className="flex items-baseline gap-1.5 mb-3">
-              <span className={`text-4xl font-bold leading-none tabular-nums ${delta > 0 ? 'text-[#FFE600]' : delta < 0 ? 'text-red-400' : 'text-white/50'}`}>
+              <span className={`text-4xl font-bold leading-none tabular-nums ${delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-red-500' : 'text-gray-400'}`}>
                 {delta > 0 ? '+' : ''}{delta.toFixed(1)}
               </span>
-              <span className="text-xs text-white/25 font-medium">pts</span>
+              <span className="text-xs text-gray-300 font-medium">pts</span>
             </div>
             <div className="flex items-center gap-1.5 mt-auto">
               {delta > 0 ? (
-                <><TrendingUp className="w-3.5 h-3.5 text-emerald-400" /><span className="text-xs font-semibold text-emerald-400">En progression</span></>
+                <><TrendingUp className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs font-semibold text-emerald-600">En progression</span></>
               ) : delta < 0 ? (
-                <><TrendingDown className="w-3.5 h-3.5 text-red-400" /><span className="text-xs font-semibold text-red-400">En recul</span></>
+                <><TrendingDown className="w-3.5 h-3.5 text-red-400" /><span className="text-xs font-semibold text-red-500">En recul</span></>
               ) : (
-                <><Minus className="w-3.5 h-3.5 text-white/30" /><span className="text-xs font-semibold text-white/30">Stable</span></>
+                <><Minus className="w-3.5 h-3.5 text-gray-300" /><span className="text-xs font-semibold text-gray-400">Stable</span></>
               )}
             </div>
           </div>
@@ -400,8 +400,8 @@ export function EvolutionPage() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl px-6 py-6 flex flex-col">
-            <p className="text-[9px] font-bold tracking-[0.2em] text-gray-400 mb-1">TENDANCE HISTORIQUE</p>
-            <p className="text-sm font-bold text-gray-900 mb-5">Score consolidé</p>
+            <p className="text-[9px] font-bold tracking-[0.2em] text-gray-400 mb-1">TENDANCE</p>
+            <p className="text-sm font-bold text-gray-900 mb-5">Score consolidé, {sortedSelected.length} évaluations</p>
             {historicalTrend.length >= 2 ? (
               <>
                 <div className="flex-1 min-h-0">
@@ -428,7 +428,7 @@ export function EvolutionPage() {
                 </div>
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Score passé de <strong className="text-gray-800">{scoreInit.toFixed(1)}</strong> à <strong className="text-gray-800">{scoreCurr.toFixed(1)}</strong> — progression de <strong className="text-gray-900">{delta > 0 ? '+' : ''}{delta.toFixed(1)} pt</strong>
+                    Score passé de <strong className="text-gray-800">{scoreInit.toFixed(1)}</strong> à <strong className="text-gray-800">{scoreCurr.toFixed(1)}</strong>, progression de <strong className="text-gray-900">{delta > 0 ? '+' : ''}{delta.toFixed(1)} pt</strong>
                   </p>
                 </div>
               </>
@@ -445,11 +445,16 @@ export function EvolutionPage() {
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.21 }}
           className="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto"
         >
-          <div className="min-w-[640px]">
-            <div className="grid grid-cols-[1fr_72px_72px_96px_180px] gap-4 px-7 py-3 bg-gray-50 border-b border-gray-100">
-              {['DIMENSION', 'INITIAL', 'ACTUEL', 'VARIATION', 'ÉVOLUTION'].map((h) => (
-                <span key={h} className="text-[9px] font-bold tracking-[0.16em] text-gray-400">{h}</span>
+          <div style={{ minWidth: tableMinWidth }}>
+            <div className="grid gap-4 px-7 py-3 bg-gray-50 border-b border-gray-100" style={{ gridTemplateColumns: tableGridTemplate }}>
+              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400">DIMENSION</span>
+              {sortedSelected.map((a) => (
+                <span key={a.id} className="text-[9px] font-bold tracking-[0.16em] text-gray-400 text-right">
+                  {formatMonthYear(a.created_at).toUpperCase()}
+                </span>
               ))}
+              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400 text-right">VARIATION</span>
+              <span className="text-[9px] font-bold tracking-[0.16em] text-gray-400">ÉVOLUTION</span>
             </div>
 
             {dimensionScores.map((d, i) => {
@@ -466,15 +471,24 @@ export function EvolutionPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.25, delay: 0.27 + i * 0.045 }}
-                  className="grid grid-cols-[1fr_72px_72px_96px_180px] gap-4 px-7 py-4 items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                  className="grid gap-4 px-7 py-4 items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                  style={{ gridTemplateColumns: tableGridTemplate }}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-0.5 h-5 rounded-full shrink-0" style={{ backgroundColor: barColor }} />
                     <span className="text-sm font-medium text-gray-800 truncate">{d.dim}</span>
                   </div>
 
-                  <span className="text-sm font-semibold text-gray-400 tabular-nums">{d.initial.toFixed(1)}</span>
-                  <span className="text-sm font-bold text-gray-900 tabular-nums">{d.current.toFixed(1)}</span>
+                  {d.scores.map((s, si) => (
+                    <span
+                      key={si}
+                      className={`text-sm tabular-nums text-right ${
+                        si === d.scores.length - 1 ? 'font-bold text-gray-900' : 'font-semibold text-gray-400'
+                      }`}
+                    >
+                      {s !== null ? s.toFixed(1) : '—'}
+                    </span>
+                  ))}
 
                   <div>
                     {isProgress ? (
@@ -515,17 +529,12 @@ export function EvolutionPage() {
         {/* ── AI comparative analysis ── */}
         <motion.div
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.32 }}
-          className="bg-white border border-gray-200 rounded-xl overflow-hidden"
+          className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8"
         >
-          <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#1C1C1E] flex items-center justify-center shrink-0">
-                <Sparkles className="w-4 h-4 text-[#FFE600]" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-gray-900">Synthèse intelligente des résultats</p>
-                <p className="text-xs text-gray-400">Analyse comparative de l'évolution, générée par le moteur EY AI</p>
-              </div>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-gray-400" />
+              <p className="text-[10px] font-bold tracking-[0.2em] text-gray-400">SYNTHÈSE IA</p>
             </div>
             <div className="flex items-center gap-3">
               {aiActive && (
@@ -544,42 +553,42 @@ export function EvolutionPage() {
                   <Check className="w-3.5 h-3.5" /> Analyse complète
                 </div>
               )}
-              <span className="text-[9px] font-bold tracking-[0.14em] text-gray-400 border border-gray-200 px-2.5 py-1 rounded-full hidden sm:inline">EY AI ENGINE</span>
               {(narrStatus === 'done' || narrStatus === 'error') && (
                 <button
                   onClick={() => setNarrVersion((v) => v + 1)}
                   className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
                 >{narrStatus === 'error' ? 'Réessayer' : 'Regénérer'}</button>
               )}
+              <span className="text-[9px] font-bold tracking-[0.14em] text-gray-400 border border-gray-200 px-2.5 py-1 rounded-full hidden sm:inline">EY AI ENGINE</span>
             </div>
           </div>
+          <p className="text-sm text-gray-500 mb-6">Analyse comparative de l'évolution, générée par le moteur EY AI</p>
 
-          <div className="p-7">
-            {narrStatus === 'error' ? (
-              <p className="text-sm text-gray-400 text-center py-6">
-                L'analyse IA est momentanément indisponible. Réessayez dans quelques instants.
+          {narrStatus === 'error' ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              L'analyse IA est momentanément indisponible. Réessayez dans quelques instants.
+            </p>
+          ) : narrStatus === 'loading' ? (
+            <div className="space-y-3 animate-pulse">
+              {[80, 60, 90, 50].map((w) => (
+                <div key={w} className="h-2.5 bg-gray-100 rounded-full" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          ) : (
+            <div>
+              <p className="text-[9px] font-bold tracking-[0.18em] text-gray-400 mb-2">
+                {sortedSelected.length > 2 ? `${sortedSelected.length} ÉVALUATIONS · ` : ''}
+                {formatMonthYear(stateInit.created_at).toUpperCase()} → {formatMonthYear(stateCurr.created_at).toUpperCase()}
               </p>
-            ) : narrStatus === 'loading' ? (
-              <div className="space-y-3 animate-pulse">
-                {[80, 60, 90, 50].map((w) => (
-                  <div key={w} className="h-2.5 bg-gray-100 rounded-full" style={{ width: `${w}%` }} />
-                ))}
-              </div>
-            ) : (
-              <div>
-                <p className="text-[9px] font-bold tracking-[0.18em] text-gray-400 mb-2">
-                  ÉVOLUTION · {formatMonthYear(stateInit.created_at).toUpperCase()} → {formatMonthYear(stateCurr.created_at).toUpperCase()}
-                </p>
-                <p className="text-sm text-gray-700 leading-relaxed">
-                  {narrStatus === 'streaming' ? stream : narrative}
-                  {narrStatus === 'streaming' && (
-                    <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.55, repeat: Infinity }}
-                      className="inline-block w-[2px] h-[14px] bg-gray-400 ml-0.5 align-middle" />
-                  )}
-                </p>
-              </div>
-            )}
-          </div>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                {narrStatus === 'streaming' ? stream : narrative}
+                {narrStatus === 'streaming' && (
+                  <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.55, repeat: Infinity }}
+                    className="inline-block w-[2px] h-[14px] bg-gray-400 ml-0.5 align-middle" />
+                )}
+              </p>
+            </div>
+          )}
         </motion.div>
 
       </div>

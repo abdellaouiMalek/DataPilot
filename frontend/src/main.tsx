@@ -17,7 +17,7 @@ keycloak
     pkceMethod: "S256",
     checkLoginIframe: false,
     // Cap how long we wait on the silent-SSO / 3rd-party-cookie iframe. Modern
-    // browsers block 3rd-party cookies, so this check often times out — keep it
+    // browsers block 3rd-party cookies, so this check often times out, keep it
     // short so first paint isn't delayed.
     messageReceiveTimeout: 3000,
   })
@@ -30,7 +30,7 @@ keycloak
   })
   .catch((err) => {
     // SSO check failed (Keycloak down, or the 3rd-party-cookie iframe timed out).
-    // The app must still load — the landing page is public and protected routes
+    // The app must still load, the landing page is public and protected routes
     // redirect to login on demand.
     console.warn("Keycloak init failed; continuing unauthenticated:", err);
   })

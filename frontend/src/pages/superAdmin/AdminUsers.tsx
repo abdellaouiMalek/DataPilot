@@ -24,7 +24,7 @@ import { isSuperAdmin } from "@/lib/keycloak";
  *
  * Un admin ne peut pas attribuer `super_admin` : ce serait une élévation de
  * privilège (il pourrait se promouvoir lui-même). Le masquage ici n'est que
- * confort d'interface — le refus qui compte est côté serveur, dans
+ * confort d'interface, le refus qui compte est côté serveur, dans
  * `admin_users.py::_assert_may_assign`.
  *
  * Évalué à l'affichage, jamais au chargement du module : `keycloak.init()`
@@ -54,28 +54,28 @@ interface User {
   lastLogin: string;
 }
 
-// Keycloak → UI row. lastLogin is "—" until the user's first login after
+// Keycloak → UI row. lastLogin is "-" until the user's first login after
 // event storage was enabled (events only accumulate going forward).
 function toUser(u: AdminUser): User {
   return {
     id: u.id,
-    firstName: u.first_name || u.username || "—",
+    firstName: u.first_name || u.username || "-",
     lastName: u.last_name || "",
-    email: u.email || "—",
-    role: u.role ? ROLE_LABELS[u.role] : "—",
+    email: u.email || "-",
+    role: u.role ? ROLE_LABELS[u.role] : "-",
     enabled: u.enabled,
-    organization: u.organization || "—",
+    organization: u.organization || "-",
     bankId: u.bank_id,
     status: u.status,
     createdAt: u.created_at
       ? new Date(u.created_at).toLocaleDateString("fr-FR")
-      : "—",
+      : "-",
     lastLogin: u.last_login
       ? new Date(u.last_login).toLocaleDateString("fr-FR", {
           day: "2-digit", month: "2-digit", year: "numeric",
           hour: "2-digit", minute: "2-digit",
         })
-      : "—",
+      : "-",
   };
 }
 
@@ -239,9 +239,9 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
   const [formData, setFormData] = useState({
     firstName:    user?.firstName    || "",
     lastName:     user?.lastName     || "",
-    email:        user?.email === "—" ? "" : user?.email || "",
-    role:         user?.role && user.role !== "—" ? user.role : "Consultant EY",
-    organization: user?.organization === "—" ? "" : user?.organization || "",
+    email:        user?.email === "-" ? "" : user?.email || "",
+    role:         user?.role && user.role !== "-" ? user.role : "Consultant EY",
+    organization: user?.organization === "-" ? "" : user?.organization || "",
     bankId:       user?.bankId != null ? String(user.bankId) : "",
     status:       user?.status       || "Actif",
   });
@@ -260,7 +260,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
 
   // Un super admin n'est pas limité à une banque (get_bank_scope lui renvoie
   // None) ; pour tous les autres, l'absence de banque vaut 403 sur le
-  // questionnaire et les résultats — le compte serait inutilisable.
+  // questionnaire et les résultats, le compte serait inutilisable.
   const roleKey = LABEL_TO_ROLE[formData.role] ?? "consultant";
   const bankRequired = roleKey !== "super_admin";
 
@@ -432,7 +432,7 @@ export function UserManagement() {
   const [focusStatus,    setFocusStatus]    = useState(false);
 
   const [users,   setUsers]   = useState<User[]>([]);
-  // KPI stats are computed at load time (not during render — needs Date.now())
+  // KPI stats are computed at load time (not during render, needs Date.now())
   // from the raw API rows, which carry real timestamps.
   const [kpiStats, setKpiStats] = useState<KpiStats>({
     total: 0, active: 0, admins: 0, pending: 0,
@@ -539,7 +539,7 @@ export function UserManagement() {
       { key: "createdAt", width: 13 }, { key: "lastLogin", width: 19 },
     ];
 
-    // Row 1 — title banner
+    // Row 1, title banner
     ws.mergeCells("A1:H1");
     const title = ws.getCell("A1");
     title.value = "Utilisateurs DataPilot";
@@ -548,13 +548,13 @@ export function UserManagement() {
     title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
     ws.getRow(1).height = 30;
 
-    // Row 2 — export context
+    // Row 2, export context
     ws.mergeCells("A2:H2");
     const sub = ws.getCell("A2");
-    sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — ${rows.length} utilisateur${rows.length > 1 ? "s" : ""}`;
+    sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, ${rows.length} utilisateur${rows.length > 1 ? "s" : ""}`;
     sub.font = { size: 10, color: { argb: "FF6B6B6B" } };
 
-    // Row 3 — styled header
+    // Row 3, styled header
     const header = ws.getRow(3);
     header.values = ["Prénom", "Nom", "Email", "Rôle", "Organisation", "Statut", "Créé le", "Dernière connexion"];
     header.eachCell((cell) => {
@@ -983,7 +983,7 @@ export function UserManagement() {
             <span style={{ fontSize: 12, color: "#9B9B9B" }}>
               Affichage de{" "}
               <strong style={{ color: "#1A1A1A" }}>
-                {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{(currentPage - 1) * pageSize + paged.length}
+                {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{(currentPage - 1) * pageSize + paged.length}
               </strong>{" "}
               sur <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> utilisateur{filtered.length !== 1 ? "s" : ""}
             </span>

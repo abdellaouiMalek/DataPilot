@@ -16,7 +16,7 @@ export interface SecuritySettings {
 }
 
 export interface NotificationSettings {
-  /** null disables every notification — there is nowhere to send them. */
+  /** null disables every notification, there is nowhere to send them. */
   notify_email: string | null;
   notify_on_assessment: boolean;
   notify_on_new_user: boolean;

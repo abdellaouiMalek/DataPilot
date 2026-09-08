@@ -4,14 +4,14 @@ import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react';
 import { Select as RadixSelect } from 'radix-ui';
 import { Navbar } from '../components/Navbar';
-import { getBanks, getDepartments, getRoles, getDimensions } from '../lib/config';
-import type { Dimension } from '../lib/config';
-import { isSuperAdmin, isAdmin } from '../lib/keycloak';
+import { getBanks, getDepartments, getRoles, getDimensions, getMaturityLevels, bankLogoSrc } from '../lib/config';
+import type { Dimension, MaturityLevel } from '../lib/config';
+import { isSuperAdmin, isAdmin, isAuthenticated } from '../lib/keycloak';
 import { getProfile } from '../lib/profile';
 import { getMyAssessments, questionnaireUrl } from '../lib/assessment';
 import backImage from '../assets/back.webp';
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; logoSrc?: string | null };
 
 /**
  * Replaces react-select: that library renders a real hidden `<input>` for
@@ -43,6 +43,7 @@ function FieldSelect({
   error?: boolean;
 }) {
   const filled = !!value;
+  const selected = options.find((o) => o.value === value);
   return (
     <RadixSelect.Root value={value || undefined} onValueChange={onChange} disabled={disabled}>
       <RadixSelect.Trigger
@@ -55,7 +56,14 @@ function FieldSelect({
         <RadixSelect.Value
           placeholder={loading ? loadingPlaceholder : placeholder}
           className={filled ? 'text-slate-900 font-medium' : 'text-slate-400'}
-        />
+        >
+          {selected?.logoSrc ? (
+            <span className="inline-flex items-center gap-2.5">
+              <img src={selected.logoSrc} alt="" className="w-5 h-5 rounded-full object-contain bg-white border border-slate-100" />
+              {selected.label}
+            </span>
+          ) : undefined}
+        </RadixSelect.Value>
         <RadixSelect.Icon>
           {loading ? (
             <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin text-slate-300" />
@@ -80,7 +88,12 @@ function FieldSelect({
                 value={opt.value}
                 className="relative flex items-center rounded-md px-4 py-3 text-base text-slate-900 outline-none cursor-pointer select-none data-[highlighted]:bg-yellow-50 data-[state=checked]:bg-[#FFE600] data-[state=checked]:font-semibold"
               >
-                <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
+                <span className="inline-flex items-center gap-2.5">
+                  {opt.logoSrc && (
+                    <img src={opt.logoSrc} alt="" className="w-5 h-5 rounded-full object-contain bg-white border border-slate-100 flex-shrink-0" />
+                  )}
+                  <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
+                </span>
               </RadixSelect.Item>
             ))}
           </RadixSelect.Viewport>
@@ -109,6 +122,7 @@ export function LandingPage() {
   const [deptOptions, setDeptOptions] = useState<Option[]>([]);
   const [roleOptions, setRoleOptions] = useState<Option[]>([]);
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
+  const [maturityLevels, setMaturityLevels] = useState<MaturityLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   // Non-null once the user's own profile confirms which bank they're
@@ -124,16 +138,17 @@ export function LandingPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getBanks(), getDepartments(), getRoles(), getDimensions()])
-      .then(([banks, departments, roles, dims]) => {
+    Promise.all([getBanks(), getDepartments(), getRoles(), getDimensions(), getMaturityLevels()])
+      .then(([banks, departments, roles, dims, levels]) => {
         if (cancelled) return;
         const toOptions = (items: { name: string }[]) =>
           items.map((i) => ({ value: i.name, label: i.name }));
         // Banks are referenced by id (assessments carry a bank_id FK).
-        setBankOptions(banks.map((b) => ({ value: String(b.id), label: b.name })));
+        setBankOptions(banks.map((b) => ({ value: String(b.id), label: b.name, logoSrc: bankLogoSrc(b.logo_url) })));
         setDeptOptions(toOptions(departments));
         setRoleOptions(toOptions(roles));
         setDimensions([...dims].sort((a, b) => a.sort_order - b.sort_order));
+        setMaturityLevels(levels);
       })
       .catch(() => !cancelled && setLoadError(true))
       .finally(() => !cancelled && setLoading(false));
@@ -216,7 +231,17 @@ export function LandingPage() {
   const canProceed = selectedBank && department && role;
   const filledCount = [selectedBank, department, role].filter(Boolean).length;
 
-  // Admins don't take the assessment — send them straight to the back-office.
+  // No "estimated duration" field exists in the DB -- derive one from the
+  // actual question count (already nested in the dimensions response) so it
+  // tracks reality as questions are added/removed, instead of a hardcoded
+  // guess. ~40s/question is a rough assumption, rounded to a clean 5-minute
+  // increment; falls back to today's "20" before the fetch resolves.
+  const totalQuestions = dimensions.reduce((n, d) => n + d.questions.length, 0);
+  const estimatedMinutes = totalQuestions
+    ? Math.max(5, Math.round((totalQuestions * 40) / 60 / 5) * 5)
+    : 20;
+
+  // Admins don't take the assessment, send them straight to the back-office.
   // The landing page ("/") is where Keycloak returns after login. Returning
   // <Navigate> here (render time, after every hook above has still run in
   // the same order every render) instead of calling navigate() from a
@@ -273,8 +298,8 @@ export function LandingPage() {
             <div className="flex flex-wrap gap-6 mt-10">
               {[
                 { val: `${dimensions.length || 6} dimensions`, sub: 'évaluées' },
-                { val: '~20 min', sub: 'pour compléter' },
-                { val: '5 niveaux', sub: 'de maturité' },
+                { val: `~${estimatedMinutes} min`, sub: 'pour compléter' },
+                { val: `${maturityLevels.length || 5} niveaux`, sub: 'de maturité' },
               ].map((s) => (
                 <div key={s.val} className="flex items-center gap-2">
                   <div className="w-1 h-8 bg-[#FFE600] rounded-full" />
@@ -392,7 +417,7 @@ export function LandingPage() {
                       </p>
                     ) : attachedBankId != null && (
                       <p className="mt-2 text-sm text-slate-400">
-                        Banque associée à votre compte — pour la modifier, contactez un administrateur.
+                        Banque associée à votre compte, pour la modifier, contactez un administrateur.
                       </p>
                     )}
                   </div>
@@ -444,16 +469,18 @@ export function LandingPage() {
                     <ArrowRight className="w-5 h-5" />
                   </motion.button>
 
-                  <button
-                    onClick={() => navigate('/historique')}
-                    className="w-full text-sm text-slate-400 hover:text-slate-700 transition-colors py-2.5"
-                  >
-                    Accéder aux évaluations précédentes →
-                  </button>
+                  {isAuthenticated() && (
+                    <button
+                      onClick={() => navigate('/dashboard')}
+                      className="w-full text-sm text-slate-400 hover:text-slate-700 transition-colors py-2.5"
+                    >
+                      Accéder au dashboard →
+                    </button>
+                  )}
                 </div>
 
                 <p className="text-xs text-slate-300 mt-6 text-center leading-relaxed">
-                  Réponses confidentielles — usage interne EY
+                  Réponses confidentielles, usage interne EY
                 </p>
               </div>
             </div>

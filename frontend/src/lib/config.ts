@@ -1,7 +1,7 @@
 /**
  * Client for the public reference-data (config) endpoints.
  *
- * These are intentionally unauthenticated — the landing page is public, so we
+ * These are intentionally unauthenticated, the landing page is public, so we
  * use a plain `fetch` here instead of the Keycloak-aware `api` helper (which
  * would force a login redirect).
  */
@@ -39,6 +39,15 @@ export interface Lookup {
   name: string;
 }
 
+export interface BankLookup extends Lookup {
+  logo_url: string | null;
+}
+
+/** `logo_url` is API-relative; resolve it against this same API origin,
+ * which differs from the frontend's own in dev. */
+export const bankLogoSrc = (logoUrl: string | null) =>
+  logoUrl ? `${API_URL}${logoUrl}` : null;
+
 export interface MaturityLevel {
   id: number;
   label: string;
@@ -49,7 +58,7 @@ export interface MaturityLevel {
 }
 
 export const getDimensions = () => getJson<Dimension[]>("/api/dimensions");
-export const getBanks = () => getJson<Lookup[]>("/api/banks");
+export const getBanks = () => getJson<BankLookup[]>("/api/banks");
 export const getDepartments = () => getJson<Lookup[]>("/api/departments");
 export const getRoles = () => getJson<Lookup[]>("/api/roles");
 export const getMaturityLevels = () => getJson<MaturityLevel[]>("/api/maturity-levels");

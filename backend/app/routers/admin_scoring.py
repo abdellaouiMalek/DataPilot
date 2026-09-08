@@ -1,4 +1,4 @@
-"""Scoring referential endpoints — the maturity bands a score is mapped to.
+"""Scoring referential endpoints, the maturity bands a score is mapped to.
 
 The bands live in ``maturity_levels`` and are read by every scoring path
 (``app.services.scoring.map_to_maturity_level``, the assessment and report
@@ -6,7 +6,7 @@ routers), so editing them here changes how existing and future results are
 labelled. Two invariants are enforced on write, because breaking either makes
 the mapper silently return the wrong label (or ``None``):
 
-* bands must not overlap — the mapper takes the first match by ``min_score``;
+* bands must not overlap, the mapper takes the first match by ``min_score``;
 * bands must stay inside the questionnaire scale (0 → ``MAX_LEVEL``).
 
 Gaps are reported but not rejected: a partially-covered scale is a
@@ -59,7 +59,7 @@ LEVEL_FIELD_LABELS = {
 
 
 def _fmt(value: float) -> str:
-    """1.9 -> "1.9", 2.0 -> "2" — keeps the French messages readable."""
+    """1.9 -> "1.9", 2.0 -> "2", keeps the French messages readable."""
     return f"{value:g}"
 
 
@@ -74,8 +74,8 @@ def _overlaps(levels: list[MaturityLevel]) -> list[str]:
     for previous, current in zip(ordered, ordered[1:]):
         if current.min_score <= previous.max_score:
             messages.append(
-                f"« {previous.label} » ({_fmt(previous.min_score)}–{_fmt(previous.max_score)}) "
-                f"et « {current.label} » ({_fmt(current.min_score)}–{_fmt(current.max_score)}) "
+                f"« {previous.label} » ({_fmt(previous.min_score)}-{_fmt(previous.max_score)}) "
+                f"et « {current.label} » ({_fmt(current.min_score)}-{_fmt(current.max_score)}) "
                 "se chevauchent"
             )
     return messages
@@ -84,22 +84,22 @@ def _overlaps(levels: list[MaturityLevel]) -> list[str]:
 def _gaps(levels: list[MaturityLevel]) -> list[str]:
     """Score ranges no band covers. Uses the seeded 0.1 granularity."""
     if not levels:
-        return [f"{_fmt(SCALE_MIN)} – {_fmt(SCALE_MAX)}"]
+        return [f"{_fmt(SCALE_MIN)} - {_fmt(SCALE_MAX)}"]
 
     ordered = sorted(levels, key=lambda level: level.min_score)
     messages: list[str] = []
 
     if ordered[0].min_score > SCALE_MIN:
-        messages.append(f"{_fmt(SCALE_MIN)} – {_fmt(ordered[0].min_score)}")
+        messages.append(f"{_fmt(SCALE_MIN)} - {_fmt(ordered[0].min_score)}")
 
     for previous, current in zip(ordered, ordered[1:]):
         # 0.1 apart is contiguous on this scale (1.9 → 2.0), not a gap.
         if current.min_score - previous.max_score > 0.1001:
-            messages.append(f"{_fmt(previous.max_score)} – {_fmt(current.min_score)}")
+            messages.append(f"{_fmt(previous.max_score)} - {_fmt(current.min_score)}")
 
     last_max = max(level.max_score for level in ordered)
     if last_max < SCALE_MAX:
-        messages.append(f"{_fmt(last_max)} – {_fmt(SCALE_MAX)}")
+        messages.append(f"{_fmt(last_max)} - {_fmt(SCALE_MAX)}")
 
     return messages
 
@@ -126,7 +126,7 @@ def _validate(min_score: float, max_score: float, others: list[MaturityLevel]) -
             status_code=400,
             detail=(
                 f"Les seuils doivent rester dans l'échelle du questionnaire "
-                f"({_fmt(SCALE_MIN)} – {_fmt(SCALE_MAX)})."
+                f"({_fmt(SCALE_MIN)} - {_fmt(SCALE_MAX)})."
             ),
         )
     for other in others:
@@ -135,7 +135,7 @@ def _validate(min_score: float, max_score: float, others: list[MaturityLevel]) -
                 status_code=400,
                 detail=(
                     f"Chevauchement avec « {other.label} » "
-                    f"({_fmt(other.min_score)} – {_fmt(other.max_score)})."
+                    f"({_fmt(other.min_score)} - {_fmt(other.max_score)})."
                 ),
             )
 
@@ -182,7 +182,7 @@ async def update_maturity_level(
     if fields:
         await audit.record(
             module=MODULE_SCORING,
-            action=f"Modification seuil — Niveau {level.label}",
+            action=f"Modification seuil, Niveau {level.label}",
             entity_type="maturity_level",
             entity_id=level.id,
             entity_label=level.label,

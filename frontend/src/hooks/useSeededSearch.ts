@@ -13,7 +13,7 @@ import { useLocation } from "react-router-dom";
  * Le `key` de la localisation est dans les dépendances de l'effet, pas
  * seulement le texte : chercher deux fois la même chose depuis la page déjà
  * ouverte crée bien deux entrées d'historique distinctes, alors que le
- * composant, lui, n'est jamais remonté — sans ça la seconde recherche
+ * composant, lui, n'est jamais remonté, sans ça la seconde recherche
  * n'aurait aucun effet visible.
  */
 export function useSeededSearch(): [string, React.Dispatch<React.SetStateAction<string>>] {

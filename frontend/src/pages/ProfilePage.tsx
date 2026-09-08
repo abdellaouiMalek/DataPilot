@@ -34,7 +34,7 @@ function Field({ label, icon, children }: { label: string; icon: ReactNode; chil
 /**
  * Un compte back-office a son propre écran « Mon compte » : aucune banque de
  * rattachement, mais un historique d'actions que cette page-ci ne montre pas.
- * Le lien « Mon profil » de la barre reste donc unique — seule sa destination
+ * Le lien « Mon profil » de la barre reste donc unique, seule sa destination
  * dépend du rôle.
  */
 export function ProfilePage() {
@@ -129,7 +129,7 @@ function ClientProfile() {
                   <h2 className="text-xl font-semibold tracking-tight truncate">
                     {[firstName, lastName].filter(Boolean).join(' ') || 'Utilisateur DataPilot'}
                   </h2>
-                  <p className="text-sm text-gray-400 mt-1 truncate">{email || '—'}</p>
+                  <p className="text-sm text-gray-400 mt-1 truncate">{email || '-'}</p>
                   <div className="mt-6 pt-5 border-t border-gray-700 flex items-center gap-3">
                     <ShieldCheck className="w-5 h-5 text-[#FFE600]" />
                     <div><div className="text-[9px] font-bold tracking-[0.18em] text-gray-500 uppercase">Rôle</div>

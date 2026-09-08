@@ -88,7 +88,7 @@ const MOCK: Recommendation[] = [
     dimension: "Gouvernance des données", sousDimension: "Politique de données",
     question: "Une politique de données est-elle formalisée ?",
     niveauxDeclencheurs: [1, 2, 3], criticite: "Élevée", impact: 4, effort: 3, complexite: 3, risque: 4, priorite: 2,
-    type: "Réglementaire", statut: "Actif", reglementaire: true, referentiel: "BCBS 239", circulaire: "BCBS 239 — Principe 1", article: "§ 3.1",
+    type: "Réglementaire", statut: "Actif", reglementaire: true, referentiel: "BCBS 239", circulaire: "BCBS 239, Principe 1", article: "§ 3.1",
   },
   {
     id: 3, code: "REC-ARCH-001", titre: "Implémenter un Data Warehouse centralisé",
@@ -505,7 +505,7 @@ function WizardDrawer({ onClose, onSave, nextId, initialData }: { onClose: () =>
           <div>
             <label style={LBL}>Nature réglementaire</label>
             <div style={{ display: "flex", gap: 8 }}>
-              {[{ v: true, l: "Oui — Exigence réglementaire" }, { v: false, l: "Non — Bonne pratique" }].map(({ v, l }) => (
+              {[{ v: true, l: "Oui, Exigence réglementaire" }, { v: false, l: "Non, Bonne pratique" }].map(({ v, l }) => (
                 <button key={String(v)} onClick={() => set({ reglementaire: v })} style={{ padding: "7px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: d.reglementaire === v ? "2px solid #3730A3" : "1px solid rgba(0,0,0,0.13)", backgroundColor: d.reglementaire === v ? "#EEF2FF" : "#fff", color: d.reglementaire === v ? "#3730A3" : "#6B6B6B", transition: "all 0.15s" }}>{l}</button>
               ))}
             </div>
@@ -559,16 +559,16 @@ function WizardDrawer({ onClose, onSave, nextId, initialData }: { onClose: () =>
         </div>
       );
 
-      // ── Step 5 — Summary ──
+      // ── Step 5, Summary ──
       case 5: return (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Preview card */}
           <div style={{ backgroundColor: "#F7F7F7", borderRadius: 10, padding: 16, border: "1px solid rgba(0,0,0,0.08)" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Aperçu — tel qu'affiché dans les résultats</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#9B9B9B", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Aperçu, tel qu'affiché dans les résultats</div>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
               <div>
                 <div style={{ fontSize: 10, color: "#9B9B9B", fontWeight: 700, marginBottom: 2, fontFamily: "monospace" }}>{d.code}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{d.titre || "—"}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1A1A" }}>{d.titre || "-"}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                 <CriticiteBadge value={d.criticite} />
@@ -585,9 +585,9 @@ function WizardDrawer({ onClose, onSave, nextId, initialData }: { onClose: () =>
           </div>
 
           {[
-            { title: "Rattachement au référentiel", rows: [["Dimension", d.dimension || "—"], ["Sous-dimension", d.sousDimension || "—"], ["Question", d.question || "—"], ["Niveaux déclencheurs", d.niveauxDeclencheurs.length ? d.niveauxDeclencheurs.join(", ") : "—"]] },
-            { title: "Classification & Scoring", rows: [["Type", d.type], ["Criticité", d.criticite], ["Impact", `${d.impact}/5`], ["Effort", `${d.effort}/5`], ["Complexité", `${d.complexite}/5`], ["Risque", `${d.risque}/5`], ["Réglementaire", d.reglementaire ? "Oui" : "Non"], ...(d.reglementaire ? [["Référentiel", d.referentiel || "—"], ["Circulaire", d.circulaire || "—"], ["Article", d.article || "—"]] : [])] },
-            { title: "Mise en œuvre", rows: [["Responsable", d.responsable || "—"], ["Durée", d.duree || "—"], ["Horizon", d.horizon], ["Actions", `${d.actions.filter(Boolean).length} action(s)`], ["Livrables", `${d.livrables.filter(Boolean).length} livrable(s)`], ["Indicateurs", `${d.indicateurs.filter(Boolean).length} indicateur(s)`]] },
+            { title: "Rattachement au référentiel", rows: [["Dimension", d.dimension || "-"], ["Sous-dimension", d.sousDimension || "-"], ["Question", d.question || "-"], ["Niveaux déclencheurs", d.niveauxDeclencheurs.length ? d.niveauxDeclencheurs.join(", ") : "-"]] },
+            { title: "Classification & Scoring", rows: [["Type", d.type], ["Criticité", d.criticite], ["Impact", `${d.impact}/5`], ["Effort", `${d.effort}/5`], ["Complexité", `${d.complexite}/5`], ["Risque", `${d.risque}/5`], ["Réglementaire", d.reglementaire ? "Oui" : "Non"], ...(d.reglementaire ? [["Référentiel", d.referentiel || "-"], ["Circulaire", d.circulaire || "-"], ["Article", d.article || "-"]] : [])] },
+            { title: "Mise en œuvre", rows: [["Responsable", d.responsable || "-"], ["Durée", d.duree || "-"], ["Horizon", d.horizon], ["Actions", `${d.actions.filter(Boolean).length} action(s)`], ["Livrables", `${d.livrables.filter(Boolean).length} livrable(s)`], ["Indicateurs", `${d.indicateurs.filter(Boolean).length} indicateur(s)`]] },
           ].map(({ title, rows }) => (
             <div key={title} style={{ backgroundColor: "#fff", borderRadius: 8, border: "1px solid rgba(0,0,0,0.07)", overflow: "hidden" }}>
               <div style={{ padding: "9px 14px", backgroundColor: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 10, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</div>
@@ -619,7 +619,7 @@ function WizardDrawer({ onClose, onSave, nextId, initialData }: { onClose: () =>
         <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1A1A" }}>Nouvelle recommandation</div>
-            <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>Étape {step} sur {STEPS.length} — {STEPS[step - 1]}</div>
+            <div style={{ fontSize: 12, color: "#9B9B9B", marginTop: 2 }}>Étape {step} sur {STEPS.length} - {STEPS[step - 1]}</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B", padding: 4 }}><X size={18} /></button>
         </div>
@@ -659,7 +659,7 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: Recommendation; onClose: (
   const GridRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: "1px solid #F7F7F7" }}>
       <span style={{ fontSize: 11, color: "#9B9B9B", width: 140, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500, flex: 1 }}>{value || "—"}</span>
+      <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500, flex: 1 }}>{value || "-"}</span>
     </div>
   );
 
@@ -700,7 +700,7 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: Recommendation; onClose: (
         <div style={{ flex: 1, overflowY: "auto", padding: "22px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
 
           <Section title="Description">
-            <p style={{ fontSize: 13, color: "#3A3A3A", lineHeight: 1.75, margin: 0 }}>{rec.description || "—"}</p>
+            <p style={{ fontSize: 13, color: "#3A3A3A", lineHeight: 1.75, margin: 0 }}>{rec.description || "-"}</p>
           </Section>
 
           <Section title="Rattachement au référentiel">
@@ -708,7 +708,7 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: Recommendation; onClose: (
               <GridRow label="Dimension" value={rec.dimension} />
               <GridRow label="Sous-dimension" value={rec.sousDimension} />
               <GridRow label="Question" value={rec.question} />
-              <GridRow label="Niveaux déclencheurs" value={rec.niveauxDeclencheurs.length ? rec.niveauxDeclencheurs.map(n => `Niveau ${n}`).join(" · ") : "—"} />
+              <GridRow label="Niveaux déclencheurs" value={rec.niveauxDeclencheurs.length ? rec.niveauxDeclencheurs.map(n => `Niveau ${n}`).join(" · ") : "-"} />
             </div>
           </Section>
 
@@ -786,7 +786,7 @@ const RC_STYLES = `
   .rc-menu-danger { color: #CC2200; }
   .rc-menu-danger:hover { background: #FFF5F5 !important; }
 
-  /* ── Filter chips — outline jaune global neutralisé ── */
+  /* ── Filter chips, outline jaune global neutralisé ── */
   .rc-filter-chip {
     padding: 6px 26px 6px 11px; border-radius: 20px; font-size: 12px; font-weight: 500;
     border: 1.5px solid #E0E0E0; background: #FAFAFA; color: #6B6B6B;
@@ -1107,7 +1107,7 @@ export function RecommendationCatalog() {
         {/* Pagination */}
         <div style={{ padding: "11px 16px", borderTop: "1px solid #F0F0F0", display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FAFAFA" }}>
           <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-            <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> résultat{filtered.length !== 1 ? "s" : ""} — page <strong style={{ color: "#1A1A1A" }}>{page}</strong> / {totalPages}
+            <strong style={{ color: "#1A1A1A" }}>{filtered.length}</strong> résultat{filtered.length !== 1 ? "s" : ""}, page <strong style={{ color: "#1A1A1A" }}>{page}</strong> / {totalPages}
           </span>
           <div style={{ display: "flex", gap: 4 }}>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ display: "flex", alignItems: "center", gap: 3, padding: "5px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500, border: "1px solid #E5E5E5", backgroundColor: "#fff", color: page === 1 ? "#D0D0D0" : "#4A4A4A", cursor: page === 1 ? "default" : "pointer" }}>
@@ -1129,10 +1129,10 @@ export function RecommendationCatalog() {
       {/* Detail panel */}
       {viewRec && <DetailPanel rec={viewRec} onClose={() => setViewRec(null)} onEdit={(r) => { setViewRec(null); setEditRec(r); }} />}
 
-      {/* Wizard — création */}
+      {/* Wizard, création */}
       {showWizard && <WizardDrawer onClose={() => setShowWizard(false)} onSave={handleSave} nextId={recs.length + 1} />}
 
-      {/* Wizard — édition */}
+      {/* Wizard, édition */}
       {editRec && (
         <WizardDrawer
           onClose={() => setEditRec(null)}

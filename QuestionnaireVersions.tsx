@@ -19,10 +19,10 @@ interface Version {
 }
 
 const allVersions: Version[] = [
-  { id: "V1",  number: "v2.1", name: "Questionnaire Maturité Data — Edition 2026",        status: "Publié",   questions: 84, createdBy: "A. Dupont",  createdAt: "28/05/2026", modifiedAt: "01/06/2026", changelog: "Ajout de 6 nouvelles questions sur l'IA/ML. Refonte des questions RGPD. Mise à jour des seuils de scoring." },
-  { id: "V2",  number: "v2.2", name: "Questionnaire Maturité Data — Edition 2026 Rev. B", status: "Brouillon", questions: 87, createdBy: "M. Bernard", createdAt: "05/06/2026", modifiedAt: "10/06/2026", changelog: "En cours : ajout dimension Cloud & IA. Révision pondérations." },
-  { id: "V3",  number: "v2.0", name: "Questionnaire Maturité Data — Edition 2025",        status: "Archivé",  questions: 78, createdBy: "A. Dupont",  createdAt: "15/01/2026", modifiedAt: "28/05/2026", changelog: "Version initiale 2025. Archivée lors du passage à v2.1." },
-  { id: "V4",  number: "v1.5", name: "Questionnaire Pilote — Banques Retail",             status: "Archivé",  questions: 52, createdBy: "L. Petit",   createdAt: "10/09/2025", modifiedAt: "15/01/2026", changelog: "Version pilote pour les banques de détail." },
+  { id: "V1",  number: "v2.1", name: "Questionnaire Maturité Data, Edition 2026",        status: "Publié",   questions: 84, createdBy: "A. Dupont",  createdAt: "28/05/2026", modifiedAt: "01/06/2026", changelog: "Ajout de 6 nouvelles questions sur l'IA/ML. Refonte des questions RGPD. Mise à jour des seuils de scoring." },
+  { id: "V2",  number: "v2.2", name: "Questionnaire Maturité Data, Edition 2026 Rev. B", status: "Brouillon", questions: 87, createdBy: "M. Bernard", createdAt: "05/06/2026", modifiedAt: "10/06/2026", changelog: "En cours : ajout dimension Cloud & IA. Révision pondérations." },
+  { id: "V3",  number: "v2.0", name: "Questionnaire Maturité Data, Edition 2025",        status: "Archivé",  questions: 78, createdBy: "A. Dupont",  createdAt: "15/01/2026", modifiedAt: "28/05/2026", changelog: "Version initiale 2025. Archivée lors du passage à v2.1." },
+  { id: "V4",  number: "v1.5", name: "Questionnaire Pilote, Banques Retail",             status: "Archivé",  questions: 52, createdBy: "L. Petit",   createdAt: "10/09/2025", modifiedAt: "15/01/2026", changelog: "Version pilote pour les banques de détail." },
   { id: "V5",  number: "v1.0", name: "Questionnaire Initial EY Data Maturity",            status: "Archivé",  questions: 40, createdBy: "A. Dupont",  createdAt: "01/06/2025", modifiedAt: "10/09/2025", changelog: "Version initiale proof of concept." },
   { id: "V6",  number: "v0.9", name: "Prototype Data Maturity Banking",                   status: "Archivé",  questions: 28, createdBy: "A. Dupont",  createdAt: "01/03/2025", modifiedAt: "01/06/2025", changelog: "Prototype interne avant première version officielle." },
   { id: "V7",  number: "v0.5", name: "Prototype Gouvernance Data",                        status: "Archivé",  questions: 18, createdBy: "A. Dupont",  createdAt: "01/01/2025", modifiedAt: "01/03/2025", changelog: "Première maquette du questionnaire de gouvernance." },
@@ -104,7 +104,7 @@ function NewVersionModal({ onClose }: { onClose: () => void }) {
           </div>
           {[
             { label: "Numéro de version *", placeholder: "ex. v2.3" },
-            { label: "Nom de la version *",  placeholder: "ex. Questionnaire Maturité Data — Edition 2026 Rev. C" },
+            { label: "Nom de la version *",  placeholder: "ex. Questionnaire Maturité Data, Edition 2026 Rev. C" },
           ].map(f => (
             <div key={f.label}>
               <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>{f.label}</label>
@@ -114,7 +114,7 @@ function NewVersionModal({ onClose }: { onClose: () => void }) {
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#4A4A4A", marginBottom: 5 }}>Basée sur</label>
             <select style={{ width: "100%", padding: "8px 11px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.13)", fontSize: 13, outline: "none", backgroundColor: "#fff" }}>
-              {allVersions.map(v => <option key={v.id}>{v.number} — {v.name}</option>)}
+              {allVersions.map(v => <option key={v.id}>{v.number} - {v.name}</option>)}
             </select>
           </div>
           <div>
@@ -194,7 +194,7 @@ export function QuestionnaireVersions() {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Version actuellement publiée</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{activeVersion.number} — {activeVersion.name}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{activeVersion.number} - {activeVersion.name}</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 3 }}>{activeVersion.questions} questions · Publiée le {activeVersion.modifiedAt} par {activeVersion.createdBy}</div>
         </div>
         <button onClick={() => setDetailVersion(activeVersion)}
@@ -277,7 +277,7 @@ export function QuestionnaireVersions() {
       {allVersions.length > PER_PAGE && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderRadius: 9, border: "1px solid rgba(0,0,0,0.07)", padding: "12px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-            <strong style={{ color: "#1A1A1A" }}>{(page - 1) * PER_PAGE + 1}</strong>–<strong style={{ color: "#1A1A1A" }}>{Math.min(page * PER_PAGE, allVersions.length)}</strong> sur <strong style={{ color: "#1A1A1A" }}>{allVersions.length}</strong> versions
+            <strong style={{ color: "#1A1A1A" }}>{(page - 1) * PER_PAGE + 1}</strong>, <strong style={{ color: "#1A1A1A" }}>{Math.min(page * PER_PAGE, allVersions.length)}</strong> sur <strong style={{ color: "#1A1A1A" }}>{allVersions.length}</strong> versions
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}

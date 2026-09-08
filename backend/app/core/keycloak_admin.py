@@ -29,7 +29,7 @@ _token_lock = asyncio.Lock()
 #
 # This is a performance fix, not a tidiness one. Constructing an
 # ``httpx.AsyncClient`` builds an SSL context and loads the system certificate
-# store, which on Windows costs ~300 ms — paid on *every* call when the client
+# store, which on Windows costs ~300 ms, paid on *every* call when the client
 # was created per request, regardless of how small the response was. Keycloak
 # itself answers in single-digit milliseconds. Reusing one client also lets
 # concurrent calls share the connection pool, so the five role lookups behind

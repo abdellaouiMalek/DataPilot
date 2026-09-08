@@ -1,7 +1,7 @@
 /**
  * Client for the back-office dashboard (`/api/super-admin/dashboard`).
  *
- * One call returns everything the page draws — tiles, trend, donut, bars,
+ * One call returns everything the page draws, tiles, trend, donut, bars,
  * alerts, activity, banks table. Aggregating server-side rather than fanning
  * out to the per-module endpoints keeps the figures consistent with each
  * other (they all read the same transaction) and keeps the page to a single
@@ -57,7 +57,7 @@ export interface DashboardAlert {
   level: "critical" | "warning" | "info";
   text: string;
   action: string;
-  /** Key into the page's `pageRoutes` map — where the action button goes. */
+  /** Key into the page's `pageRoutes` map, where the action button goes. */
   target: string;
 }
 
@@ -76,7 +76,7 @@ export interface BankRow {
   status: string;
   /** null when the bank has never been evaluated. */
   score: number | null;
-  /** null when Keycloak is unreachable — unknown, not zero. */
+  /** null when Keycloak is unreachable, unknown, not zero. */
   users: number | null;
   last_assessment_at: string | null;
 }

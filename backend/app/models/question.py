@@ -36,7 +36,7 @@ class Question(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # Per-level label + point overrides for "Échelle de maturité" questions, e.g.
-    # [{"label": "...", "score": 1}, ...] — index i = level i+1. Null = defaults.
+    # [{"label": "...", "score": 1}, ...], index i = level i+1. Null = defaults.
     level_responses: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     # Options for "Choix unique" / "Choix multiple" questions, e.g.
     # [{"label": "...", "score": 3}, ...]. Null/empty for other question types.

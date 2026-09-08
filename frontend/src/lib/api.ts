@@ -1,6 +1,6 @@
 import keycloak from "./keycloak";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 
 async function getFreshToken(): Promise<string | undefined> {
@@ -74,7 +74,7 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const token = await getFreshToken();
   if (!token) {
-    // Not authenticated (or refresh failed) — surface as a 401 rather
+    // Not authenticated (or refresh failed), surface as a 401 rather
     // than sending the request without a token, since the backend's 403
     // ("missing header") isn't handled like a 401 is.
     throw new ApiError(401, "Non authentifié");
@@ -83,7 +83,7 @@ export async function apiFetch<T = unknown>(
   const headers = new Headers(options.headers);
   headers.set("Authorization", `Bearer ${token}`);
   // FormData sets its own Content-Type (with the multipart boundary) when
-  // the browser serializes the request — setting it here manually would
+  // the browser serializes the request, setting it here manually would
   // drop that boundary and break parsing server-side.
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -109,9 +109,26 @@ export async function apiFetch<T = unknown>(
   return data as T;
 }
 
-/** Fetches a binary response (e.g. a generated PDF) as a Blob. Bypasses
- * apiFetch's JSON/text parsing -- a blob response has no JSON body to read. */
-async function fetchBlob(path: string): Promise<Blob> {
+export interface BlobDownload {
+  blob: Blob;
+  /** The server's suggested filename (Content-Disposition), or null if the
+   * header is missing/unparseable -- callers fall back to their own name. */
+  filename: string | null;
+}
+
+/** `attachment; filename="foo.pdf"` -> `foo.pdf`. Doesn't handle the
+ * RFC 5987 `filename*=UTF-8''...` form -- every download here is built from
+ * `_safe_filename_part`-slugified ASCII, so the plain form is all there is. */
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const match = /filename="?([^";]+)"?/i.exec(header);
+  return match ? match[1] : null;
+}
+
+/** Fetches a binary response (e.g. a generated PDF) as a Blob, alongside the
+ * filename the backend suggested for it. Bypasses apiFetch's JSON/text
+ * parsing -- a blob response has no JSON body to read. */
+async function fetchBlob(path: string): Promise<BlobDownload> {
   const token = await getFreshToken();
   if (!token) {
     throw new ApiError(401, "Non authentifié");
@@ -127,7 +144,9 @@ async function fetchBlob(path: string): Promise<Blob> {
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
     throw new ApiError(res.status, errorDetail(parsed, text || res.statusText));
   }
-  return res.blob();
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get("content-disposition"));
+  return { blob, filename };
 }
 
 export const api = {

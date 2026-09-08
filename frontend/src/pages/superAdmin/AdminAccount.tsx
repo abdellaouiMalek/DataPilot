@@ -1,12 +1,12 @@
 /**
- * « Mon compte » — section de la page Paramètres, et non page autonome.
+ * « Mon compte », section de la page Paramètres, et non page autonome.
  *
  * Distincte du profil client (`/profile`) pour deux raisons de fond :
  *
- * — un super administrateur n'est rattaché à aucune banque : `get_bank_scope`
+ * - un super administrateur n'est rattaché à aucune banque : `get_bank_scope`
  *   lui renvoie `None`, son accès aux données n'est pas restreint. Le champ
  *   « Banque » du profil client n'a donc aucun sens ici et n'est pas repris ;
- * — un compte back-office a en revanche une histoire que le profil client n'a
+ * - un compte back-office a en revanche une histoire que le profil client n'a
  *   pas : ce qu'il a modifié sur la plateforme. Le journal d'audit est relu
  *   ici, rattaché au `sub` Keycloak et non au nom, pour qu'un changement de
  *   nom ne détache jamais quelqu'un de ses propres actions.
@@ -14,7 +14,7 @@
  * L'édition des informations personnelles passe par `/api/profile`, le même
  * endpoint que le profil client : c'est le seul endroit qui écrit l'identité
  * d'une personne dans Keycloak. Cette section a donc son propre bouton
- * d'enregistrement — le « Enregistrer les paramètres » global de la page vise
+ * d'enregistrement, le « Enregistrer les paramètres » global de la page vise
  * le realm et la table des paramètres, ce qui n'a rien à voir.
  */
 
@@ -50,10 +50,10 @@ const dateTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("fr-FR", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
-  }) : "—";
+  }) : "-";
 
 const dateOnly = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("fr-FR") : "—";
+  iso ? new Date(iso).toLocaleDateString("fr-FR") : "-";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -78,7 +78,7 @@ function Fact({ label, value, tone }: { label: string; value: string; tone?: str
 
 export function AccountSection({ layout = "stack" }: {
   /**
-   * `"stack"` : les trois sections l'une sous l'autre — la colonne d'onglets
+   * `"stack"` : les trois sections l'une sous l'autre, la colonne d'onglets
    * du super admin est trop étroite pour autre chose.
    * `"columns"` : identité et sécurité côte à côte, activité en pleine
    *  largeur dessous, pour une page qui dispose de toute la largeur.
@@ -221,7 +221,7 @@ export function AccountSection({ layout = "stack" }: {
             <div style={{ fontSize: 15, fontWeight: 700, color: EY.black }}>
               {[firstName, lastName].filter(Boolean).join(" ") || overview.username || "Administrateur"}
             </div>
-            <div style={{ fontSize: 12, color: "var(--ey-gray-mid)", marginTop: 2 }}>{overview.email || "—"}</div>
+            <div style={{ fontSize: 12, color: "var(--ey-gray-mid)", marginTop: 2 }}>{overview.email || "-"}</div>
           </div>
           <div style={{
             marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6,
@@ -234,7 +234,7 @@ export function AccountSection({ layout = "stack" }: {
         </div>
 
         <div style={{ marginTop: 8 }}>
-          <Fact label="Identifiant" value={overview.username || "—"} />
+          <Fact label="Identifiant" value={overview.username || "-"} />
           <Fact label="Compte créé le" value={dateOnly(overview.created_at)} />
           <Fact label="Dernière connexion" value={dateTime(overview.last_login)} />
           <Fact

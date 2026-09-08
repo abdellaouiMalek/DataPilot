@@ -675,6 +675,125 @@ def explain_results(score_result: dict[str, Any]) -> str:
         return fallback
 
 
+_SYSTEM_PROMPT_DIMENSION_ANALYSIS = """\
+Tu es un assistant qui analyse chaque dimension du profil de maturite data
+d'une banque, a partir de scores deja calcules.
+Tu ne dois JAMAIS inventer de chiffre, de fait ou d'action precise : appuie-toi
+UNIQUEMENT sur le score, le niveau de maturite et l'ecart au seuil fournis
+pour chacune des dimensions listees.
+Ton : professionnel, clair, oriente banque. Pour CHAQUE dimension, redige une
+analyse de 2 phrases maximum expliquant ce que son score signifie concretement
+pour la banque -- pas une reformulation du chiffre, une lecture metier de ce
+qu'il implique.
+Traite TOUTES les dimensions listees, dans le meme ordre, une entree par
+dimension. Reponds uniquement en JSON strict conforme au schema demande."""
+
+_DIMENSION_ANALYSIS_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "analyses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "dimension": {"type": "string"},
+                    "analyse": {"type": "string"},
+                },
+                "required": ["dimension", "analyse"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["analyses"],
+    "additionalProperties": False,
+}
+
+# ~110 tokens/dimension (2 short French sentences) times a generous headroom
+# for up to ten dimensions, plus JSON structure overhead -- unlike the other
+# prompts here this one answers for every dimension in a single call, so the
+# usual 250-token ceiling would truncate it well before the last entries.
+_DIMENSION_ANALYSIS_MAX_OUTPUT_TOKENS = 1400
+
+
+def _fallback_dimension_analyses(dimensions: list[dict[str, Any]]) -> dict[str, str]:
+    """Templated per-dimension text used when the LLM call fails, is
+    unconfigured, or its response is missing/malformed for some dimensions."""
+    out: dict[str, str] = {}
+    for d in dimensions:
+        score = d["score"]
+        level = str(d["level_label"]).lower()
+        gap = d["gap"]
+        if gap >= 0:
+            out[d["name"]] = (
+                f"Avec un score de {score:.1f}/5, cette dimension atteint le "
+                f"niveau {level} et se situe au-dessus du seuil de conformite "
+                f"({gap:+.1f} point)."
+            )
+        else:
+            out[d["name"]] = (
+                f"Avec un score de {score:.1f}/5, cette dimension reste au "
+                f"niveau {level}, en retrait de {abs(gap):.1f} point par "
+                "rapport au seuil de conformite."
+            )
+    return out
+
+
+def _build_dimension_analysis_user_prompt(dimensions: list[dict[str, Any]]) -> str:
+    lines = "\n".join(
+        f"- {d['name']} : score {d['score']:.2f}/5, niveau {d['level_label']}, "
+        f"poids {d['weight']}% du score global, ecart au seuil de conformite "
+        f"{d['gap']:+.2f}"
+        for d in dimensions
+    )
+    return f"""Dimensions du profil de maturite data, dans l'ordre a traiter :
+{lines}
+
+Redige une analyse pour CHACUNE, dans cet ordre. N'utilise QUE les chiffres
+ci-dessus, n'en invente aucun autre."""
+
+
+def explain_dimensions(dimensions: list[dict[str, Any]]) -> dict[str, str]:
+    """One LLM call producing a short, grounded analysis for every scored
+    dimension at once -- {dimension_name: analysis}.
+
+    ``dimensions`` items carry ``name``, ``score``, ``weight``, ``level_label``
+    and ``gap`` (already computed elsewhere; never invented here). A single
+    call rather than one per dimension: the model already sees every score
+    together, which keeps the analyses consistent with each other, and it's
+    the only way this stays fast on local CPU inference.
+
+    Falls back to a templated sentence per dimension if the LLM call fails,
+    is unconfigured, or a dimension is missing from its JSON response --
+    never returns a dimension with no text.
+    """
+    fallback = _fallback_dimension_analyses(dimensions)
+
+    if not LLM_API_KEY or not dimensions:
+        return fallback
+
+    user_prompt = _build_dimension_analysis_user_prompt(dimensions)
+    try:
+        raw = _call_llm(
+            _SYSTEM_PROMPT_DIMENSION_ANALYSIS,
+            user_prompt,
+            _DIMENSION_ANALYSIS_JSON_SCHEMA,
+            _DIMENSION_ANALYSIS_MAX_OUTPUT_TOKENS,
+        )
+        parsed = json.loads(raw)
+        result = dict(fallback)
+        for item in parsed.get("analyses", []):
+            name = str(item.get("dimension", "")).strip()
+            text = str(item.get("analyse", "")).strip()
+            # Only accept text for a dimension we actually asked about --
+            # a name the model paraphrased or invented is dropped, keeping
+            # that dimension's templated fallback instead.
+            if name in result and text and not _contains_garbage_token(text):
+                result[name] = text
+        return result
+    except Exception:
+        return fallback
+
+
 def _fallback_comparison_narrative(comparison_result: dict[str, Any]) -> str:
     """Templated narrative used when the LLM call fails or is unconfigured."""
     initial = comparison_result.get("score_global_initial") or 0.0

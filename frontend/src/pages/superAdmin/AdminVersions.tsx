@@ -1,5 +1,5 @@
 /**
- * Versions du questionnaire — the log of published snapshots.
+ * Versions du questionnaire, the log of published snapshots.
  *
  * A version is created only by publishing from the framework page; this screen
  * records what was frozen, when, by whom, what changed, and how many
@@ -13,7 +13,7 @@
  * record and stay immutable.
  *
  * A version that is obsolete but still referenced (assessments point at it) is
- * archived, not deleted — deletion is reserved for ones nothing depends on.
+ * archived, not deleted, deletion is reserved for ones nothing depends on.
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -37,6 +37,7 @@ import {
   type VersionDetail,
   type VersionSummary,
 } from "@/lib/adminFramework";
+import { useConfirm } from "@/hooks/useConfirm";
 import { AdminLoader } from "@/components/AdminLoader";
 import { useSeededSearch } from "@/hooks/useSeededSearch";
 import type { ApiDimension, ApiQuestion } from "@/lib/admin";
@@ -50,7 +51,7 @@ const dateTime = (iso: string | null) =>
     ? new Date(iso).toLocaleDateString("fr-FR", {
         day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
       })
-    : "—";
+    : "-";
 
 const countQuestions = (dimension: { sub_dimensions: { questions: unknown[] }[] }) =>
   dimension.sub_dimensions.reduce((total, sub) => total + sub.questions.length, 0);
@@ -161,7 +162,7 @@ function answersText(question: ApiQuestion): string {
   return scale.join("\n");
 }
 
-/** The frozen questionnaire, one row per question — the format a reviewer or
+/** The frozen questionnaire, one row per question, the format a reviewer or
  *  an auditor can actually read outside the app. */
 async function exportSnapshotXlsx(version: VersionDetail) {
   // Lazy-loaded so exceljs (~1 MB) is only fetched when an export happens.
@@ -176,7 +177,7 @@ async function exportSnapshotXlsx(version: VersionDetail) {
 
   ws.mergeCells("A1:K1");
   const title = ws.getCell("A1");
-  title.value = `DataPilot — Questionnaire v${version.number}${version.label ? ` — ${version.label}` : ""}`;
+  title.value = `DataPilot · Questionnaire v${version.number}${version.label ? `: ${version.label}` : ""}`;
   title.font = { bold: true, size: 15, color: { argb: EY_YELLOW } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EY_BLACK } };
   title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -187,7 +188,7 @@ async function exportSnapshotXlsx(version: VersionDetail) {
   sub.value =
     `Figé le ${dateTime(version.created_at)}` +
     `${version.created_by_name ? ` par ${version.created_by_name}` : ""}` +
-    ` — ${version.dimension_count} dimensions · ${version.question_count} questions`;
+    `, ${version.dimension_count} dimensions · ${version.question_count} questions`;
   sub.font = { size: 10, color: { argb: "FF6B6B6B" } };
 
   const header = ws.getRow(3);
@@ -213,12 +214,12 @@ async function exportSnapshotXlsx(version: VersionDetail) {
           subDimension.name,
           index + 1,
           question.text,
-          question.description || "—",
+          question.description || "-",
           question.type,
           question.weight,
           question.is_required ? "Oui" : "Non",
           question.is_active ? "Active" : "Inactive",
-          answersText(question) || "—",
+          answersText(question) || "-",
         ]);
         row.getCell(5).alignment = { wrapText: true, vertical: "top" };
         row.getCell(6).alignment = { wrapText: true, vertical: "top" };
@@ -244,7 +245,7 @@ async function exportSnapshotXlsx(version: VersionDetail) {
   );
 }
 
-/** The snapshot verbatim — the fidelity option, for archiving or diffing
+/** The snapshot verbatim, the fidelity option, for archiving or diffing
  *  outside the app. */
 function exportSnapshotJson(version: VersionDetail) {
   const payload = {
@@ -269,7 +270,7 @@ function exportSnapshotJson(version: VersionDetail) {
   );
 }
 
-/** The log itself, as shown — for reporting on how the framework evolved. */
+/** The log itself, as shown, for reporting on how the framework evolved. */
 async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undefined) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
@@ -282,7 +283,7 @@ async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undef
 
   ws.mergeCells("A1:I1");
   const title = ws.getCell("A1");
-  title.value = "DataPilot — Versions du questionnaire";
+  title.value = "DataPilot, Versions du questionnaire";
   title.font = { bold: true, size: 15, color: { argb: EY_YELLOW } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EY_BLACK } };
   title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -290,7 +291,7 @@ async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undef
 
   ws.mergeCells("A2:I2");
   const sub = ws.getCell("A2");
-  sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — ${plural(rows.length, "version")}`;
+  sub.value = `Exporté le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, ${plural(rows.length, "version")}`;
   sub.font = { size: 10, color: { argb: "FF6B6B6B" } };
 
   const header = ws.getRow(3);
@@ -315,7 +316,7 @@ async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undef
       version.question_count,
       version.dimension_count,
       version.assessment_count,
-      version.created_by_name || "—",
+      version.created_by_name || "-",
       dateTime(version.created_at),
       version.changelog.length
         ? version.changelog.map(e => `${e.label}${e.details.length ? ` (${e.details.join(" ; ")})` : ""}`).join("\n")
@@ -344,7 +345,7 @@ async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undef
 // ── Snapshot viewer ──────────────────────────────────────────────────────────
 
 /** The answer scale as it was frozen. A question's wording alone doesn't say
- *  what respondents could pick, or what each choice was worth — which is the
+ *  what respondents could pick, or what each choice was worth, which is the
  *  whole point of consulting an old version. */
 function AnswerScale({ question }: { question: ApiQuestion }) {
   const levels = question.level_responses ?? [];
@@ -410,7 +411,7 @@ function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose:
         <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexShrink: 0 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>
-              v{version.number}{version.label ? ` — ${version.label}` : ""}
+              v{version.number}{version.label ? `: ${version.label}` : ""}
             </div>
             <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 2 }}>
               Questionnaire figé le {dateTime(version.created_at)} · {version.dimension_count} dimensions · {version.question_count} questions
@@ -458,7 +459,7 @@ function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose:
                 <div key={sub.id} style={{ padding: "10px 16px 12px", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 7, overflowWrap: "anywhere" }}>
                     {sub.name}
-                    {!sub.is_active && <span style={{ textTransform: "none", letterSpacing: 0, color: "#B0B0B0", fontWeight: 500 }}> — inactive</span>}
+                    {!sub.is_active && <span style={{ textTransform: "none", letterSpacing: 0, color: "#B0B0B0", fontWeight: 500 }}> · inactive</span>}
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -640,8 +641,8 @@ function VersionCard({ title, version, muted }: {
         {title}
       </div>
       <div style={{ fontSize: 14, fontWeight: 700, color: muted ? "#6B6B6B" : "#1A1A1A", marginTop: 5, overflowWrap: "anywhere" }}>
-        {version ? `v${version.number}` : "—"}
-        {version?.label ? <span style={{ fontWeight: 500, fontSize: 12, color: "#9B9B9B" }}> — {version.label}</span> : null}
+        {version ? `v${version.number}` : "-"}
+        {version?.label ? <span style={{ fontWeight: 500, fontSize: 12, color: "#9B9B9B" }}>: {version.label}</span> : null}
       </div>
       <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 3 }}>
         {version ? `${version.question_count} questions · ${version.dimension_count} dimensions` : "Aucune"}
@@ -651,7 +652,7 @@ function VersionCard({ title, version, muted }: {
 }
 
 /** Restoring rewrites the questionnaire people are answering, so the
- *  confirmation spells out what changes and what survives — a native
+ *  confirmation spells out what changes and what survives, a native
  *  `confirm()` can show neither the before/after nor the guarantees. */
 function RestoreDialog({ version, current, onClose, onDone }: {
   version: VersionSummary;
@@ -691,7 +692,7 @@ function RestoreDialog({ version, current, onClose, onDone }: {
       strong: true,
     },
     { text: "Aucune version enregistrée n'est modifiée : l'historique reste intact et le retour en arrière reste possible." },
-    { text: "Les réponses déjà collectées sont conservées — une question déjà répondue est désactivée, jamais supprimée." },
+    { text: "Les réponses déjà collectées sont conservées, une question déjà répondue est désactivée, jamais supprimée." },
   ];
 
   if (version.archived) {
@@ -788,6 +789,7 @@ function RestoreDialog({ version, current, onClose, onDone }: {
 
 export function QuestionnaireVersions() {
   const navigate = useNavigate();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [versions, setVersions] = useState<VersionSummary[]>([]);
   const [draft, setDraft] = useState<DraftInfo | null>(null);
@@ -839,11 +841,14 @@ export function QuestionnaireVersions() {
 
   async function archive(version: VersionSummary, archived: boolean) {
     setOpenMenu(null);
-    if (archived && !window.confirm(
-      `Archiver la version v${version.number} ?\n\n` +
-      "Elle sortira de la liste par défaut. Rien n'est supprimé : le questionnaire figé " +
-      "reste consultable et la version peut être restaurée à tout moment."
-    )) return;
+    if (archived && !(await confirm({
+      title: `Archiver la version v${version.number} ?`,
+      description:
+        "Elle sortira de la liste par défaut. Rien n'est supprimé : le questionnaire figé " +
+        "reste consultable et la version peut être restaurée à tout moment.",
+      icon: Archive,
+      confirmLabel: "Archiver",
+    }))) return;
 
     setBusy(version.id);
     try {
@@ -859,11 +864,14 @@ export function QuestionnaireVersions() {
 
   async function remove(version: VersionSummary) {
     setOpenMenu(null);
-    if (!window.confirm(
-      `Supprimer définitivement la version v${version.number} ?\n\n` +
-      "Le questionnaire figé et son changelog seront perdus. Cette action est irréversible — " +
-      "préférez l'archivage pour retirer une version de la liste."
-    )) return;
+    if (!(await confirm({
+      title: `Supprimer définitivement la version v${version.number} ?`,
+      description:
+        "Le questionnaire figé et son changelog seront perdus. Cette action est irréversible, " +
+        "préférez l'archivage pour retirer une version de la liste.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+    }))) return;
 
     setBusy(version.id);
     try {
@@ -900,7 +908,7 @@ export function QuestionnaireVersions() {
     }
   }
 
-  // The live version is whichever carries the flag — after a restore that is
+  // The live version is whichever carries the flag, after a restore that is
   // an older one, not the newest.
   const active = versions.find(v => v.is_active) ?? versions[0];
   const archivedCount = versions.filter(v => v.archived).length;
@@ -952,7 +960,7 @@ export function QuestionnaireVersions() {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A", margin: 0, letterSpacing: "-0.02em" }}>Versions du questionnaire</h1>
           <p style={{ fontSize: 13, color: "#9B9B9B", margin: "4px 0 0" }}>
-            Historique des publications — chaque version fige le questionnaire tel qu'il était à ce moment
+            Historique des publications, chaque version fige le questionnaire tel qu'il était à ce moment
           </p>
         </div>
         {versions.length > 0 && (
@@ -1023,7 +1031,7 @@ export function QuestionnaireVersions() {
               Version en ligne
             </div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>
-              v{active.number}{active.label ? ` — ${active.label}` : ""}
+              v{active.number}{active.label ? `: ${active.label}` : ""}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 3 }}>
               {active.question_count} questions · {active.dimension_count} dimensions · publiée le {dateTime(active.created_at)}
@@ -1040,7 +1048,7 @@ export function QuestionnaireVersions() {
       )}
 
       {/* Search / filter / sort, grouped in one card like the table below it.
-          The card is the only surface here — the field itself draws no border
+          The card is the only surface here, the field itself draws no border
           and no shadow, so it reads as part of the card rather than a box
           sitting inside another box. */}
       {!loading && !error && versions.length > 0 && (
@@ -1173,13 +1181,13 @@ export function QuestionnaireVersions() {
                       <td style={{ padding: "12px 14px", verticalAlign: "middle", fontSize: 13, fontWeight: 700, color: numeric }}>{version.question_count}</td>
                       <td style={{ padding: "12px 14px", verticalAlign: "middle", fontSize: 13, fontWeight: 700, color: numeric }}>{version.dimension_count}</td>
 
-                      {/* What actually rides on this version — the number that
+                      {/* What actually rides on this version, the number that
                           makes restoring or deleting it a decision. */}
                       <td style={{ padding: "12px 14px", verticalAlign: "middle" }}>
                         <span
                           title={
                             version.assessment_count
-                              ? `${plural(version.assessment_count, "évaluation")} réalisée${version.assessment_count > 1 ? "s" : ""} sur cette version — elle ne peut pas être supprimée`
+                              ? `${plural(version.assessment_count, "évaluation")} réalisée${version.assessment_count > 1 ? "s" : ""} sur cette version, elle ne peut pas être supprimée`
                               : "Aucune évaluation réalisée sur cette version"
                           }
                           style={{
@@ -1191,7 +1199,7 @@ export function QuestionnaireVersions() {
                         </span>
                       </td>
 
-                      <td style={{ padding: "12px 14px", verticalAlign: "middle", fontSize: 12, color: "#9B9B9B", whiteSpace: "nowrap" }}>{version.created_by_name || "—"}</td>
+                      <td style={{ padding: "12px 14px", verticalAlign: "middle", fontSize: 12, color: "#9B9B9B", whiteSpace: "nowrap" }}>{version.created_by_name || "-"}</td>
                       <td style={{ padding: "12px 14px", verticalAlign: "middle", fontSize: 12, color: "#9B9B9B", whiteSpace: "nowrap" }}>{dateTime(version.created_at)}</td>
 
                       <td style={{ padding: "12px 14px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
@@ -1331,7 +1339,7 @@ export function QuestionnaireVersions() {
                           {version.changelog.map((entry, j) => <ChangeRow key={j} entry={entry} />)}
                           {version.changelog.length === 0 && (
                             <div style={{ fontSize: 12, color: "#9B9B9B", padding: "8px 0" }}>
-                              Version initiale — aucune modification antérieure à comparer.
+                              Version initiale, aucune modification antérieure à comparer.
                             </div>
                           )}
                         </td>
@@ -1389,11 +1397,12 @@ export function QuestionnaireVersions() {
       {editing && (
         <EditDialog version={editing} onClose={() => setEditing(null)} onSaved={reload} />
       )}
+      {confirmDialog}
     </div>
   );
 }
 
-/** First, last, and the neighbours of the current page — so filtering down to
+/** First, last, and the neighbours of the current page, so filtering down to
  *  a long list doesn't spill a row of numbers across the footer. */
 function pageWindow(current: number, total: number): (number | "…")[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);

@@ -1,7 +1,7 @@
 """Platform-level preferences that have nowhere else to live.
 
-Deliberately small. Anything Keycloak already owns — session lifetimes,
-password policy, required actions — is read from and written to the realm
+Deliberately small. Anything Keycloak already owns, session lifetimes,
+password policy, required actions, is read from and written to the realm
 rather than mirrored here, because a copy would be the version that goes
 stale. What lands in this table is only what the application itself decides:
 today, who gets notified about what.
@@ -31,7 +31,7 @@ class PlatformSettings(Base):
     # configured but have no recipient, which the API treats as "off" rather
     # than guessing an address.
     notify_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    # Submissions come from respondents, never from the back-office — which is
+    # Submissions come from respondents, never from the back-office, which is
     # the whole point: a notification about something you did yourself is noise.
     notify_on_assessment: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"

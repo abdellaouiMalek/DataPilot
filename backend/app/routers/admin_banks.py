@@ -1,7 +1,7 @@
 """Admin bank-management endpoints.
 
 Banks live in the app's own Postgres (unlike users, which live in Keycloak).
-Each bank row is enriched with assessment stats via a grouped join — latest
+Each bank row is enriched with assessment stats via a grouped join, latest
 global score, number of submissions, date of the last one. Lifecycle mirrors
 the users module: ``is_active`` toggles (Désactivé), ``archived`` hides from
 the default list; banks with assessments can't be deleted (FK RESTRICT), they
@@ -12,12 +12,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_super_admin
+from app.core.storage import delete_bank_logo, save_bank_logo
 from app.db.database import get_db
 from app.models import Assessment, Bank
 from app.models.audit_log import MODULE_BANKS
@@ -60,6 +61,7 @@ def _to_read(bank: Bank, stats: dict[str, Any]) -> BankAdminRead:
         description=bank.description,
         is_active=bank.is_active,
         archived=bank.archived,
+        logo_url=bank.logo_url,
         status=_status(bank),
         created_at=bank.created_at,
         score=stats.get("score"),
@@ -258,5 +260,49 @@ async def set_bank_archived(
         entity_label=bank.name,
         before=was,
         after=_status(bank),
+    )
+    return await _read_one(db, bank)
+
+
+@router.post("/{bank_id}/logo", response_model=BankAdminRead)
+async def upload_bank_logo(
+    bank_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
+):
+    bank = await _get_bank(db, bank_id)
+    bank.logo_path = await save_bank_logo(bank_id, file, previous_path=bank.logo_path)
+    await db.commit()
+    await db.refresh(bank)
+    await audit.record(
+        module=MODULE_BANKS,
+        action=f"Logo mis à jour banque {bank.name}",
+        entity_type="bank",
+        entity_id=bank.id,
+        entity_label=bank.name,
+    )
+    return await _read_one(db, bank)
+
+
+@router.delete("/{bank_id}/logo", response_model=BankAdminRead)
+async def remove_bank_logo(
+    bank_id: int,
+    db: AsyncSession = Depends(get_db),
+    _claims: dict = Depends(require_super_admin),
+    audit: Audit = Depends(audit_context),
+):
+    bank = await _get_bank(db, bank_id)
+    delete_bank_logo(bank.logo_path)
+    bank.logo_path = None
+    await db.commit()
+    await db.refresh(bank)
+    await audit.record(
+        module=MODULE_BANKS,
+        action=f"Logo supprimé banque {bank.name}",
+        entity_type="bank",
+        entity_id=bank.id,
+        entity_label=bank.name,
     )
     return await _read_one(db, bank)

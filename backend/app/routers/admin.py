@@ -1,4 +1,4 @@
-"""Admin back-office endpoints — CRUD over the framework (Dimension →
+"""Admin back-office endpoints, CRUD over the framework (Dimension →
 Sub-dimension → Question) plus their attributes (weight, color, type).
 
 Writes require the realm ``super_admin`` role. The plain-read endpoints
@@ -6,7 +6,7 @@ Writes require the realm ``super_admin`` role. The plain-read endpoints
 additionally open to the reduced ``admin`` role (`require_back_office`) so
 its "Gestion du framework" page (read-only, see
 frontend/src/pages/superAdmin/AdminDimensions.tsx::FrameworkConsultation)
-can consult the real framework — every other route here (create/update/
+can consult the real framework, every other route here (create/update/
 delete, and the force-delete impact previews) stays super-admin-only,
 enforced per-route rather than at the router level.
 """
@@ -110,6 +110,36 @@ async def _unique_key(db: AsyncSession, base: str) -> str:
         key = f"{base}-{i}"
         i += 1
     return key
+
+
+# A dimension's weight is read everywhere (the scoring formula, the PDF
+# reports, the LLM narrative) as "this dimension is worth weight% of the
+# global score" -- only true if active dimensions add up to 100. Question
+# weight has no such reading (it's a 1-10 relative importance the scoring
+# formula normalizes on its own), so this check is dimension-only.
+_WEIGHT_TOTAL_EPSILON = 0.01
+
+
+async def _active_dimension_weight_total(
+    db: AsyncSession, *, exclude_id: int | None = None
+) -> float:
+    stmt = select(func.coalesce(func.sum(Dimension.weight), 0.0)).where(Dimension.is_active.is_(True))
+    if exclude_id is not None:
+        stmt = stmt.where(Dimension.id != exclude_id)
+    return float(await db.scalar(stmt) or 0.0)
+
+
+def _reject_if_over_100(other_active_total: float, new_weight: float) -> None:
+    total = other_active_total + new_weight
+    if total > 100 + _WEIGHT_TOTAL_EPSILON:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Le poids total des dimensions actives dépasserait 100% "
+                f"({other_active_total:.1f}% + {new_weight:.1f}% = {total:.1f}%). "
+                "Réduisez ce poids ou celui d'une autre dimension."
+            ),
+        )
 
 
 def _dimension_query():
@@ -233,6 +263,10 @@ async def create_dimension(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
 ):
+    if payload.is_active:
+        other_total = await _active_dimension_weight_total(db)
+        _reject_if_over_100(other_total, payload.weight)
+
     count = await db.scalar(select(func.count()).select_from(Dimension)) or 0
     dim = Dimension(
         key=await _unique_key(db, _slugify(payload.name)),
@@ -273,6 +307,16 @@ async def update_dimension(
     dim = await _get_dimension_or_404(db, dimension_id)
     updates = payload.model_dump(exclude_unset=True)
     previous = {field: getattr(dim, field) for field in DIMENSION_FIELD_LABELS}
+
+    # Only re-check when this update could actually push the total up: a
+    # resulting weight/activation change. Everything else (name, color, ...)
+    # skips the query.
+    resulting_weight = updates.get("weight", dim.weight)
+    resulting_active = updates.get("is_active", dim.is_active)
+    if resulting_active and ("weight" in updates or "is_active" in updates):
+        other_total = await _active_dimension_weight_total(db, exclude_id=dim.id)
+        _reject_if_over_100(other_total, resulting_weight)
+
     for field, value in updates.items():
         setattr(dim, field, value)
     await db.commit()
@@ -303,8 +347,8 @@ async def update_dimension(
 async def dimension_delete_impact(dimension_id: int, db: AsyncSession = Depends(get_db)):
     """How much collected history refers to this dimension.
 
-    Nothing here is destroyed by a delete any more — answers and scores are
-    read from their version's snapshot — but an admin should still see how
+    Nothing here is destroyed by a delete any more, answers and scores are
+    read from their version's snapshot, but an admin should still see how
     many past evaluations mentioned what they are about to remove.
     """
     await _get_dimension_or_404(db, dimension_id)
@@ -340,7 +384,7 @@ async def delete_dimension(
             entity_id=dimension_id,
             entity_label=name,
             before=name,
-            after="Refusé — élément référencé",
+            after="Refusé, élément référencé",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
     await audit.record(
@@ -472,7 +516,7 @@ async def delete_subdimension(
             entity_id=sub_id,
             entity_label=name,
             before=name,
-            after="Refusé — élément référencé",
+            after="Refusé, élément référencé",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
     await audit.record(
@@ -636,7 +680,7 @@ async def delete_question(
             entity_id=question_id,
             entity_label=label,
             before=label,
-            after="Refusé — élément référencé",
+            after="Refusé, élément référencé",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
     await audit.record(
@@ -651,7 +695,7 @@ async def delete_question(
 
 
 # ── Recommendations ───────────────────────────────────────────────────────────
-# Catalog consumed by superAdmin/AdminRecommendations.tsx — see
+# Catalog consumed by superAdmin/AdminRecommendations.tsx, see
 # app/models/recommendation.py for why one row = one atomic trigger_level ->
 # trigger_level + 1 step, and app/services/regulatory.py for the same
 # code=f"{dim.code}Q{question.id}-{trigger}" scheme used when the regulatory
@@ -727,7 +771,7 @@ async def create_recommendations(
         if found is None:
             raise HTTPException(
                 status_code=404,
-                detail="Question de brouillon introuvable — le brouillon a peut-être changé.",
+                detail="Question de brouillon introuvable, le brouillon a peut-être changé.",
             )
         _dim_node, _sub_node, question_node = found
         question_label = question_node.get("text", "")
@@ -751,7 +795,7 @@ async def create_recommendations(
         # chk_trigger_level_range / uq_question_trigger (or its draft
         # equivalent, uq_draft_question_trigger): an out-of-range or
         # already-occupied level is skipped rather than failing the whole
-        # batch — see RecommendationBatchCreateResult docstring.
+        # batch, see RecommendationBatchCreateResult docstring.
         if level not in range(1, 5) or level in occupied:
             skipped.append(level)
             continue
@@ -854,7 +898,7 @@ async def delete_recommendation(
             entity_id=recommendation_id,
             entity_label=label,
             before=label,
-            after="Refusé — élément référencé",
+            after="Refusé, élément référencé",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=REFERENCED_409)
     await audit.record(

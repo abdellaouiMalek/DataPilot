@@ -3,7 +3,7 @@
 Only settings with something real behind them are modelled here. Security
 lives in the Keycloak realm, notifications in ``platform_settings``, and the
 access tiers are read back out of the running application rather than
-declared — see ``app.routers.admin_settings``.
+declared, see ``app.routers.admin_settings``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ class SecuritySettings(BaseModel):
     """Authentication settings, stored by Keycloak on the realm itself."""
 
     #: CONFIGURE_TOTP as a default required action: every account is asked to
-    #: set up a second factor at its next sign-in. Realm-wide — Keycloak has no
+    #: set up a second factor at its next sign-in. Realm-wide, Keycloak has no
     #: per-role default action.
     two_factor_required: bool
     #: Realm ``ssoSessionIdleTimeout``, in minutes.
@@ -46,7 +46,7 @@ class SettingsRead(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """Partial update — only the sections the page actually edited."""
+    """Partial update, only the sections the page actually edited."""
 
     security: Optional[SecuritySettings] = None
     notifications: Optional[NotificationSettings] = None

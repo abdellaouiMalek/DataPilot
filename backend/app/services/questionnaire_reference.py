@@ -120,7 +120,7 @@ def reference_from_tree(tree: Sequence[dict[str, Any]]) -> QuestionnaireRef:
 
 
 async def live_reference(db: AsyncSession) -> QuestionnaireRef:
-    """The framework as it stands right now — for scoring a new submission."""
+    """The framework as it stands right now, for scoring a new submission."""
     dimensions = (await db.execute(select(Dimension))).scalars().all()
     questions = (await db.execute(select(Question))).scalars().all()
     return QuestionnaireRef(
@@ -159,7 +159,7 @@ async def reference_for(db: AsyncSession, assessment: Assessment) -> Questionnai
     """The questionnaire ``assessment`` was answered on.
 
     Falls back to the live framework only when the assessment carries no usable
-    snapshot at all — which the ``7d2ca4b90e18`` migration eliminated, so it is
+    snapshot at all, which the ``7d2ca4b90e18`` migration eliminated, so it is
     a safety net for rows created outside it rather than a normal path.
     """
     if assessment.version_id is not None:
@@ -173,7 +173,7 @@ async def reference_for(db: AsyncSession, assessment: Assessment) -> Questionnai
 async def references_for(
     db: AsyncSession, assessments: Iterable[Assessment]
 ) -> dict[int, QuestionnaireRef]:
-    """Same, for a list — one query for every version they span.
+    """Same, for a list, one query for every version they span.
 
     History pages render assessments from several versions at once; resolving
     each one separately would be a query per row.

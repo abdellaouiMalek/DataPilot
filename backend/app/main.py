@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.core.cors import setup_cors
 from app.core.keycloak_admin import close_client
+from app.core.storage import LOGOS_DIR
 from app.routers import (
     admin,
     admin_banks,
@@ -59,6 +61,10 @@ app.include_router(admin_settings.router)
 app.include_router(profile.router)
 app.include_router(notifications.router)
 app.include_router(versions.router)
+
+# Bank logos and any other uploaded asset: public, non-sensitive images, so a
+# plain static mount is enough, no auth needed to view them.
+app.mount("/static", StaticFiles(directory=str(LOGOS_DIR.parent)), name="static")
 
 
 @app.get("/")

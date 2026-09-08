@@ -230,7 +230,7 @@ export interface QuestionInput {
   levelResponses?: LevelResponse[] | null;
   choiceOptions?: ChoiceOption[] | null;
   status?: Status;
-  // Only meaningful on update — reassigns the question to another sub-dimension
+  // Only meaningful on update, reassigns the question to another sub-dimension
   // (and, transitively, dimension). Ignored by createQuestion, which already
   // takes the target sub-dimension as its own argument.
   subDimensionId?: string;

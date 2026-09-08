@@ -6,7 +6,7 @@ Two rules shape what is worth sending.
 be published by a super admin, so a "published" notification could only tell
 the recipient about their own action. A *submission*, on the other hand, comes
 from a respondent and is invisible to the back-office until someone goes
-looking — which is exactly what a notification is for.
+looking, which is exactly what a notification is for.
 
 **Never notify the actor.** Even on a shared event like account creation, the
 person who just did it does not need an email about it; the address is only
@@ -82,11 +82,11 @@ async def notify_assessment_submitted(
     if not to:
         return
     result = (
-        f"{score:.1f}/5 · {maturity or '—'}" if score is not None else "non calculé"
+        f"{score:.1f}/5 · {maturity or '-'}" if score is not None else "non calculé"
     )
     await _send(
         to,
-        f"DataPilot — nouvelle évaluation soumise ({bank})",
+        f"DataPilot · nouvelle évaluation soumise ({bank})",
         f"Une évaluation vient d'être soumise sur la plateforme.\n\n"
         f"    Banque : {bank}\n"
         f"    Département : {department or 'non renseigné'}\n"
@@ -104,7 +104,7 @@ async def notify_user_created(
         return
     await _send(
         to,
-        "DataPilot — création d'un compte",
+        "DataPilot · création d'un compte",
         f"Un compte vient d'être créé sur la plateforme.\n\n"
         f"    Compte : {email}\n"
         f"    Rôle : {role}\n"

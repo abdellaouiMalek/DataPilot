@@ -286,7 +286,7 @@ The framework is specifically adapted to the Tunisian banking sector through:
 
 # 🏁 Getting Started
 
-DataPilot runs as three local services — a **React** frontend, a **FastAPI** backend, and **Keycloak** (in Docker) for authentication, backed by **PostgreSQL**.
+DataPilot runs as three local services: a **React** frontend, a **FastAPI** backend, and **Keycloak** (in Docker) for authentication, backed by **PostgreSQL**.
 
 ## ✅ Prerequisites
 
@@ -295,8 +295,8 @@ DataPilot runs as three local services — a **React** frontend, a **FastAPI** b
 | **Node.js**    | 22.x (Vite 8)                                                         |
 | **Python**     | 3.11 or 3.12 recommended                                              |
 | **PostgreSQL** | Running locally; a database named **`datapilot`**                     |
-| **Docker**     | Docker Desktop / Compose v2 — runs Keycloak                           |
-| **JDK + Maven**| JDK 17+ & Maven — only to build the custom Keycloak (Keycloakify) theme |
+| **Docker**     | Docker Desktop / Compose v2 (runs Keycloak)                           |
+| **JDK + Maven**| JDK 17+ & Maven: only to build the custom Keycloak (Keycloakify) theme |
 
 ## ▶️ Running it locally
 
@@ -308,7 +308,7 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-> 📄 **Full step-by-step instructions** (Keycloak/Docker setup, the EY login theme, creating a user, backend & frontend commands, troubleshooting) live in **`SETUP.local.md`** at the repo root — kept out of version control so this README stays focused on the project itself.
+> 📄 **Full step-by-step instructions** (Keycloak/Docker setup, the EY login theme, creating a user, backend & frontend commands, troubleshooting) live in **`SETUP.local.md`** at the repo root, kept out of version control so this README stays focused on the project itself.
 
 ---
 

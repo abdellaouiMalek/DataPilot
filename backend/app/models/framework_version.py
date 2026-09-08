@@ -22,7 +22,7 @@ class FrameworkDraft(Base):
     draft is published.
 
     Single row by design (``id`` is always 1): the framework has one pending
-    state, shared by whoever is editing it — hence ``updated_by_name``, so a
+    state, shared by whoever is editing it, hence ``updated_by_name``, so a
     second admin sees who has work in flight instead of silently overwriting it.
     """
 

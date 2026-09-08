@@ -2,7 +2,7 @@
  * Routage de l'application.
  *
  * Chaque page est chargée à la demande via le `lazy` du routeur : sans cela,
- * tout — questionnaire, résultats, et les ~8 000 lignes du back-office —
+ * tout (questionnaire, résultats, et les ~8 000 lignes du back-office)
  * partait dans un seul fichier JavaScript téléchargé dès la page d'accueil,
  * y compris pour un visiteur qui n'ouvrira jamais `/super-admin`.
  *
@@ -40,13 +40,13 @@ const guarded = <M extends Record<string, unknown>>(
 };
 
 export const router = createBrowserRouter([
-  // Public — accessible sans authentification
+  // Public, accessible sans authentification
   // Différée comme les autres : la charger d'emblée tirait `motion` dans le
   // fichier initial (+150 Ko pour tout le monde, y compris un administrateur
   // qui ne verra jamais cette page) pour n'économiser qu'un aller-retour.
   { path: '/', lazy: page(() => import('./pages/LandingPage'), 'LandingPage') },
 
-  // Protégées — redirigent vers Keycloak si non connecté
+  // Protégées, redirigent vers Keycloak si non connecté
   { path: '/questionnaire',   lazy: guarded(() => import('./pages/QuestionnairePage'), 'QuestionnairePage') },
   { path: '/dashboard',       lazy: guarded(() => import('./pages/DashboardPage'), 'DashboardPage') },
   { path: '/historique',      lazy: guarded(() => import('./pages/HistoriquePage'), 'HistoriquePage') },
@@ -58,7 +58,6 @@ export const router = createBrowserRouter([
   // Avec l'id dans l'URL, elles se reconstruisent seules (`getAssessment`).
   { path: '/results/:assessmentId',         lazy: guarded(() => import('./pages/ResultsPage'), 'ResultsPage') },
   { path: '/recommendations/:assessmentId', lazy: guarded(() => import('./pages/RecommendationsPage'), 'RecommendationsPage') },
-  { path: '/simulation/:assessmentId',      lazy: guarded(() => import('./pages/SimulationPage'), 'SimulationPage') },
   // Comparaison : les ids sont en query (`?ids=5,6`), leur nombre varie.
   { path: '/evolution',       lazy: guarded(() => import('./pages/EvolutionPage'), 'EvolutionPage') },
 
@@ -67,9 +66,8 @@ export const router = createBrowserRouter([
   // plutôt que sur un écran d'erreur.
   { path: '/results',         element: <Navigate to="/dashboard" replace /> },
   { path: '/recommendations', element: <Navigate to="/dashboard" replace /> },
-  { path: '/simulation',      element: <Navigate to="/dashboard" replace /> },
 
-  // Espace admin — rôle `admin` (ou `super_admin`, sur-ensemble).
+  // Espace admin, rôle `admin` (ou `super_admin`, sur-ensemble).
   // Périmètre volontairement réduit : tableau de bord + utilisateurs.
   {
     path: '/admin',
@@ -85,7 +83,7 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // Back-office — requires the `super_admin` realm role
+  // Back-office, requires the `super_admin` realm role
   {
     path: '/super-admin',
     element: <RequireSuperAdmin><AdminLayout /></RequireSuperAdmin>,

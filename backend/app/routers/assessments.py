@@ -2,7 +2,7 @@
 
 A submission carries raw Likert answers. We validate them against the *active*
 questionnaire, compute the maturity scores (``app.services.scoring``), then
-persist the raw answers alongside the cached scores in a single transaction —
+persist the raw answers alongside the cached scores in a single transaction, 
 raw answers keep results reproducible if questions change later; cached scores
 let the results page load without recomputing.
 """
@@ -84,7 +84,7 @@ async def submit_assessment(
 
     # ── Validate the submission ───────────────────────────────────────────────
     # Reject duplicate answers and answers to unknown/inactive questions rather
-    # than silently dropping them — a malformed payload should be a clear 400.
+    # than silently dropping them, a malformed payload should be a clear 400.
     seen: set[int] = set()
     scoring_inputs: list[QuestionInput] = []
     for ans in payload.answers:
@@ -164,7 +164,7 @@ async def submit_assessment(
     # Start reformulating the default recommendation plan and the results
     # narrative now, in the background, so that slow LLM work is already
     # done (and persisted) by the time the user reaches Results or
-    # Recommendations — instead of them waiting for it there.
+    # Recommendations, instead of them waiting for it there.
     background_tasks.add_task(prewarm_recommendations, assessment.id)
     background_tasks.add_task(prewarm_narrative, assessment.id)
 
@@ -172,12 +172,12 @@ async def submit_assessment(
     # back-office is looking at when it asks who submitted what, and when.
     await audit.record(
         module=MODULE_ASSESSMENTS,
-        action=f"Soumission évaluation — {bank.name}",
+        action=f"Soumission évaluation, {bank.name}",
         entity_type="assessment",
         entity_id=assessment.id,
         entity_label=bank.name,
         after=(
-            f"Score {result.global_score:.1f}/5 · {result.maturity_label or '—'}"
+            f"Score {result.global_score:.1f}/5 · {result.maturity_label or '-'}"
             if result.global_score is not None
             else "Évaluation enregistrée"
         ),
@@ -215,6 +215,7 @@ async def submit_assessment(
         id=assessment.id,
         bank_id=assessment.bank_id,
         bank=bank.name,
+        bank_logo_url=bank.logo_url,
         department=assessment.department,
         evaluator_role=assessment.evaluator_role,
         score_global=assessment.score_global,
@@ -243,6 +244,7 @@ def _to_result(
         id=assessment.id,
         bank_id=assessment.bank_id,
         bank=assessment.bank.name,
+        bank_logo_url=assessment.bank.logo_url,
         department=assessment.department,
         evaluator_role=assessment.evaluator_role,
         score_global=assessment.score_global,
@@ -316,7 +318,7 @@ async def read_assessment(
 ):
     """One assessment, by id.
 
-    Exists so the results / recommendations / simulation pages can be reached
+    Exists so the results / recommendations pages can be reached
     by URL and rebuilt from it. Previously they were handed the whole object
     through the router's in-memory state, which a page reload throws away --
     and which a login redirect through Keycloak throws away too.

@@ -2,7 +2,7 @@
 
 Shared by two surfaces that must never disagree: the dashboard's "Alertes de
 configuration" card and the topbar's notification bell. Each check answers
-"is something misconfigured right now?" — these are *states*, not events, so
+"is something misconfigured right now?", these are *states*, not events, so
 they carry no timestamp and disappear on their own once fixed.
 
 Every alert carries a stable ``code``. The wording and the counts in ``text``
@@ -66,7 +66,7 @@ class AlertInputs:
     """
 
     active_version: Optional[QuestionnaireVersion]
-    #: None when Keycloak could not be reached — distinct from "nobody is
+    #: None when Keycloak could not be reached, distinct from "nobody is
     #: waiting", so the check stays silent instead of claiming all is well.
     pending_users: Optional[int]
     banks_without_assessment: int
@@ -90,7 +90,7 @@ async def pending_user_count() -> Optional[int]:
     try:
         users = await kc_get("/users", {"max": 1000})
     except HTTPException:
-        logger.warning("Alerts: Keycloak unreachable — pending-user check skipped")
+        logger.warning("Alerts: Keycloak unreachable, pending-user check skipped")
         return None
     return sum(1 for user in users if user_status(user) == "En attente")
 
@@ -120,7 +120,7 @@ async def gather_inputs(db: AsyncSession) -> AlertInputs:
 async def compute(db: AsyncSession, inputs: AlertInputs) -> list[DashboardAlert]:
     """Every triggered check, most severe first.
 
-    An empty list means the platform is correctly configured — a result worth
+    An empty list means the platform is correctly configured, a result worth
     stating, so callers render it rather than hiding the card.
     """
     alerts: list[DashboardAlert] = []
@@ -186,7 +186,7 @@ async def compute(db: AsyncSession, inputs: AlertInputs) -> list[DashboardAlert]
                 module=MODULE_SCORING,
                 level="critical",
                 # An overlap makes the mapper return the *wrong* label, where a
-                # gap only costs a missing one — hence the higher severity.
+                # gap only costs a missing one, hence the higher severity.
                 text=(
                     f"{len(overlaps)} {_plural(len(overlaps), 'chevauchement')} "
                     "entre niveaux de maturité"
@@ -228,7 +228,7 @@ async def compute(db: AsyncSession, inputs: AlertInputs) -> list[DashboardAlert]
                 text=(
                     f"{unweighted_dimensions} "
                     f"{_plural(unweighted_dimensions, 'dimension')} sans "
-                    f"pondération — exclue{mark} du score global"
+                    f"pondération, exclue{mark} du score global"
                 ),
                 action="Pondérer",
                 target="dimensions",

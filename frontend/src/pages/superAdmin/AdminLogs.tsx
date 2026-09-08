@@ -1,5 +1,5 @@
 /**
- * Historique & logs — the audit trail of administrative actions.
+ * Historique & logs, the audit trail of administrative actions.
  *
  * Everything shown here is read from `/api/super-admin/logs`, written by the
  * backend as a side effect of the actions themselves (see
@@ -37,7 +37,7 @@ const stCfg: Record<string, { color: string; bg: string; Icon: LucideIcon }> = {
 
 const FALLBACK_STATUS = { color: "#6B6B6B", bg: "#F5F5F5", Icon: Activity };
 
-/** "Aujourd'hui" / "Hier" / "12/06/2026" — the group heading a row falls under. */
+/** "Aujourd'hui" / "Hier" / "12/06/2026", the group heading a row falls under. */
 function dayLabel(iso: string): string {
   const date = new Date(iso);
   const today = new Date();
@@ -166,7 +166,7 @@ export function AuditLogs() {
   });
 
   const pct = (value: number) =>
-    counts.total ? `${Math.round((value / counts.total) * 100)}% du total` : "—";
+    counts.total ? `${Math.round((value / counts.total) * 100)}% du total` : "-";
 
   return (
     <div style={{ padding: "28px 32px 40px", backgroundColor: "#F2F2F2", minHeight: "100%" }}>
@@ -195,7 +195,7 @@ export function AuditLogs() {
         </div>
       )}
 
-      {/* Stats cards — même style que les autres interfaces */}
+      {/* Stats cards, même style que les autres interfaces */}
       <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
         {[
           { label: "Total des actions",  value: counts.total,    trendBg: "#F5F5F5", trendColor: "#6B6B6B", sub: hasFilters ? "Sur la période filtrée" : "Depuis le début", Icon: Activity },
@@ -219,7 +219,7 @@ export function AuditLogs() {
         })}
       </div>
 
-      {/* Filter bar — search + selects + date range */}
+      {/* Filter bar, search + selects + date range */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
         <div className="search-field" style={{ flex: "1 1 220px" }}>
           <Search className="search-icon" size={16} />
@@ -325,9 +325,9 @@ export function AuditLogs() {
                       {/* Before → After pill (only if meaningful) */}
                       {(log.before || log.after) && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, backgroundColor: "#F7F7F7", borderRadius: 6, padding: "5px 10px", flexShrink: 0 }}>
-                          <span style={{ fontSize: 11, color: "#9B9B9B", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.before || "—"}</span>
+                          <span style={{ fontSize: 11, color: "#9B9B9B", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.before || "-"}</span>
                           <span style={{ fontSize: 10, color: "#C0C0C0" }}>→</span>
-                          <span style={{ fontSize: 11, color: "#1A1A1A", fontWeight: 600, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.after || "—"}</span>
+                          <span style={{ fontSize: 11, color: "#1A1A1A", fontWeight: 600, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.after || "-"}</span>
                         </div>
                       )}
 
@@ -347,11 +347,11 @@ export function AuditLogs() {
                           { label: "Date",        value: new Date(log.created_at).toLocaleString("fr-FR"), mono: true, isStatus: false },
                           { label: "Statut",      value: log.status,                      mono: false, isStatus: true  },
                           { label: "Module",      value: log.module,                      mono: false, isStatus: false },
-                          { label: "Élément",     value: log.entity_label || "—",         mono: false, isStatus: false },
-                          { label: "Avant",       value: log.before || "—",               mono: false, isStatus: false },
-                          { label: "Après",       value: log.after || "—",                mono: false, isStatus: false },
+                          { label: "Élément",     value: log.entity_label || "-",         mono: false, isStatus: false },
+                          { label: "Avant",       value: log.before || "-",               mono: false, isStatus: false },
+                          { label: "Après",       value: log.after || "-",                mono: false, isStatus: false },
                           { label: "Utilisateur", value: log.actor_email || log.actor_name, mono: false, isStatus: false },
-                          { label: "Adresse IP",  value: log.ip || "—",                   mono: true,  isStatus: false },
+                          { label: "Adresse IP",  value: log.ip || "-",                   mono: true,  isStatus: false },
                           // Whatever extra context the recorder attached to
                           // this particular action (changed fields, counts…).
                           ...Object.entries(log.details ?? {})
@@ -402,7 +402,7 @@ export function AuditLogs() {
       {total > PER_PAGE && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, backgroundColor: "#fff", borderRadius: 9, border: "1px solid rgba(0,0,0,0.07)", padding: "12px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <span style={{ fontSize: 12, color: "#9B9B9B" }}>
-            <strong style={{ color: "#1A1A1A" }}>{(page - 1) * PER_PAGE + 1}</strong>–<strong style={{ color: "#1A1A1A" }}>{Math.min(page * PER_PAGE, total)}</strong> sur <strong style={{ color: "#1A1A1A" }}>{total}</strong> entrées
+            <strong style={{ color: "#1A1A1A" }}>{(page - 1) * PER_PAGE + 1}</strong>-<strong style={{ color: "#1A1A1A" }}>{Math.min(page * PER_PAGE, total)}</strong> sur <strong style={{ color: "#1A1A1A" }}>{total}</strong> entrées
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
