@@ -27,6 +27,7 @@ import {
   type ScoringReferential,
 } from "@/lib/adminScoring";
 import { adminApi, type Dimension } from "@/lib/admin";
+import { isSuperAdmin } from "@/lib/keycloak";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;
@@ -212,6 +213,12 @@ function LevelModal({
  * que laissée comme un bouton qui ne marche pas.
  */
 export function ScoringReferential() {
+  // Read-only for the reduced "admin" role (reachable at /admin/scoring,
+  // see routes.tsx) -- the backend already refuses every mutation from
+  // that role (admin_scoring.py's two write endpoints and admin.py's
+  // update_dimension all stay require_super_admin), this only keeps the
+  // UI from offering controls that would just 403.
+  const canEdit = isSuperAdmin();
   const [referential, setReferential] = useState<ScoringReferential | null>(null);
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [loading, setLoading] = useState(true);
@@ -354,10 +361,12 @@ export function ScoringReferential() {
             Niveaux de maturité, seuils et pondérations utilisés pour calculer les scores
           </p>
         </div>
-        <button onClick={handleReset} disabled={resetting}
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", borderRadius: 4, fontSize: 13, fontWeight: 500, border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white", cursor: resetting ? "not-allowed" : "pointer", color: "var(--ey-gray-dark)", opacity: resetting ? 0.7 : 1 }}>
-          {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Restaurer les défauts
-        </button>
+        {canEdit && (
+          <button onClick={handleReset} disabled={resetting}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", borderRadius: 4, fontSize: 13, fontWeight: 500, border: "1px solid rgba(0,0,0,0.15)", backgroundColor: "white", cursor: resetting ? "not-allowed" : "pointer", color: "var(--ey-gray-dark)", opacity: resetting ? 0.7 : 1 }}>
+            {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Restaurer les défauts
+          </button>
+        )}
       </div>
 
       {/* Configuration warnings, a band overlap mislabels results, a gap
@@ -457,10 +466,12 @@ export function ScoringReferential() {
                   </span>
                 </td>
                 <td style={{ padding: "14px 16px" }}>
-                  <button onClick={() => setEditingLevel(level)} title="Modifier ce niveau"
-                    style={{ width: 28, height: 28, borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", backgroundColor: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ey-gray-dark)" }}>
-                    <Edit2 size={12} />
-                  </button>
+                  {canEdit && (
+                    <button onClick={() => setEditingLevel(level)} title="Modifier ce niveau"
+                      style={{ width: 28, height: 28, borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", backgroundColor: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ey-gray-dark)" }}>
+                      <Edit2 size={12} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -543,12 +554,12 @@ export function ScoringReferential() {
                         <X size={11} />
                       </button>
                     </div>
-                  ) : (
+                  ) : canEdit ? (
                     <button onClick={() => setEditingWeight({ id: dimension.id, value: String(dimension.weight) })} title="Modifier la pondération"
                       style={{ width: 24, height: 24, borderRadius: 3, border: "1px solid rgba(0,0,0,0.1)", backgroundColor: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ey-gray-dark)" }}>
                       <Edit2 size={11} />
                     </button>
-                  )}
+                  ) : null}
                 </div>
               );
             })}

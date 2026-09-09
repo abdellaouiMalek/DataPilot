@@ -4,12 +4,19 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.schemas.admin import LevelResponse
+
 
 class QuestionRead(BaseModel):
     id: int
     text: str
     description: Optional[str] = None
     sort_order: int
+    # The real per-question answer scale (label + score for levels 1-5), as
+    # configured by the admin framework editor. Null for a question that was
+    # never given specific wording -- the questionnaire page falls back to a
+    # generic scale in that case.
+    level_responses: Optional[list[LevelResponse]] = None
 
     model_config = {"from_attributes": True}
 

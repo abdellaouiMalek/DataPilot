@@ -17,6 +17,7 @@ class ProfileRead(BaseModel):
     # bank's data the user can see), not a self-editable preference.
     bank_id: Optional[int] = None
     bank_name: Optional[str] = None
+    bank_logo_url: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):

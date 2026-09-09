@@ -11,6 +11,7 @@ export interface UserProfile {
   // this is a permission boundary, not a self-editable preference.
   bank_id: number | null;
   bank_name: string | null;
+  bank_logo_url: string | null;
 }
 
 export interface ProfilePayload {

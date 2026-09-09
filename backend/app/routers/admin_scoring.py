@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_super_admin
+from app.core.auth import require_back_office, require_super_admin
 from app.db.database import get_db
 from app.db.seed import MATURITY_LEVELS
 from app.models import MaturityLevel
@@ -42,7 +42,10 @@ from app.services.scoring import MAX_LEVEL
 router = APIRouter(
     prefix="/api/super-admin/scoring",
     tags=["super-admin-scoring"],
-    dependencies=[Depends(require_super_admin)],
+    # No blanket dependency (see admin_framework.py for the same fix, same
+    # reasoning) -- GET /referential is open to the reduced "admin" role
+    # too (require_back_office), the two write endpoints below stay
+    # require_super_admin, declared explicitly.
 )
 
 SCALE_MIN = 0.0
@@ -140,12 +143,12 @@ def _validate(min_score: float, max_score: float, others: list[MaturityLevel]) -
             )
 
 
-@router.get("/referential", response_model=ScoringReferentialRead)
+@router.get("/referential", response_model=ScoringReferentialRead, dependencies=[Depends(require_back_office)])
 async def get_referential(db: AsyncSession = Depends(get_db)):
     return _referential(await _levels(db))
 
 
-@router.patch("/maturity-levels/{level_id}", response_model=ScoringReferentialRead)
+@router.patch("/maturity-levels/{level_id}", response_model=ScoringReferentialRead, dependencies=[Depends(require_super_admin)])
 async def update_maturity_level(
     level_id: int,
     payload: MaturityLevelUpdate,
@@ -193,7 +196,7 @@ async def update_maturity_level(
     return _referential(await _levels(db))
 
 
-@router.post("/maturity-levels/reset", response_model=ScoringReferentialRead)
+@router.post("/maturity-levels/reset", response_model=ScoringReferentialRead, dependencies=[Depends(require_super_admin)])
 async def reset_maturity_levels(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),

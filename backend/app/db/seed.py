@@ -47,7 +47,14 @@ DIMENSIONS = [
         "topics": [
             {
                 "name": "Sponsoring exécutif",
-                "question": "Le sponsoring exécutif (Direction Générale) est-il clairement établi sur les sujets data ?",
+                "question": "Quel est le niveau d'engagement de la Direction générale sur les sujets data ?",
+                "level_responses": [
+                    {"label": "La Direction générale n'est pas impliquée.", "score": 1},
+                    {"label": "Elle intervient seulement en cas de besoin urgent.", "score": 2},
+                    {"label": "Un responsable de direction est désigné pour soutenir les initiatives data.", "score": 3},
+                    {"label": "La Direction générale suit régulièrement les projets, les risques et les résultats data.", "score": 4},
+                    {"label": "La data est intégrée aux décisions stratégiques de la banque.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Identifier un relais data à la Direction générale",
                      "Désigner un interlocuteur à la Direction générale mobilisable sur les sujets data critiques, afin de sortir d'une absence totale d'implication.", "strategie", False, 1),
@@ -61,7 +68,14 @@ DIMENSIONS = [
             },
             {
                 "name": "Roadmap et priorisation",
-                "question": "Disposez-vous d'une roadmap data commune et priorisée à l'échelle de la banque ?",
+                "question": "Comment les initiatives data sont-elles planifiées et priorisées ?",
+                "level_responses": [
+                    {"label": "Elles sont lancées sans plan ni critères de priorité.", "score": 1},
+                    {"label": "Chaque direction gère ses propres initiatives.", "score": 2},
+                    {"label": "Une roadmap data commune est définie.", "score": 3},
+                    {"label": "Les initiatives sont priorisées selon leur valeur, leur risque et les exigences réglementaires.", "score": 4},
+                    {"label": "La roadmap est régulièrement mise à jour selon les résultats et les priorités de la banque.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Recenser les initiatives data existantes",
                      "Inventorier les initiatives data menées par chaque direction pour obtenir une première visibilité d'ensemble.", "strategie", False, 1),
@@ -75,7 +89,14 @@ DIMENSIONS = [
             },
             {
                 "name": "Valeur et impact business",
-                "question": "Mesurez-vous la valeur et l'impact business des projets data (coûts, gains, risques évités) ?",
+                "question": "Comment la banque mesure-t-elle la valeur de ses projets data ?",
+                "level_responses": [
+                    {"label": "La valeur des projets data n'est pas mesurée.", "score": 1},
+                    {"label": "Les bénéfices sont estimés de manière informelle.", "score": 2},
+                    {"label": "Des objectifs et des indicateurs sont définis pour les principaux projets.", "score": 3},
+                    {"label": "Les coûts, les gains et les risques évités sont suivis régulièrement.", "score": 4},
+                    {"label": "Les résultats mesurés servent à décider de poursuivre, modifier ou arrêter les projets.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Estimer les bénéfices attendus des projets data",
                      "Formaliser une première estimation des bénéfices attendus des principaux projets data, même approximative.", "strategie", False, 1),
@@ -89,7 +110,14 @@ DIMENSIONS = [
             },
             {
                 "name": "Alignement métier et IT",
-                "question": "Les équipes métier et IT collaborent-elles étroitement sur les projets data (besoins, suivi, pilotage) ?",
+                "question": "Comment les équipes métier et IT collaborent-elles sur les sujets data ?",
+                "level_responses": [
+                    {"label": "Elles travaillent séparément.", "score": 1},
+                    {"label": "Elles collaborent seulement sur certains projets.", "score": 2},
+                    {"label": "Les besoins et les responsabilités sont définis ensemble.", "score": 3},
+                    {"label": "Elles suivent ensemble les projets, les problèmes et les résultats.", "score": 4},
+                    {"label": "Elles pilotent ensemble les initiatives data de manière continue.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Rapprocher métier et IT sur les projets prioritaires",
                      "Organiser des points de collaboration entre les équipes métier et IT sur les projets data prioritaires.", "gouvernance", False, 1),
@@ -113,8 +141,15 @@ DIMENSIONS = [
         "color": "#0277BD",
         "topics": [
             {
-                "name": "Rôles data (Data Owners / CDO)",
-                "question": "Les rôles et responsabilités data (Data Owners, Data Stewards, CDO) sont-ils formalisés et généralisés ?",
+                "name": "Responsabilités data",
+                "question": "Comment les responsabilités liées aux données critiques sont-elles définies dans la banque ?",
+                "level_responses": [
+                    {"label": "Aucun responsable n'est clairement identifié.", "score": 1},
+                    {"label": "Les responsabilités existent de manière informelle dans certaines directions.", "score": 2},
+                    {"label": "Des responsables sont officiellement désignés pour les principales données.", "score": 3},
+                    {"label": "Les responsabilités sont documentées, suivies et appliquées dans toute la banque.", "score": 4},
+                    {"label": "Les rôles sont régulièrement évalués et adaptés aux besoins de la banque.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Identifier des référents data par métier",
                      "Identifier, au sein de chaque métier, des référents responsables des données critiques, à titre informel dans un premier temps.", "gouvernance", False, 1),
@@ -127,8 +162,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Comité de gouvernance des données",
-                "question": "Existe-t-il un comité de gouvernance des données actif, réunissant métiers, IT et conformité ?",
+                "name": "Instances de gouvernance",
+                "question": "Comment les décisions liées aux données sont-elles organisées et suivies ?",
+                "level_responses": [
+                    {"label": "Aucune instance ne traite les sujets data.", "score": 1},
+                    {"label": "Les décisions sont prises au cas par cas par les équipes concernées.", "score": 2},
+                    {"label": "Une instance ou un comité traite les principaux sujets data.", "score": 3},
+                    {"label": "Les décisions, risques et actions data sont suivis régulièrement.", "score": 4},
+                    {"label": "Les instances data pilotent activement les priorités, les risques et les améliorations.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Traiter les sujets data dans une instance existante",
                      "Inscrire les principaux sujets data à l'ordre du jour d'une instance existante, faute de comité dédié.", "gouvernance", False, 1),
@@ -141,8 +183,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Politique de gouvernance des données",
-                "question": "Une politique de gouvernance des données (charte, règles, standards) est-elle définie, déployée et contrôlée ?",
+                "name": "Cadre de gouvernance",
+                "question": "La banque dispose-t-elle d'un cadre formel pour gérer ses données ?",
+                "level_responses": [
+                    {"label": "Aucun cadre de gouvernance des données n'existe.", "score": 1},
+                    {"label": "Quelques règles existent séparément dans certaines directions.", "score": 2},
+                    {"label": "Un cadre commun définit les rôles, règles et responsabilités.", "score": 3},
+                    {"label": "Le cadre est appliqué, suivi et mis à jour régulièrement.", "score": 4},
+                    {"label": "Le cadre est continuellement amélioré selon les risques et les besoins de la banque.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Formaliser les premières règles de gestion des données",
                      "Documenter les premières règles de gestion des données au sein des directions les plus concernées.", "gouvernance", False, 1),
@@ -155,8 +204,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Dictionnaire / cartographie des données",
-                "question": "Disposez-vous d'un dictionnaire et d'une cartographie des données critiques, maintenus à jour et rattachés à des Data Owners ?",
+                "name": "Catalogue et définitions des données",
+                "question": "Les données critiques sont-elles clairement définies et documentées ?",
+                "level_responses": [
+                    {"label": "Les données critiques ne sont pas clairement identifiées.", "score": 1},
+                    {"label": "Certaines définitions existent, mais elles sont dispersées.", "score": 2},
+                    {"label": "Les principales données critiques sont définies et documentées.", "score": 3},
+                    {"label": "Les définitions sont partagées, utilisées et associées à des responsables.", "score": 4},
+                    {"label": "Le catalogue de données est régulièrement enrichi, contrôlé et mis à jour.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Recenser les données critiques",
                      "Établir un premier inventaire des données critiques de la banque, même partiel et dispersé.", "gouvernance", False, 1),
@@ -169,8 +225,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Conformité réglementaire data",
-                "question": "La conformité aux exigences réglementaires liées aux données (BCT, LCB-FT, secret bancaire) est-elle recensée, contrôlée et anticipée ?",
+                "name": "Conformité réglementaire",
+                "question": "Comment les exigences réglementaires liées aux données sont-elles prises en compte ?",
+                "level_responses": [
+                    {"label": "Elles sont traitées uniquement lorsqu'un problème apparaît.", "score": 1},
+                    {"label": "Elles sont gérées séparément par les équipes concernées.", "score": 2},
+                    {"label": "Les principales exigences sont recensées et attribuées à des responsables.", "score": 3},
+                    {"label": "Des contrôles réguliers vérifient leur respect et les écarts sont corrigés.", "score": 4},
+                    {"label": "Les évolutions réglementaires sont anticipées et intégrées rapidement.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Structurer la prise en charge de la conformité data",
                      "Prendre en charge les exigences réglementaires liées aux données dès qu'un problème est identifié, en attendant un dispositif structuré.", "gouvernance", True, 1),
@@ -183,8 +246,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Classification des données sensibles",
-                "question": "Les données sensibles et à caractère personnel sont-elles classifiées et protégées selon une politique formalisée ?",
+                "name": "Classification des données",
+                "question": "Les données sont-elles classées selon leur sensibilité ?",
+                "level_responses": [
+                    {"label": "Les données ne sont pas classées.", "score": 1},
+                    {"label": "Certaines données sensibles sont identifiées de manière informelle.", "score": 2},
+                    {"label": "Une classification commune distingue les données publiques, internes, confidentielles ou sensibles.", "score": 3},
+                    {"label": "La classification est appliquée et utilisée pour définir les règles de protection.", "score": 4},
+                    {"label": "La classification est régulièrement revue selon les risques, usages et obligations réglementaires.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Identifier les données sensibles et personnelles",
                      "Repérer, de façon informelle, les données sensibles et à caractère personnel les plus exposées.", "securite", True, 1),
@@ -197,8 +267,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Rétention / archivage des données",
-                "question": "Une politique de rétention, d'archivage et de purge des données conformes aux obligations réglementaires est-elle définie et appliquée ?",
+                "name": "Conservation et archivage",
+                "question": "Comment la banque gère-t-elle la conservation, l'archivage et la suppression des données ?",
+                "level_responses": [
+                    {"label": "Il n'existe pas de règles claires.", "score": 1},
+                    {"label": "Les pratiques varient selon les directions.", "score": 2},
+                    {"label": "Des règles de conservation et d'archivage sont définies.", "score": 3},
+                    {"label": "Leur application est contrôlée et les écarts sont suivis.", "score": 4},
+                    {"label": "La conservation, l'archivage et la suppression sont automatisés et régulièrement contrôlés.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Clarifier les pratiques de conservation",
                      "Documenter les pratiques de conservation existantes pour réduire l'hétérogénéité entre directions.", "gouvernance", True, 1),
@@ -222,8 +299,15 @@ DIMENSIONS = [
         "color": "#2E7D32",
         "topics": [
             {
-                "name": "Contrôle qualité à la saisie",
-                "question": "Des règles de contrôle qualité (complétude, exactitude, validité) sont-elles définies et automatisées à la saisie des données ?",
+                "name": "Contrôle à la saisie",
+                "question": "Comment la banque contrôle-t-elle la qualité des données dès leur saisie ou leur réception ?",
+                "level_responses": [
+                    {"label": "Aucun contrôle précis n'est réalisé.", "score": 1},
+                    {"label": "Les erreurs sont corrigées manuellement lorsqu'elles sont détectées.", "score": 2},
+                    {"label": "Des règles de complétude, d'exactitude et de validité sont définies pour les données critiques.", "score": 3},
+                    {"label": "Les contrôles sont automatisés et les données incorrectes sont signalées.", "score": 4},
+                    {"label": "Les erreurs sont bloquées ou corrigées dès leur création et les règles sont régulièrement améliorées.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Corriger les erreurs constatées à la saisie",
                      "Mettre en place une correction systématique des erreurs de données constatées à la saisie ou à la réception.", "qualite", False, 1),
@@ -236,8 +320,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Rapprochement inter-systèmes",
-                "question": "Les données critiques sont-elles rapprochées et cohérentes entre les systèmes, la comptabilité et les reportings ?",
+                "name": "Cohérence",
+                "question": "Comment la banque vérifie-t-elle que les données sont cohérentes entre ses systèmes et ses reportings ?",
+                "level_responses": [
+                    {"label": "Les écarts entre les systèmes sont fréquents et non contrôlés.", "score": 1},
+                    {"label": "Les écarts sont corrigés manuellement au cas par cas.", "score": 2},
+                    {"label": "Des règles de rapprochement sont définies pour les données critiques.", "score": 3},
+                    {"label": "Les écarts sont détectés automatiquement et suivis jusqu'à leur correction.", "score": 4},
+                    {"label": "Les contrôles préviennent les écarts entre les systèmes, la comptabilité et les reportings.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Corriger les écarts entre systèmes",
                      "Traiter au cas par cas les écarts de données constatés entre les systèmes, la comptabilité et les reportings.", "qualite", True, 2),
@@ -250,8 +341,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Dédoublonnage",
-                "question": "Les doublons de données sont-ils détectés et traités, avec un référentiel client unique en place ?",
+                "name": "Unicité",
+                "question": "Comment la banque évite-t-elle les doublons et les différentes versions d'une même donnée ?",
+                "level_responses": [
+                    {"label": "Les doublons sont fréquents et ne sont pas contrôlés.", "score": 1},
+                    {"label": "Ils sont supprimés manuellement lorsqu'ils sont détectés.", "score": 2},
+                    {"label": "Des règles de détection des doublons sont définies.", "score": 3},
+                    {"label": "Les doublons sont détectés et traités automatiquement.", "score": 4},
+                    {"label": "Des identifiants et référentiels communs empêchent leur création.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Supprimer les doublons détectés",
                      "Supprimer les doublons de données dès qu'ils sont identifiés.", "qualite", False, 1),
@@ -264,8 +362,16 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Intégrité référentielle",
-                "question": "L'intégrité des liens entre données associées (client, compte, crédit, garantie, transaction) est-elle contrôlée ?",
+                "name": "Intégrité",
+                "question": "Comment la banque garantit-elle les liens corrects entre les données associées ?",
+                "description": "Exemple : client, compte, crédit, garantie, transaction.",
+                "level_responses": [
+                    {"label": "Les liens entre les données sont souvent incomplets ou incorrects.", "score": 1},
+                    {"label": "Les erreurs sont corrigées manuellement après leur détection.", "score": 2},
+                    {"label": "Des règles contrôlent les principaux liens entre les données.", "score": 3},
+                    {"label": "Les erreurs de liaison sont détectées automatiquement et suivies.", "score": 4},
+                    {"label": "Les contrôles empêchent les erreurs de liaison dès leur création.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Corriger les liaisons erronées",
                      "Corriger, après détection, les liens incorrects entre données associées (client, compte, crédit, garantie, transaction).", "qualite", False, 1),
@@ -278,8 +384,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Fraîcheur des données",
-                "question": "Les données critiques sont-elles mises à jour dans des délais définis, suivis et adaptés à leur criticité ?",
+                "name": "Fraîcheur",
+                "question": "Les données sont-elles mises à jour dans les délais nécessaires aux opérations et aux reportings ?",
+                "level_responses": [
+                    {"label": "Les données sont souvent anciennes ou disponibles en retard.", "score": 1},
+                    {"label": "Les mises à jour dépendent principalement de traitements manuels.", "score": 2},
+                    {"label": "Des délais de mise à jour sont définis pour les données critiques.", "score": 3},
+                    {"label": "Les délais sont suivis et les retards génèrent des alertes.", "score": 4},
+                    {"label": "La fréquence de mise à jour est adaptée aux besoins et à la criticité des données.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Réduire la dépendance aux traitements manuels",
                      "Diminuer la part de mises à jour manuelles pour limiter les retards de disponibilité des données.", "qualite", False, 1),
@@ -292,8 +405,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Traçabilité / lignage",
-                "question": "La traçabilité des données (sources, transformations, lignage) est-elle documentée et automatisée de bout en bout ?",
+                "name": "Traçabilité",
+                "question": "La banque peut-elle retracer l'origine d'une donnée et ses transformations jusqu'à son utilisation finale ?",
+                "level_responses": [
+                    {"label": "L'origine et le parcours des données sont difficiles à identifier.", "score": 1},
+                    {"label": "La traçabilité dépend principalement de la connaissance des équipes.", "score": 2},
+                    {"label": "Les sources et les principales transformations sont documentées.", "score": 3},
+                    {"label": "Les données sont traçables de leur source jusqu'aux reportings et usages finaux.", "score": 4},
+                    {"label": "La traçabilité est automatisée, complète et régulièrement contrôlée.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Capitaliser la connaissance sur les flux",
                      "Documenter la connaissance des équipes sur l'origine et le parcours des données critiques.", "qualite", True, 2),
@@ -306,8 +426,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Gestion des anomalies qualité",
-                "question": "Les anomalies de qualité des données sont-elles suivies, mesurées et corrigées à la source ?",
+                "name": "Gestion des anomalies",
+                "question": "Comment les problèmes de qualité des données sont-ils détectés et corrigés ?",
+                "level_responses": [
+                    {"label": "Les problèmes sont traités uniquement lorsqu'ils bloquent une activité.", "score": 1},
+                    {"label": "Ils sont corrigés localement, sans suivi commun.", "score": 2},
+                    {"label": "Les anomalies sont enregistrées, attribuées à un responsable et suivies.", "score": 3},
+                    {"label": "Des indicateurs mesurent les anomalies, les délais de correction et leur impact.", "score": 4},
+                    {"label": "Les causes des problèmes sont corrigées à la source afin d'éviter leur répétition.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Suivre les anomalies au-delà de l'urgence",
                      "Traiter les problèmes de qualité au-delà des seuls cas bloquants et en conserver une trace.", "qualite", False, 1),
@@ -331,8 +458,15 @@ DIMENSIONS = [
         "color": "#7B2D8B",
         "topics": [
             {
-                "name": "Centralisation des données",
-                "question": "Les données sont-elles centralisées dans une plateforme commune (Data Lake, DWH, MDM) avec des référentiels partagés ?",
+                "name": "Centralisation et stockage",
+                "question": "Comment les principales données de la banque sont-elles organisées et centralisées ?",
+                "level_responses": [
+                    {"label": "Les données sont dispersées dans plusieurs fichiers et systèmes isolés.", "score": 1},
+                    {"label": "Certaines données sont regroupées localement par direction.", "score": 2},
+                    {"label": "Une plateforme commune centralise les principales données.", "score": 3},
+                    {"label": "Des référentiels partagés garantissent une version commune des données.", "score": 4},
+                    {"label": "L'architecture est intégrée, évolutive et adaptée aux nouveaux besoins.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Regrouper les données par direction",
                      "Regrouper localement les données au sein de chaque direction pour réduire leur dispersion.", "architecture", False, 2),
@@ -345,8 +479,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Interfaces entre systèmes",
-                "question": "Les systèmes échangent-ils les données via des interfaces standardisées (API), sécurisées et supervisées ?",
+                "name": "Échanges entre systèmes",
+                "question": "Comment les systèmes de la banque échangent-ils les données ?",
+                "level_responses": [
+                    {"label": "Les échanges sont principalement manuels.", "score": 1},
+                    {"label": "Des échanges spécifiques sont développés au cas par cas.", "score": 2},
+                    {"label": "Des interfaces communes relient les principaux systèmes.", "score": 3},
+                    {"label": "Les échanges sont standardisés, sécurisés et suivis.", "score": 4},
+                    {"label": "Les systèmes échangent les données de manière fluide et facilement adaptable.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Fiabiliser les échanges au cas par cas",
                      "Développer des échanges spécifiques entre systèmes pour réduire les transferts manuels.", "architecture", False, 2),
@@ -359,8 +500,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Automatisation des pipelines",
-                "question": "Les traitements et pipelines de données (ETL/ELT) sont-ils automatisés, documentés et supervisés ?",
+                "name": "Traitements et pipelines",
+                "question": "Quel est le niveau d'automatisation des flux et traitements de données ?",
+                "level_responses": [
+                    {"label": "Les traitements sont principalement manuels.", "score": 1},
+                    {"label": "Certains traitements sont automatisés, mais restent fragiles.", "score": 2},
+                    {"label": "Les traitements principaux sont automatisés et documentés.", "score": 3},
+                    {"label": "Les traitements sont surveillés et les erreurs sont détectées automatiquement.", "score": 4},
+                    {"label": "Les traitements sont industrialisés, fiables et facilement adaptables.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Automatiser les traitements clés",
                      "Automatiser une partie des traitements de données aujourd'hui manuels, même de façon perfectible.", "architecture", False, 2),
@@ -373,8 +521,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Contrôle d'accès aux données sensibles",
-                "question": "Les accès aux données sensibles sont-ils gérés par habilitations, revus périodiquement et tracés ?",
+                "name": "Sécurité et accès",
+                "question": "Comment l'accès aux données sensibles est-il contrôlé ?",
+                "level_responses": [
+                    {"label": "Les accès sont peu contrôlés ou mal documentés.", "score": 1},
+                    {"label": "Les droits sont accordés manuellement sans revue régulière.", "score": 2},
+                    {"label": "Les accès sont attribués selon les rôles et les responsabilités.", "score": 3},
+                    {"label": "Les droits sont régulièrement revus et les accès sont tracés.", "score": 4},
+                    {"label": "Les accès anormaux sont détectés rapidement et les contrôles sont automatisés.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Documenter et encadrer les accès",
                      "Documenter les accès aux données sensibles et les accorder de façon plus maîtrisée.", "securite", True, 1),
@@ -387,8 +542,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Sauvegarde et plan de reprise (PRA)",
-                "question": "Les sauvegardes des données sont-elles fiables, testées régulièrement et alignées sur un plan de reprise d'activité (PCA/PRA) ?",
+                "name": "Sauvegarde et restauration",
+                "question": "La banque peut-elle restaurer ses données après un incident ?",
+                "level_responses": [
+                    {"label": "Les sauvegardes sont absentes ou non maîtrisées.", "score": 1},
+                    {"label": "Des sauvegardes existent, mais elles sont peu testées.", "score": 2},
+                    {"label": "Les principales données sont sauvegardées selon des règles définies.", "score": 3},
+                    {"label": "Les restaurations sont testées régulièrement et les incidents sont suivis.", "score": 4},
+                    {"label": "Les mécanismes de reprise sont automatisés, testés et adaptés aux besoins critiques.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Fiabiliser les sauvegardes existantes",
                      "Mettre en place des sauvegardes maîtrisées des données, même sans tests réguliers.", "architecture", True, 1),
@@ -401,8 +563,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Données externalisées",
-                "question": "Les données confiées à des prestataires externes sont-elles recensées, encadrées contractuellement et contrôlées ?",
+                "name": "Données chez les prestataires",
+                "question": "Comment les données confiées à des prestataires ou solutions externes sont-elles contrôlées ?",
+                "level_responses": [
+                    {"label": "Les données externes ne sont pas clairement suivies.", "score": 1},
+                    {"label": "Certains contrôles existent selon les contrats ou les projets.", "score": 2},
+                    {"label": "Les données confiées à des prestataires sont identifiées et encadrées.", "score": 3},
+                    {"label": "Des contrôles vérifient la sécurité, l'accès et l'usage de ces données.", "score": 4},
+                    {"label": "Les risques liés aux prestataires sont suivis en continu et intégrés à la gouvernance data.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Recenser les données externalisées",
                      "Identifier les données confiées à des prestataires et à des solutions externes.", "securite", True, 1),
@@ -426,8 +595,15 @@ DIMENSIONS = [
         "color": "#C4550A",
         "topics": [
             {
-                "name": "Reporting et BI",
-                "question": "Les reportings et tableaux de bord sont-ils fiables, automatisés et disponibles en libre-service ?",
+                "name": "BI et reporting",
+                "question": "Comment les tableaux de bord et reportings sont-ils produits dans la banque ?",
+                "level_responses": [
+                    {"label": "Ils sont produits manuellement avec des données peu fiables.", "score": 1},
+                    {"label": "Chaque direction produit ses propres reportings.", "score": 2},
+                    {"label": "Des outils communs et des indicateurs partagés sont utilisés.", "score": 3},
+                    {"label": "Les reportings sont automatisés, fiables et régulièrement contrôlés.", "score": 4},
+                    {"label": "Les utilisateurs disposent d'indicateurs actualisés et adaptés à leurs besoins.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Fiabiliser la production des reportings",
                      "Réduire la production manuelle et améliorer la fiabilité des données des reportings.", "analytique", False, 1),
@@ -440,8 +616,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Analyse avancée / IA",
-                "question": "Des modèles d'analyse avancée ou d'IA sont-ils déployés, validés et suivis (gouvernance des modèles) ?",
+                "name": "Analytics avancé et IA",
+                "question": "Comment la banque utilise-t-elle les modèles d'analyse avancée ou d'intelligence artificielle ?",
+                "level_responses": [
+                    {"label": "Aucun modèle avancé n'est utilisé.", "score": 1},
+                    {"label": "Quelques tests sont réalisés sans utilisation régulière.", "score": 2},
+                    {"label": "Des modèles sont utilisés pour certains besoins métier.", "score": 3},
+                    {"label": "Les modèles sont validés, suivis et intégrés aux processus de décision.", "score": 4},
+                    {"label": "Les modèles sont largement utilisés et régulièrement améliorés selon leurs résultats.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Expérimenter des modèles d'analyse avancée",
                      "Réaliser des premiers tests de modèles d'analyse avancée ou d'IA sur des cas ciblés.", "analytique", True, 2),
@@ -454,8 +637,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Automatisation des processus métier",
-                "question": "Les processus métiers liés aux données sont-ils automatisés et suivis pour amélioration continue ?",
+                "name": "Automatisation des processus métiers",
+                "question": "Dans quelle mesure les tâches métiers répétitives liées aux données sont-elles automatisées ?",
+                "level_responses": [
+                    {"label": "La majorité des tâches sont manuelles.", "score": 1},
+                    {"label": "Quelques tâches simples sont automatisées localement.", "score": 2},
+                    {"label": "Les principaux processus sont automatisés selon des règles définies.", "score": 3},
+                    {"label": "Les processus automatisés sont suivis et améliorés régulièrement.", "score": 4},
+                    {"label": "L'automatisation couvre les processus clés et s'adapte aux nouveaux besoins.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Automatiser quelques tâches simples",
                      "Automatiser localement quelques tâches métiers répétitives liées aux données.", "process", False, 1),
@@ -468,8 +658,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Réactivité aux demandes urgentes",
-                "question": "Les demandes d'analyses urgentes sont-elles traitées rapidement, avec des données fiables et disponibles ?",
+                "name": "Analyses et demandes urgentes",
+                "question": "La banque peut-elle produire rapidement des analyses fiables en cas de demande urgente ?",
+                "level_responses": [
+                    {"label": "Les analyses urgentes sont difficiles à produire et peu fiables.", "score": 1},
+                    {"label": "Elles sont produites manuellement avec beaucoup d'effort.", "score": 2},
+                    {"label": "Des données et modèles de reporting permettent de répondre aux principales demandes.", "score": 3},
+                    {"label": "Les analyses urgentes sont produites rapidement avec des contrôles de fiabilité.", "score": 4},
+                    {"label": "La banque peut répondre rapidement aux demandes critiques grâce à des données fiables et disponibles.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Faciliter la production d'analyses urgentes",
                      "Réduire l'effort manuel nécessaire pour produire les analyses urgentes.", "analytique", False, 1),
@@ -493,8 +690,15 @@ DIMENSIONS = [
         "color": "#00838F",
         "topics": [
             {
-                "name": "Compétences data clés",
-                "question": "Les compétences data critiques (data analysts, data engineers, data scientists) sont-elles identifiées, structurées et renforcées ?",
+                "name": "Compétences techniques",
+                "question": "La banque dispose-t-elle des compétences nécessaires pour gérer et exploiter ses données ?",
+                "level_responses": [
+                    {"label": "Les compétences nécessaires sont largement absentes.", "score": 1},
+                    {"label": "Elles reposent sur quelques personnes ou prestataires.", "score": 2},
+                    {"label": "Les principales compétences sont présentes dans des équipes identifiées.", "score": 3},
+                    {"label": "Les compétences sont régulièrement évaluées et renforcées.", "score": 4},
+                    {"label": "La banque anticipe ses futurs besoins et développe continuellement ses experts.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Sécuriser les compétences data clés",
                      "Réduire la dépendance à quelques personnes ou prestataires en identifiant les compétences data essentielles.", "competences", False, 2),
@@ -507,8 +711,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Usage quotidien des données",
-                "question": "Les collaborateurs utilisent-ils les données au quotidien de manière responsable (data culture) ?",
+                "name": "Compréhension des données",
+                "question": "Les collaborateurs comprennent-ils comment utiliser correctement les données dans leur travail ?",
+                "level_responses": [
+                    {"label": "Les données sont peu comprises ou peu utilisées.", "score": 1},
+                    {"label": "La compréhension dépend de l'expérience de chaque collaborateur.", "score": 2},
+                    {"label": "Les collaborateurs connaissent les principales données utiles à leur activité.", "score": 3},
+                    {"label": "Ils savent interpréter les indicateurs et identifier les problèmes de qualité.", "score": 4},
+                    {"label": "L'utilisation responsable des données fait partie des pratiques quotidiennes.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Encourager l'usage des données au travail",
                      "Sensibiliser les collaborateurs à l'utilisation des données dans leur activité quotidienne.", "competences", False, 1),
@@ -521,8 +732,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Formation data",
-                "question": "Un plan de formation data continu et adapté aux rôles est-il déployé et évalué ?",
+                "name": "Formation",
+                "question": "Comment les collaborateurs sont-ils formés aux sujets data ?",
+                "level_responses": [
+                    {"label": "Aucune formation data n'est proposée.", "score": 1},
+                    {"label": "Des formations ponctuelles sont organisées selon les besoins.", "score": 2},
+                    {"label": "Un programme de formation est défini pour les principaux profils.", "score": 3},
+                    {"label": "Les compétences acquises sont évaluées et les formations sont adaptées.", "score": 4},
+                    {"label": "La formation data est continue et personnalisée selon les rôles.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Organiser des formations data ponctuelles",
                      "Proposer des formations data ponctuelles selon les besoins des équipes.", "competences", False, 1),
@@ -535,8 +753,15 @@ DIMENSIONS = [
                 ],
             },
             {
-                "name": "Conduite du changement / adoption des outils",
-                "question": "L'adoption des nouveaux outils data est-elle accompagnée par un plan de conduite du changement et mesurée ?",
+                "name": "Accompagnement du changement",
+                "question": "Comment la banque accompagne-t-elle l'adoption des nouvelles pratiques et des nouveaux outils data ?",
+                "level_responses": [
+                    {"label": "Aucun accompagnement particulier n'est prévu.", "score": 1},
+                    {"label": "Les utilisateurs reçoivent seulement une communication ou une formation initiale.", "score": 2},
+                    {"label": "Un plan d'accompagnement est défini pour les principaux projets.", "score": 3},
+                    {"label": "L'adoption est mesurée et les difficultés font l'objet d'actions correctives.", "score": 4},
+                    {"label": "Les retours des utilisateurs servent à améliorer continuellement les outils et pratiques.", "score": 5},
+                ],
                 "recommendations": [
                     (2, "Communiquer sur les nouveaux outils data",
                      "Accompagner l'arrivée des nouveaux outils data par une communication et une formation initiale.", "competences", False, 1),
@@ -649,9 +874,11 @@ async def seed(reset: bool = False) -> None:
                         dimension_id=dim.id,
                         sub_dimension_id=sub.id,
                         text=topic["question"],
+                        description=topic.get("description"),
                         type=DEFAULT_QUESTION_TYPE,
                         weight=DEFAULT_QUESTION_WEIGHT,
                         sort_order=0,
+                        level_responses=topic.get("level_responses"),
                     )
                     session.add(question)
                     await session.flush()  # populate question.id

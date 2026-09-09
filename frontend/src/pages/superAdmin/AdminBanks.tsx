@@ -11,9 +11,13 @@ import {
   uploadBankLogo, deleteBankLogo, bankLogoSrc,
 } from "@/lib/adminBanks";
 import { AdminLoader } from "@/components/AdminLoader";
+import { FieldError } from "@/components/FieldError";
+import { useFieldErrors } from "@/hooks/useFieldErrors";
 import { useSeededSearch } from "@/hooks/useSeededSearch";
 import type { AdminBank, BankPayload } from "@/lib/adminBanks";
 import { ApiError } from "@/lib/api";
+import { attachServerError } from "@/lib/serverError";
+import { email, required, type ValidatorSchema } from "@/lib/validation";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -137,7 +141,17 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
-function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | null; onClose: () => void; onSaved: () => void; onLogoChanged: () => void }) {
+// Le nom est obligatoire ; le contact est un e-mail optionnel (format
+// vérifié seulement s'il est renseigné -- voir email() dans validation.ts).
+// pays/secteur/description n'ont aucune contrainte côté backend.
+const BANK_SCHEMA: ValidatorSchema<{ name: string; contact: string }> = {
+  name: required,
+  contact: email,
+};
+
+// Exportée pour être testée directement (voir AdminBanks.test.tsx) sans
+// avoir à monter toute la page (liste, recherche, filtres...).
+export function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | null; onClose: () => void; onSaved: () => void; onLogoChanged: () => void }) {
   const [form, setForm] = useState({
     name: bank?.name || "",
     country: bank && bank.country !== "-" ? bank.country : "Tunisie",
@@ -145,6 +159,7 @@ function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | nu
     contact: bank?.contact || "",
     description: bank?.description || "",
   });
+  const { errors, validate, clearError, setError } = useFieldErrors<typeof form>();
   const [saving, setSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState(bank?.logoUrl ?? null);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -216,8 +231,8 @@ function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | nu
   };
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) {
-      toast.error("Champ manquant", { description: "Le nom de la banque est obligatoire." });
+    if (!validate(form, BANK_SCHEMA)) {
+      toast.error("Corrigez les champs en rouge.");
       return;
     }
     const payload: BankPayload = {
@@ -249,6 +264,9 @@ function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | nu
       }
       onSaved();
     } catch (err) {
+      // Rattache l'erreur (ex. le 409 "Une banque porte déjà ce nom.") au
+      // champ concerné en plus du toast habituel -- voir serverError.ts.
+      attachServerError(err, { name: /nom/i }, setError);
       toast.error(bank ? "Échec de la mise à jour" : "Échec de l'ajout", { description: errorMessage(err) });
       setSaving(false);
     }
@@ -298,7 +316,14 @@ function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | nu
           </div>
           <div>
             <label style={lbl}>Nom de la banque *</label>
-            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="ex. BIAT" autoComplete="off" style={inp} />
+            <input
+              value={form.name}
+              onChange={e => { setForm(p => ({ ...p, name: e.target.value })); clearError("name"); }}
+              placeholder="ex. BIAT"
+              autoComplete="off"
+              style={errors.name ? { ...inp, border: "1px solid #FECACA" } : inp}
+            />
+            <FieldError message={errors.name} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div>
@@ -314,7 +339,14 @@ function BankModal({ bank, onClose, onSaved, onLogoChanged }: { bank?: Bank | nu
           </div>
           <div>
             <label style={lbl}>Contact principal</label>
-            <input value={form.contact} onChange={e => setForm(p => ({ ...p, contact: e.target.value }))} placeholder="prenom.nom@banque.tn" autoComplete="off" style={inp} />
+            <input
+              value={form.contact}
+              onChange={e => { setForm(p => ({ ...p, contact: e.target.value })); clearError("contact"); }}
+              placeholder="prenom.nom@banque.tn"
+              autoComplete="off"
+              style={errors.contact ? { ...inp, border: "1px solid #FECACA" } : inp}
+            />
+            <FieldError message={errors.contact} />
           </div>
           <div>
             <label style={lbl}>Description courte</label>

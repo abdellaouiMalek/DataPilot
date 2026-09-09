@@ -1,0 +1,7 @@
+# Test-only dependencies -- not needed to run the FastAPI backend itself
+# (see backend/requirements.txt for that), same separation-of-concerns
+# convention as backend/ml/requirements.txt.
+#
+# Install with: pip install -r requirements-test.txt
+# Run with:     pytest
+pytest

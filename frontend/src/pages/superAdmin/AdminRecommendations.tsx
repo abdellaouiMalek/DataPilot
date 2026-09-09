@@ -43,6 +43,7 @@ import {
   type Dimension, type Recommendation, type Status,
 } from "../../lib/admin";
 import { getFrameworkState, fromApiTree, isNewId } from "../../lib/adminFramework";
+import { isSuperAdmin } from "../../lib/keycloak";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Une erreur est survenue";
@@ -650,7 +651,7 @@ function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQue
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
-function DetailPanel({ rec, onClose, onEdit }: { rec: FlatRecommendation; onClose: () => void; onEdit: (rec: FlatRecommendation) => void }) {
+function DetailPanel({ rec, onClose, onEdit, canEdit }: { rec: FlatRecommendation; onClose: () => void; onEdit: (rec: FlatRecommendation) => void; canEdit: boolean }) {
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div>
       <div style={{ fontSize: 10, fontWeight: 700, color: "#A0A0A0", textTransform: "uppercase" as const, letterSpacing: "0.09em", marginBottom: 10, paddingBottom: 6, borderBottom: "1px solid #F0F0F0" }}>
@@ -724,7 +725,9 @@ function DetailPanel({ rec, onClose, onEdit }: { rec: FlatRecommendation; onClos
 
         <div style={{ padding: "14px 28px", borderTop: "1px solid #EBEBEB", display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 5, fontSize: 13, fontWeight: 500, border: "1px solid #E5E5E5", backgroundColor: "#fff", cursor: "pointer", color: "#4A4A4A" }}>Fermer</button>
-          <button onClick={() => { onClose(); onEdit(rec); }} style={{ padding: "8px 18px", borderRadius: 5, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#fff", cursor: "pointer" }}>Modifier</button>
+          {canEdit && (
+            <button onClick={() => { onClose(); onEdit(rec); }} style={{ padding: "8px 18px", borderRadius: 5, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#fff", cursor: "pointer" }}>Modifier</button>
+          )}
         </div>
       </div>
     </>
@@ -823,6 +826,11 @@ function RCStyleInjector() {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function RecommendationCatalog() {
+  // Read-only for the reduced "admin" role (reachable at /admin/recommendations,
+  // see routes.tsx) -- the backend already refuses every mutation from that
+  // role (require_super_admin on every write endpoint in admin.py), this
+  // only keeps the UI from offering controls that would just come back 403.
+  const canEdit = isSuperAdmin();
   const [searchParams, setSearchParams] = useSearchParams();
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [draftDimensions, setDraftDimensions] = useState<Dimension[]>([]);
@@ -849,14 +857,21 @@ export function RecommendationCatalog() {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
     try {
+      // getFrameworkState() (the draft tree) is a super-admin staging
+      // endpoint -- the whole admin_framework.py router requires
+      // super_admin, no exception. A read-only caller has nothing to do
+      // with in-progress drafts anyway (per the backend, list_recommendations
+      // already excludes draft rows for them too, see admin.py), so this
+      // skips the call entirely instead of it 403ing and failing the
+      // Promise.all for everything else on the page.
       const [dims, recommendations, framework] = await Promise.all([
         adminApi.listDimensions(),
         adminApi.listRecommendations(),
-        getFrameworkState(),
+        canEdit ? getFrameworkState() : Promise.resolve(null),
       ]);
       // Draft-only nodes (dimension/sub-dimension/question ids failing
       // isNewId are real and already in `dims` -- keep only what isn't).
-      const draftTree = framework.draft ? fromApiTree(framework.draft.tree) : [];
+      const draftTree = framework?.draft ? fromApiTree(framework.draft.tree) : [];
       setDimensions(dims);
       setDraftDimensions(draftTree);
       const merged = mergeDraftIntoLive(dims, draftTree);
@@ -867,7 +882,7 @@ export function RecommendationCatalog() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canEdit]);
   useEffect(() => { load(); }, [load]);
 
   // Live dimensions, with any draft-only dimensions/sub-dimensions/questions
@@ -885,7 +900,10 @@ export function RecommendationCatalog() {
   // so a refresh doesn't reopen it.
   useEffect(() => {
     const draftQuestionId = searchParams.get("draftQuestionId");
-    if (!draftQuestionId || loading || loadError) return;
+    // Deep-link opens the create/edit wizard -- never for a read-only caller,
+    // even via a crafted URL (the backend would refuse the save anyway, but
+    // the wizard itself shouldn't pop open at all).
+    if (!draftQuestionId || loading || loadError || !canEdit) return;
     const exists = mergedDimensions.some(d => d.subDimensions.some(s => s.questions.some(q => q.id === draftQuestionId)));
     if (exists) {
       setPresetQuestionId(draftQuestionId);
@@ -952,14 +970,16 @@ export function RecommendationCatalog() {
           <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A", margin: 0, letterSpacing: "-0.02em" }}>Catalogue des recommandations</h1>
           <p style={{ fontSize: 13, color: "#9B9B9B", margin: "4px 0 0", fontWeight: 400 }}>Référentiel global utilisé par le moteur d'analyse EY DataMaturity</p>
         </div>
-        <button
-          onClick={() => setShowWizard(true)}
-          style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.18)", transition: "background 0.18s, box-shadow 0.18s, transform 0.12s" }}
-          onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2D2D2D"; b.style.transform = "translateY(-1px)"; }}
-          onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#1A1A1A"; b.style.transform = "translateY(0)"; }}
-        >
-          <Plus size={15} /> Ajouter une recommandation
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setShowWizard(true)}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: "none", backgroundColor: "#1A1A1A", color: "#FFE600", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.18)", transition: "background 0.18s, box-shadow 0.18s, transform 0.12s" }}
+            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#2D2D2D"; b.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.backgroundColor = "#1A1A1A"; b.style.transform = "translateY(0)"; }}
+          >
+            <Plus size={15} /> Ajouter une recommandation
+          </button>
+        )}
       </div>
 
       {loading && (
@@ -1092,31 +1112,33 @@ export function RecommendationCatalog() {
                         <button className="rc-btn-consult" onClick={() => setViewRec(rec)}>
                           <Eye size={11} /> Consulter
                         </button>
-                        <div style={{ position: "relative" }}>
-                          <button className="rc-btn-more" onClick={() => setOpenMenu(openMenu === rec.id ? null : rec.id)}>
-                            <MoreHorizontal size={13} />
-                          </button>
-                          {openMenu === rec.id && (
-                            <>
-                              <div onClick={() => setOpenMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 199 }} />
-                              <div style={{ position: "absolute", right: 0, top: 30, zIndex: 200, backgroundColor: "#fff", border: "1px solid #E8E8E8", borderRadius: 6, boxShadow: "0 6px 24px rgba(0,0,0,0.12)", minWidth: 172, overflow: "hidden" }}>
-                                <button className="rc-menu-item" onClick={() => { setEditRec(rec); setOpenMenu(null); }}>
-                                  <Edit2 size={12} /> Modifier
-                                </button>
-                                <button
-                                  className={rec.status === "Active" ? "rc-menu-item rc-menu-warn" : "rc-menu-item"}
-                                  style={{ borderTop: "1px solid #F2F2F2" }}
-                                  onClick={() => handleToggleStatut(rec)}
-                                >
-                                  <Power size={12} /> {rec.status === "Active" ? "Désactiver" : "Activer"}
-                                </button>
-                                <button className="rc-menu-item rc-menu-danger" style={{ borderTop: "1px solid #F2F2F2" }} onClick={() => { setDeleteTarget(rec); setOpenMenu(null); }}>
-                                  <Trash2 size={12} /> Supprimer
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        {canEdit && (
+                          <div style={{ position: "relative" }}>
+                            <button className="rc-btn-more" onClick={() => setOpenMenu(openMenu === rec.id ? null : rec.id)}>
+                              <MoreHorizontal size={13} />
+                            </button>
+                            {openMenu === rec.id && (
+                              <>
+                                <div onClick={() => setOpenMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 199 }} />
+                                <div style={{ position: "absolute", right: 0, top: 30, zIndex: 200, backgroundColor: "#fff", border: "1px solid #E8E8E8", borderRadius: 6, boxShadow: "0 6px 24px rgba(0,0,0,0.12)", minWidth: 172, overflow: "hidden" }}>
+                                  <button className="rc-menu-item" onClick={() => { setEditRec(rec); setOpenMenu(null); }}>
+                                    <Edit2 size={12} /> Modifier
+                                  </button>
+                                  <button
+                                    className={rec.status === "Active" ? "rc-menu-item rc-menu-warn" : "rc-menu-item"}
+                                    style={{ borderTop: "1px solid #F2F2F2" }}
+                                    onClick={() => handleToggleStatut(rec)}
+                                  >
+                                    <Power size={12} /> {rec.status === "Active" ? "Désactiver" : "Activer"}
+                                  </button>
+                                  <button className="rc-menu-item rc-menu-danger" style={{ borderTop: "1px solid #F2F2F2" }} onClick={() => { setDeleteTarget(rec); setOpenMenu(null); }}>
+                                    <Trash2 size={12} /> Supprimer
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1154,7 +1176,7 @@ export function RecommendationCatalog() {
 
       {openMenu !== null && <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setOpenMenu(null)} />}
 
-      {viewRec && <DetailPanel rec={viewRec} onClose={() => setViewRec(null)} onEdit={(r) => { setViewRec(null); setEditRec(r); }} />}
+      {viewRec && <DetailPanel rec={viewRec} onClose={() => setViewRec(null)} onEdit={(r) => { setViewRec(null); setEditRec(r); }} canEdit={canEdit} />}
 
       {showWizard && (
         <WizardDrawer

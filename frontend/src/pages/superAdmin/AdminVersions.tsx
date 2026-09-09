@@ -20,7 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   GitBranch, Loader2, ChevronDown, X, Eye, CheckCircle2, Archive, RotateCcw,
-  Search, Download, FileJson, FileSpreadsheet, Pencil, Trash2, ArchiveRestore,
+  Search, Download, FileSpreadsheet, Pencil, Trash2, ArchiveRestore,
   MoreHorizontal, AlertTriangle, ClipboardList, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ import {
 import { useConfirm } from "@/hooks/useConfirm";
 import { AdminLoader } from "@/components/AdminLoader";
 import { useSeededSearch } from "@/hooks/useSeededSearch";
+import { isSuperAdmin } from "@/lib/keycloak";
 import type { ApiDimension, ApiQuestion } from "@/lib/admin";
 
 function errMsg(e: unknown): string {
@@ -245,31 +246,6 @@ async function exportSnapshotXlsx(version: VersionDetail) {
   );
 }
 
-/** The snapshot verbatim, the fidelity option, for archiving or diffing
- *  outside the app. */
-function exportSnapshotJson(version: VersionDetail) {
-  const payload = {
-    version: {
-      number: version.number,
-      label: version.label,
-      note: version.note,
-      is_active: version.is_active,
-      archived: version.archived,
-      dimension_count: version.dimension_count,
-      question_count: version.question_count,
-      assessment_count: version.assessment_count,
-      created_by_name: version.created_by_name,
-      created_at: version.created_at,
-    },
-    changelog: version.changelog,
-    snapshot: version.snapshot,
-  };
-  download(
-    new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-    `datapilot-questionnaire-v${version.number}-${stamp()}.json`,
-  );
-}
-
 /** The log itself, as shown, for reporting on how the framework evolved. */
 async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undefined) {
   const ExcelJS = (await import("exceljs")).default;
@@ -344,41 +320,111 @@ async function exportVersionsXlsx(rows: VersionSummary[], liveId: number | undef
 
 // ── Snapshot viewer ──────────────────────────────────────────────────────────
 
-/** The answer scale as it was frozen. A question's wording alone doesn't say
- *  what respondents could pick, or what each choice was worth, which is the
- *  whole point of consulting an old version. */
-function AnswerScale({ question }: { question: ApiQuestion }) {
-  const levels = question.level_responses ?? [];
-  const choices = question.choice_options ?? [];
-  const entries = levels.length
-    ? levels.map((r, i) => ({ rank: `${i + 1}`, label: r.label, score: r.score }))
-    : choices.map(o => ({ rank: "", label: o.label, score: o.score }));
+/** Mirrors the backend's `_short()` (framework_publish.py) exactly -- the
+ *  changelog's question labels are truncated the same way, so matching a
+ *  snapshot question back to its changelog entry means truncating it
+ *  identically here before comparing. */
+function shortLabel(text: string, limit = 60): string {
+  const trimmed = (text ?? "").trim();
+  return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit - 1)}…`;
+}
 
-  if (entries.length === 0) return null;
+type ChangeKind = "added" | "updated";
 
+interface ChangeIndex {
+  dims: Map<string, ChangeKind>;
+  subs: Map<string, ChangeKind>;
+  questions: Map<string, ChangeKind>;
+  addedCount: number;
+  updatedCount: number;
+}
+
+/** The changelog carries no ids (see `build_changelog` in
+ *  framework_publish.py), only names -- already-published versions were
+ *  computed that way and stay immutable, so matching by name is the only
+ *  option that also works on history, not just versions published from now
+ *  on. Names collide rarely enough within one questionnaire tree, and a
+ *  sub-dimension/question key includes its parent's name precisely to keep
+ *  that rare enough. */
+function indexChangelog(changelog: ChangelogEntry[]): ChangeIndex {
+  const index: ChangeIndex = { dims: new Map(), subs: new Map(), questions: new Map(), addedCount: 0, updatedCount: 0 };
+  for (const entry of changelog) {
+    switch (entry.kind) {
+      case "dimension.added": index.dims.set(entry.label, "added"); break;
+      case "dimension.updated": index.dims.set(entry.label, "updated"); break;
+      case "subdimension.added": index.subs.set(entry.label, "added"); break;
+      case "subdimension.updated": index.subs.set(entry.label, "updated"); break;
+      case "question.added": index.questions.set(entry.label, "added"); index.addedCount++; break;
+      case "question.updated": index.questions.set(entry.label, "updated"); index.updatedCount++; break;
+      default: break; // removed items have nothing left in this snapshot to highlight
+    }
+  }
+  return index;
+}
+
+const subKey = (dimensionName: string, subName: string) => `${dimensionName} › ${subName}`;
+
+/** Whether this dimension -- or anything under it, at any depth -- changed,
+ *  and which kind: this is what the card's own outside highlight goes by,
+ *  not just whether the dimension row itself has a changelog entry. A
+ *  dimension whose own fields are untouched but that gained one new
+ *  question three sub-dimensions down still needs to read as "something
+ *  changed in here" from the collapsed row, or the highlight only ever
+ *  shows on rows the reader would already have opened to find the change.
+ *  "Added" wins over "updated" when a dimension has both, since new content
+ *  is the more important thing to notice. */
+function dimensionChangeKind(dimension: ApiDimension, index: ChangeIndex): ChangeKind | undefined {
+  if (index.dims.get(dimension.name) === "added") return "added";
+  let sawUpdate = index.dims.get(dimension.name) === "updated";
+  for (const sub of dimension.sub_dimensions) {
+    const subKind = index.subs.get(subKey(dimension.name, sub.name));
+    if (subKind === "added") return "added";
+    if (subKind === "updated") sawUpdate = true;
+    for (const question of sub.questions) {
+      const questionKind = index.questions.get(shortLabel(question.text));
+      if (questionKind === "added") return "added";
+      if (questionKind === "updated") sawUpdate = true;
+    }
+  }
+  return sawUpdate ? "updated" : undefined;
+}
+
+/** Small rounded tag, used throughout the snapshot viewer for a single piece
+ *  of metadata (a count, a weight, a status). Kept as one component so every
+ *  tag in the dialog shares the exact same shape instead of ad hoc inline
+ *  styles drifting apart. */
+function Tag({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "muted" | "warning" | "added" | "updated" }) {
+  const palette = {
+    neutral: { bg: "#F2F2F2", color: "#6B6B6B" },
+    muted: { bg: "transparent", color: "#B0B0B0" },
+    warning: { bg: "#FEF3E2", color: "#B45309" },
+    // Changelog highlighting: green for what this version introduced, blue
+    // for what it edited on something that already existed -- kept visually
+    // distinct from "warning" (amber, used for "inactive") so the two kinds
+    // of annotation never read as the same thing at a glance.
+    added: { bg: "#E7F7EE", color: "#1E7B45" },
+    updated: { bg: "#EAF1FF", color: "#1D4ED8" },
+  }[tone];
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5 }}>
-      {entries.map((entry, i) => (
-        <span
-          key={i}
-          style={{
-            display: "inline-flex", alignItems: "baseline", gap: 4,
-            backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.09)",
-            borderRadius: 4, padding: "2px 7px", fontSize: 10, color: "#4A4A4A",
-            maxWidth: "100%", overflowWrap: "anywhere",
-          }}
-        >
-          {entry.rank && <b style={{ color: "#B0B0B0" }}>{entry.rank}</b>}
-          {entry.label}
-          <b style={{ color: "#1A1A1A" }}>{entry.score}</b>
-        </span>
-      ))}
-    </div>
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", fontSize: 10.5, fontWeight: 600,
+        color: palette.color, backgroundColor: palette.bg, borderRadius: 4,
+        padding: tone === "muted" ? 0 : "2px 7px", whiteSpace: "nowrap", flexShrink: 0,
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
 function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose: () => void }) {
   const [exporting, setExporting] = useState(false);
+  const changeIndex = useMemo(() => indexChangelog(version.changelog), [version.changelog]);
+  // Every dimension starts collapsed -- what changed is already visible from
+  // the outside (the coloured card highlight + badges below), so opening the
+  // modal doesn't need to also unfold anything to make that legible.
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
 
   async function xlsx() {
     setExporting(true);
@@ -390,6 +436,20 @@ function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose:
     } finally {
       setExporting(false);
     }
+  }
+
+  function toggle(dimensionId: number) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(dimensionId)) next.delete(dimensionId);
+      else next.add(dimensionId);
+      return next;
+    });
+  }
+
+  const allOpen = expanded.size === version.snapshot.dimensions.length;
+  function toggleAll() {
+    setExpanded(allOpen ? new Set() : new Set(version.snapshot.dimensions.map(d => d.id)));
   }
 
   const iconBtn: React.CSSProperties = {
@@ -405,12 +465,12 @@ function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose:
       onClick={onClose}
     >
       <div
-        style={{ backgroundColor: "#fff", borderRadius: 12, width: 780, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.16)" }}
+        style={{ backgroundColor: "#fff", borderRadius: 12, width: 820, maxWidth: "94vw", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.16)" }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexShrink: 0 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A", overflowWrap: "anywhere" }}>
               v{version.number}{version.label ? `: ${version.label}` : ""}
             </div>
             <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 2 }}>
@@ -422,101 +482,201 @@ function SnapshotDialog({ version, onClose }: { version: VersionDetail; onClose:
             <button onClick={xlsx} disabled={exporting} style={{ ...iconBtn, cursor: exporting ? "wait" : "pointer" }} title="Exporter le questionnaire figé en Excel">
               {exporting ? <Loader2 size={12} className="animate-spin" /> : <FileSpreadsheet size={12} />} Excel
             </button>
-            <button onClick={() => exportSnapshotJson(version)} style={iconBtn} title="Télécharger le snapshot brut (JSON)">
-              <FileJson size={12} /> JSON
-            </button>
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9B9B" }}><X size={18} /></button>
           </div>
+        </div>
+
+        <div style={{ padding: "10px 22px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 11.5, flexWrap: "wrap" }}>
+            {changeIndex.addedCount > 0 && (
+              <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#1E7B45", fontWeight: 600 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#1E7B45", flexShrink: 0 }} />
+                {plural(changeIndex.addedCount, "question ajoutée")}
+              </span>
+            )}
+            {changeIndex.updatedCount > 0 && (
+              <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#1D4ED8", fontWeight: 600 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#1D4ED8", flexShrink: 0 }} />
+                {plural(changeIndex.updatedCount, "question modifiée")}
+              </span>
+            )}
+            {changeIndex.addedCount === 0 && changeIndex.updatedCount === 0 && (
+              <span style={{ color: "#9B9B9B" }}>Aucun changement de question par rapport à la version précédente</span>
+            )}
+          </div>
+          <button
+            onClick={toggleAll}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#6B6B6B", fontSize: 11.5, fontWeight: 600, padding: 0, flexShrink: 0 }}
+          >
+            {allOpen ? "Tout replier" : "Tout déplier"}
+          </button>
         </div>
 
         {/* minHeight: 0 is required, not decorative: a flex item defaults to
             min-height:auto and refuses to shrink below its content, so without
             it the list overflows the panel's maxHeight and gets clipped with
-            no scrollbar instead of scrolling. */}
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
-          {version.snapshot.dimensions.map((dimension: ApiDimension) => (
-            <div key={dimension.id} style={{ border: "1px solid rgba(0,0,0,0.07)", borderRadius: 9, overflow: "hidden" }}>
-              <div style={{ padding: "10px 14px", backgroundColor: "#FAFAFA", borderLeft: `4px solid ${dimension.color}` }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-                    {dimension.name}
-                  </span>
-                  {!dimension.is_active && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#9B9B9B", backgroundColor: "#F0F0F0", borderRadius: 4, padding: "1px 6px", flexShrink: 0 }}>Inactive</span>
-                  )}
-                  <span style={{ fontSize: 11, color: "#9B9B9B", flexShrink: 0, whiteSpace: "nowrap" }}>
-                    {plural(countQuestions(dimension), "question")} · poids {dimension.weight}%
-                  </span>
-                </div>
-                {dimension.description && (
-                  <div style={{ fontSize: 11, color: "#8A8A8A", marginTop: 4, lineHeight: 1.45, overflowWrap: "anywhere" }}>
-                    {dimension.description}
+            no scrollbar instead of scrolling. overflowX hidden keeps the panel
+            from ever growing sideways -- every text node below wraps instead. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+          {version.snapshot.dimensions.map((dimension: ApiDimension) => {
+            const open = expanded.has(dimension.id);
+            // dimChange: the dimension row itself was added/edited.
+            // cardChange: that, OR a change anywhere underneath it (a sub-
+            // dimension or question) -- this is what the card's *outside*
+            // highlight goes by, so a collapsed card already tells you
+            // something inside changed, not just an open one.
+            const dimChange = changeIndex.dims.get(dimension.name);
+            const cardChange = dimensionChangeKind(dimension, changeIndex);
+            const cardTint = cardChange === "added" ? "#1E7B45" : cardChange === "updated" ? "#1D4ED8" : null;
+            return (
+              <div
+                key={dimension.id}
+                style={{
+                  borderRadius: 9,
+                  // Longhand, not the `border` shorthand, for the same reason
+                  // as the button below: this needs to override to a tinted
+                  // colour on a change without a shorthand/longhand mix.
+                  borderTop: `1px solid ${cardTint ?? "rgba(0,0,0,0.08)"}`,
+                  borderRight: `1px solid ${cardTint ?? "rgba(0,0,0,0.08)"}`,
+                  borderBottom: `1px solid ${cardTint ?? "rgba(0,0,0,0.08)"}`,
+                  borderLeft: `1px solid ${cardTint ?? "rgba(0,0,0,0.08)"}`,
+                  // The "from the outside" highlight: a soft coloured ring
+                  // around the whole card, visible whether it's open or
+                  // still collapsed -- a badge alone only shows once the
+                  // reader has already opened the card to look for it.
+                  boxShadow: cardTint ? `0 0 0 3px ${cardTint}1F` : "none",
+                }}
+              >
+                <button
+                  onClick={() => toggle(dimension.id)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "flex-start", gap: 10,
+                    padding: "11px 14px", backgroundColor: "#FAFAFA",
+                    // Matches the card's own corners -- top-only while open (the
+                    // sub-dimensions below need the square edge to butt against),
+                    // all four once collapsed, since the button is then the only
+                    // child. No `overflow: hidden` on the card itself: that clips
+                    // to whatever height the card *starts* at, and a card whose
+                    // open/closed height changes on click can get clipped mid
+                    // question list the instant more content mounts than fit the
+                    // clipped box -- exactly the "questions cut off" bug this
+                    // replaces. Rounding the corners here costs nothing instead.
+                    borderRadius: open ? "8px 8px 0 0" : 8,
+                    // Longhand on every side (not the `border` shorthand) --
+                    // mixing shorthand with a longhand override on the same
+                    // style object is the exact pattern that produced a real
+                    // React warning elsewhere in this app (AdminBanks.tsx).
+                    borderTop: "none", borderRight: "none", borderBottom: "none",
+                    borderLeft: `4px solid ${dimension.color}`,
+                    cursor: "pointer", textAlign: "left",
+                  }}
+                >
+                  <ChevronDown
+                    size={14}
+                    style={{ color: "#9B9B9B", flexShrink: 0, marginTop: 3, transform: open ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", overflowWrap: "anywhere" }}>
+                        {dimension.name}
+                      </span>
+                      {!dimension.is_active && <Tag tone="neutral">Inactive</Tag>}
+                      {dimChange === "added" && <Tag tone="added">Nouvelle</Tag>}
+                      {dimChange === "updated" && <Tag tone="updated">Modifiée</Tag>}
+                      {!dimChange && cardChange === "added" && <Tag tone="added">Contient une nouveauté</Tag>}
+                      {!dimChange && cardChange === "updated" && <Tag tone="updated">Contient une modification</Tag>}
+                    </div>
+                    {dimension.description && open && (
+                      <div style={{ fontSize: 11, color: "#8A8A8A", marginTop: 3, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                        {dimension.description}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      <Tag>{plural(countQuestions(dimension), "question")}</Tag>
+                      <Tag>poids {dimension.weight}%</Tag>
+                    </div>
+                  </div>
+                </button>
+
+                {open && (
+                  <div>
+                    {dimension.sub_dimensions.map(sub => {
+                      const subChange = changeIndex.subs.get(subKey(dimension.name, sub.name));
+                      return (
+                      <div key={sub.id} style={{ padding: "12px 16px 14px 38px", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.05em", overflowWrap: "anywhere" }}>
+                            {sub.name}
+                            {!sub.is_active && <span style={{ textTransform: "none", letterSpacing: 0, color: "#B0B0B0", fontWeight: 500 }}> · inactive</span>}
+                          </span>
+                          {subChange === "added" && <Tag tone="added">Nouvelle</Tag>}
+                          {subChange === "updated" && <Tag tone="updated">Modifiée</Tag>}
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {sub.questions.map((question, index) => {
+                            const qChange = changeIndex.questions.get(shortLabel(question.text));
+                            const accent = qChange === "added" ? "#1E7B45" : qChange === "updated" ? "#1D4ED8" : null;
+                            const baseBorder = question.is_active ? "1px solid rgba(0,0,0,0.07)" : "1px dashed rgba(0,0,0,0.10)";
+                            return (
+                            <div
+                              key={question.id}
+                              style={{
+                                display: "flex", gap: 10, alignItems: "flex-start",
+                                padding: accent ? "9px 11px 9px 9px" : "9px 11px", borderRadius: 6,
+                                backgroundColor: question.is_active ? "#fff" : "transparent",
+                                // Longhand on every side, not the `border` shorthand,
+                                // so a changed question's left edge can carry a
+                                // thicker accent colour without mixing shorthand
+                                // and longhand overrides on the same style object
+                                // (see the dimension header button above for why).
+                                borderTop: baseBorder, borderRight: baseBorder, borderBottom: baseBorder,
+                                borderLeft: accent ? `3px solid ${accent}` : baseBorder,
+                                opacity: question.is_active ? 1 : 0.6,
+                              }}
+                            >
+                              <span style={{ fontSize: 10, fontWeight: 800, color: "#B0B0B0", flexShrink: 0, minWidth: 14, paddingTop: 1 }}>
+                                {index + 1}
+                              </span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "#1A1A1A", lineHeight: 1.5, overflowWrap: "anywhere" }}>
+                                  {question.text}
+                                </div>
+                                {question.description && (
+                                  <div style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic", marginTop: 4, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+                                    {question.description}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                                  {qChange === "added" && <Tag tone="added">Nouvelle</Tag>}
+                                  {qChange === "updated" && <Tag tone="updated">Modifiée</Tag>}
+                                  <Tag>{question.type}</Tag>
+                                  <Tag>poids {question.weight}</Tag>
+                                  {!question.is_required && <Tag>facultative</Tag>}
+                                  {!question.is_active && <Tag tone="warning">inactive</Tag>}
+                                </div>
+                              </div>
+                            </div>
+                            );
+                          })}
+                          {sub.questions.length === 0 && (
+                            <div style={{ fontSize: 11, color: "#B0B0B0" }}>Aucune question</div>
+                          )}
+                        </div>
+                      </div>
+                      );
+                    })}
+
+                    {dimension.sub_dimensions.length === 0 && (
+                      <div style={{ padding: "12px 16px 14px 38px", fontSize: 11, color: "#B0B0B0", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                        Aucune sous-dimension
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-
-              {dimension.sub_dimensions.map(sub => (
-                <div key={sub.id} style={{ padding: "10px 16px 12px", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6B6B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 7, overflowWrap: "anywhere" }}>
-                    {sub.name}
-                    {!sub.is_active && <span style={{ textTransform: "none", letterSpacing: 0, color: "#B0B0B0", fontWeight: 500 }}> · inactive</span>}
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {sub.questions.map((question, index) => (
-                      <div
-                        key={question.id}
-                        style={{
-                          display: "flex", gap: 10, alignItems: "flex-start",
-                          padding: "7px 10px", borderRadius: 6,
-                          backgroundColor: question.is_active ? "#FAFAFA" : "transparent",
-                          border: question.is_active ? "1px solid rgba(0,0,0,0.05)" : "1px dashed rgba(0,0,0,0.10)",
-                          opacity: question.is_active ? 1 : 0.6,
-                        }}
-                      >
-                        <span style={{ fontSize: 10, fontWeight: 800, color: "#B0B0B0", flexShrink: 0, minWidth: 14, paddingTop: 1 }}>
-                          {index + 1}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: "#1A1A1A", lineHeight: 1.45, overflowWrap: "anywhere" }}>
-                            {question.text}
-                          </div>
-                          {question.description && (
-                            <div style={{ fontSize: 11, color: "#9B9B9B", fontStyle: "italic", marginTop: 3, lineHeight: 1.45, overflowWrap: "anywhere" }}>
-                              {question.description}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 3 }}>
-                            <span style={{ fontSize: 10, color: "#9B9B9B" }}>{question.type}</span>
-                            <span style={{ fontSize: 10, color: "#C0C0C0" }}>·</span>
-                            <span style={{ fontSize: 10, color: "#9B9B9B" }}>poids {question.weight}</span>
-                            {!question.is_required && (
-                              <><span style={{ fontSize: 10, color: "#C0C0C0" }}>·</span>
-                                <span style={{ fontSize: 10, color: "#9B9B9B" }}>facultative</span></>
-                            )}
-                            {!question.is_active && (
-                              <><span style={{ fontSize: 10, color: "#C0C0C0" }}>·</span>
-                                <span style={{ fontSize: 10, color: "#B45309", fontWeight: 600 }}>inactive</span></>
-                            )}
-                          </div>
-                          <AnswerScale question={question} />
-                        </div>
-                      </div>
-                    ))}
-                    {sub.questions.length === 0 && (
-                      <div style={{ fontSize: 11, color: "#B0B0B0" }}>Aucune question</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {dimension.sub_dimensions.length === 0 && (
-                <div style={{ padding: "10px 16px", fontSize: 11, color: "#B0B0B0", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-                  Aucune sous-dimension
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -788,6 +948,11 @@ function RestoreDialog({ version, current, onClose, onDone }: {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export function QuestionnaireVersions() {
+  // Read-only for the reduced "admin" role (reachable at /admin/versions,
+  // see routes.tsx) -- the backend already refuses every mutation from
+  // that role (admin_framework.py's write endpoints stay require_super_admin),
+  // this only keeps the UI from offering controls that would just 403.
+  const canEdit = isSuperAdmin();
   const navigate = useNavigate();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -989,8 +1154,11 @@ export function QuestionnaireVersions() {
       )}
 
       {/* Unpublished work blocks any restore server-side, so say so here rather
-          than letting the admin discover it through a failed action. */}
-      {!loading && !error && draft && (
+          than letting the admin discover it through a failed action. A draft
+          is a super-admin staging concept (see AdminRecommendations.tsx's
+          same reasoning) -- a read-only viewer has no use for "there's
+          unpublished work" or a link into the editor they can't use. */}
+      {!loading && !error && draft && canEdit && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "13px 16px", backgroundColor: "#FFF8E1", border: "1px solid #FDE68A", borderRadius: 9, marginBottom: 16 }}>
           <AlertTriangle size={15} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1204,7 +1372,7 @@ export function QuestionnaireVersions() {
 
                       <td style={{ padding: "12px 14px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
                         <div style={{ display: "flex", gap: 5, alignItems: "center" }} onClick={e => e.stopPropagation()}>
-                          {!isLive && (
+                          {!isLive && canEdit && (
                             <button
                               title={
                                 draft
@@ -1239,6 +1407,7 @@ export function QuestionnaireVersions() {
                             {loadingSnapshot === version.id ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
                           </button>
 
+                          {canEdit && (
                           <div style={{ position: "relative" }}>
                             <button
                               title="Autres actions"
@@ -1325,6 +1494,7 @@ export function QuestionnaireVersions() {
                               </div>
                             )}
                           </div>
+                          )}
                         </div>
                       </td>
                     </tr>

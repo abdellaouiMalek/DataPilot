@@ -75,6 +75,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true,   lazy: page(() => import('./pages/admin/AdminDashboard'), 'AdminDashboard') },
       { path: 'users',    lazy: page(() => import('./pages/superAdmin/AdminUsers'), 'UserManagement') },
+      { path: 'evaluations', lazy: page(() => import('./pages/admin/AdminEvaluations'), 'AdminEvaluations') },
+      { path: 'evaluations/:assessmentId', lazy: page(() => import('./pages/admin/AdminEvaluationDetail'), 'AdminEvaluationDetail') },
+      { path: 'recommendations', lazy: page(() => import('./pages/superAdmin/AdminRecommendations'), 'RecommendationCatalog') },
       { path: 'dimensions', lazy: page(() => import('./pages/superAdmin/AdminDimensions'), 'FrameworkConsultation') },
       { path: 'scoring',    lazy: page(() => import('./pages/superAdmin/AdminScoring'), 'ScoringReferential') },
       { path: 'versions',   lazy: page(() => import('./pages/superAdmin/AdminVersions'), 'QuestionnaireVersions') },

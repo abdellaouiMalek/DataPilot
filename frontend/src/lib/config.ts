@@ -16,11 +16,21 @@ async function getJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface LevelResponse {
+  label: string;
+  score: number;
+}
+
 export interface Question {
   id: number;
   text: string;
   description: string | null;
   sort_order: number;
+  /** The real per-question answer scale (label + score, levels 1-5), as set
+   *  by the admin framework editor. Null for a question that was never
+   *  given specific wording -- the questionnaire page falls back to a
+   *  generic scale in that case. */
+  level_responses: LevelResponse[] | null;
 }
 
 export interface Dimension {

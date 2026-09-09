@@ -45,7 +45,7 @@ def _role(claims: dict[str, Any]) -> str | None:
 def _map_profile(
     user: dict[str, Any],
     claims: dict[str, Any],
-    bank_name: str | None = None,
+    bank: Bank | None = None,
 ) -> ProfileRead:
     return ProfileRead(
         id=user["id"],
@@ -55,18 +55,16 @@ def _map_profile(
         organization=_first_attribute(user, "organization"),
         role=_role(claims),
         bank_id=_bank_id(user),
-        bank_name=bank_name,
+        bank_name=bank.name if bank is not None else None,
+        bank_logo_url=bank.logo_url if bank is not None else None,
     )
 
 
-async def _resolve_bank_name(
-    db: AsyncSession, user: dict[str, Any]
-) -> str | None:
+async def _resolve_bank(db: AsyncSession, user: dict[str, Any]) -> Bank | None:
     bank_id = _bank_id(user)
     if bank_id is None:
         return None
-    bank = await db.get(Bank, bank_id)
-    return bank.name if bank is not None else None
+    return await db.get(Bank, bank_id)
 
 
 async def _current_user(claims: dict[str, Any]) -> dict[str, Any]:
@@ -82,8 +80,8 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
 ) -> ProfileRead:
     user = await _current_user(claims)
-    bank_name = await _resolve_bank_name(db, user)
-    return _map_profile(user, claims, bank_name)
+    bank = await _resolve_bank(db, user)
+    return _map_profile(user, claims, bank)
 
 
 @router.put("", response_model=ProfileRead)
@@ -109,5 +107,5 @@ async def update_profile(
 
     await kc_put(f"/users/{user['id']}", user)
     updated = await kc_get(f"/users/{user['id']}")
-    bank_name = await _resolve_bank_name(db, updated)
-    return _map_profile(updated, claims, bank_name)
+    bank = await _resolve_bank(db, updated)
+    return _map_profile(updated, claims, bank)

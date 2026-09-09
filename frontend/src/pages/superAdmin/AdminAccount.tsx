@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import keycloak from "@/lib/keycloak";
 import { AdminLoader } from "@/components/AdminLoader";
 import { getProfile, updateProfile, type UserProfile } from "@/lib/profile";
+import { bankLogoSrc } from "@/lib/config";
 import {
   getAdminProfile,
   resetOwnPassword,
@@ -130,6 +131,13 @@ export function AccountSection({ layout = "stack" }: {
   const roleLabel = overview?.role
     ? ROLE_LABELS[overview.role as BusinessRole] ?? overview.role
     : "Aucun rôle métier";
+
+  // Un admin restreint est rattaché à une banque (contrairement au super
+  // admin, voir le docstring du fichier) -- "Organisation" n'a pas de sens
+  // pour lui, la banque prend sa place, en lecture seule : c'est un
+  // rattachement géré par un super admin (AdminUsers.tsx), pas une
+  // préférence que la personne édite elle-même sur son propre profil.
+  const isRestrictedAdmin = overview?.role === "admin";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -255,9 +263,26 @@ export function AccountSection({ layout = "stack" }: {
             <Field label="Adresse email *">
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={inp} />
             </Field>
-            <Field label="Organisation">
-              <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="EY" style={inp} />
-            </Field>
+            {isRestrictedAdmin ? (
+              <Field label="Banque">
+                <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 11px", borderRadius: 6, border: "1px solid rgba(0,0,0,0.1)", backgroundColor: "#FAFAFA" }}>
+                  {profile?.bank_logo_url && (
+                    <img
+                      src={bankLogoSrc(profile.bank_logo_url) ?? undefined}
+                      alt=""
+                      style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "contain", background: "#fff", border: "1px solid rgba(0,0,0,0.08)", flexShrink: 0 }}
+                    />
+                  )}
+                  <span style={{ fontSize: 13, color: EY.black, fontWeight: 500 }}>
+                    {profile?.bank_name || "Aucune banque associée"}
+                  </span>
+                </div>
+              </Field>
+            ) : (
+              <Field label="Organisation">
+                <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="EY" style={inp} />
+              </Field>
+            )}
           </div>
           <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
             <span style={{ fontSize: 11, color: "var(--ey-gray-mid)" }}>

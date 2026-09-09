@@ -16,6 +16,7 @@ import type { AdminUser, BusinessRole, UserPayload } from "@/lib/adminUsers";
 import { ApiError } from "@/lib/api";
 import { getBanks } from "@/lib/config";
 import { isSuperAdmin } from "@/lib/keycloak";
+import { getProfile } from "@/lib/profile";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -258,11 +259,34 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
     };
   }, []);
 
+  // Un admin restreint gère uniquement les comptes de SA banque (voir
+  // _assert_may_target côté backend) -- il ne doit donc jamais pouvoir
+  // choisir ou changer la banque lui-même : à la création, elle est
+  // pré-sélectionnée sur la sienne ; à l'édition, `user.bankId` est déjà
+  // la sienne (le backend refuserait sinon l'accès à ce compte). Le champ
+  // est simplement verrouillé (select disabled) dans les deux cas -- voir
+  // bankLocked plus bas.
+  useEffect(() => {
+    if (isSuperAdmin() || user) return; // super admin, ou édition (déjà la bonne banque)
+    let cancelled = false;
+    getProfile()
+      .then((p) => {
+        if (!cancelled && p.bank_id != null) {
+          setFormData((prev) => ({ ...prev, bankId: String(p.bank_id) }));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   // Un super admin n'est pas limité à une banque (get_bank_scope lui renvoie
   // None) ; pour tous les autres, l'absence de banque vaut 403 sur le
   // questionnaire et les résultats, le compte serait inutilisable.
   const roleKey = LABEL_TO_ROLE[formData.role] ?? "consultant";
   const bankRequired = roleKey !== "super_admin";
+  const bankLocked = !isSuperAdmin();
 
   const handleSubmit = async () => {
     if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
@@ -363,8 +387,11 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
             <select
               value={formData.bankId}
               onChange={e => setFormData(p => ({ ...p, bankId: e.target.value }))}
+              disabled={bankLocked}
               style={{
-                ...inp, appearance: "none", backgroundColor: "#fff", cursor: "pointer",
+                ...inp, appearance: "none", cursor: bankLocked ? "not-allowed" : "pointer",
+                backgroundColor: bankLocked ? "#F5F5F5" : "#fff",
+                color: bankLocked ? "#6B6B6B" : "#1A1A1A",
                 borderColor: bankRequired && !formData.bankId ? "#E0A800" : "rgba(0,0,0,0.13)",
               }}
             >
@@ -376,9 +403,11 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
               ))}
             </select>
             <div style={{ fontSize: 11, color: "#9B9B9B", marginTop: 4 }}>
-              {bankRequired
-                ? "Détermine les évaluations que cet utilisateur peut consulter. Sans banque, le compte n'a accès ni au questionnaire ni aux résultats."
-                : "Un super administrateur accède aux données de toutes les banques."}
+              {bankLocked
+                ? "Un administrateur ne gère que les comptes de sa propre banque -- ce champ n'est pas modifiable."
+                : bankRequired
+                  ? "Détermine les évaluations que cet utilisateur peut consulter. Sans banque, le compte n'a accès ni au questionnaire ni aux résultats."
+                  : "Un super administrateur accède aux données de toutes les banques."}
             </div>
           </div>
 

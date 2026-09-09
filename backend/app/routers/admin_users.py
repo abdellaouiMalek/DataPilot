@@ -20,7 +20,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import is_super_admin, require_back_office
+from app.core.auth import get_bank_scope, is_super_admin, require_back_office
 from app.core.keycloak_admin import kc_delete, kc_get, kc_post, kc_put
 from app.core.mailer import send_email
 from app.db.database import get_db
@@ -46,11 +46,15 @@ BUSINESS_ROLES = ("super_admin", "admin", "validateur", "consultant", "repondant
 
 
 SUPER_ADMIN_ROLE = "super_admin"
+ADMIN_ROLE = "admin"
 
 # Keycloak user attribute holding the `sub` of whoever created the account.
-# Scopes an "admin" to their own accounts; a super admin ignores it entirely.
-# Relies on the realm's unmanagedAttributePolicy=ENABLED (app.keycloak_bootstrap),
-# same as `organization` / `archived` / `bank_id`.
+# Provenance only (shown in the audit trail) -- an "admin"'s visibility and
+# management rights are scoped by shared `bank_id` (see _scope_to_bank /
+# _assert_may_target below), not by who happened to create the account: two
+# admins at the same bank manage the same pool of users. Relies on the
+# realm's unmanagedAttributePolicy=ENABLED (app.keycloak_bootstrap), same as
+# `organization` / `archived` / `bank_id`.
 CREATED_BY_ATTR = "created_by"
 
 
@@ -79,22 +83,21 @@ def _audit_snapshot(user: dict[str, Any], role: Optional[str]) -> dict[str, Any]
     }
 
 
-def _created_by(user: dict[str, Any]) -> str | None:
-    values = (user.get("attributes") or {}).get(CREATED_BY_ATTR)
-    return values[0] if isinstance(values, list) and values else None
+def _scope_to_bank(params: dict[str, Any], bank_scope: Optional[int]) -> None:
+    """Restrict a Keycloak ``/users`` query to accounts at the caller's bank.
 
-
-def _scope_to_owner(params: dict[str, Any], claims: dict[str, Any]) -> None:
-    """Restrict a Keycloak ``/users`` query to the caller's own accounts.
-
-    No-op for a super admin (full visibility). For an ``admin``, adds
-    Keycloak's custom-attribute filter ``q=created_by:<sub>``, so the
-    filtering happens in Keycloak and ``first``/``max`` keep paginating over
-    the restricted set instead of over everyone.
+    No-op when ``bank_scope`` is ``None`` (a super admin, via
+    ``get_bank_scope`` -- full visibility). For an ``admin``, adds
+    Keycloak's custom-attribute filter ``q=bank_id:<id>``, so the filtering
+    happens in Keycloak and ``first``/``max`` keep paginating over the
+    restricted set instead of over everyone. Role-based exclusions (never
+    surface another admin or a super admin) still need a Python-side
+    post-filter afterwards -- Keycloak's attribute search can't express
+    "does NOT hold this realm role".
     """
-    if is_super_admin(claims):
+    if bank_scope is None:
         return
-    params["q"] = f"{CREATED_BY_ATTR}:{claims.get('sub')}"
+    params["q"] = f"bank_id:{bank_scope}"
 
 
 def _forbidden_super_admin() -> HTTPException:
@@ -115,16 +118,22 @@ def _assert_may_assign(claims: dict[str, Any], role: str | None) -> None:
         raise _forbidden_super_admin()
 
 
-async def _assert_may_target(claims: dict[str, Any], user_id: str) -> None:
+async def _assert_may_target(
+    claims: dict[str, Any], user_id: str, bank_scope: Optional[int]
+) -> None:
     """Restrict what an ``admin`` may act on (edit, disable, archive, reset).
 
-    Two rules, both irrelevant to a super admin:
+    Three rules, all irrelevant to a super admin (unrestricted):
     1. never an existing super-admin account;
-    2. only accounts they created themselves (``created_by``).
+    2. never another admin account either -- two admins at the same bank
+       manage the shared pool of business-role users, not each other;
+    3. only accounts at the caller's own bank (``bank_scope``, from
+       ``get_bank_scope`` -- never ``None`` here, since a non-super-admin
+       caller without a bank already got a 403 from that dependency).
 
-    Accounts predating this attribute have no owner recorded, so they stay
-    super-admin-only -- deliberately fail-closed rather than granting every
-    admin access to the whole legacy population.
+    An account with no ``bank_id`` at all (predating the attribute, or
+    edited to remove it) fails rule 3 automatically -- deliberately
+    fail-closed rather than granting every admin access to it.
     """
     if is_super_admin(claims):
         return
@@ -133,12 +142,18 @@ async def _assert_may_target(claims: dict[str, Any], user_id: str) -> None:
         kc_get(f"/users/{user_id}"),
         kc_get(f"/users/{user_id}/role-mappings/realm"),
     )
-    if any(m["name"] == SUPER_ADMIN_ROLE for m in mappings):
+    target_roles = {m["name"] for m in mappings}
+    if SUPER_ADMIN_ROLE in target_roles:
         raise _forbidden_super_admin()
-    if _created_by(user) != claims.get("sub"):
+    if ADMIN_ROLE in target_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Vous ne pouvez gerer que les comptes que vous avez crees.",
+            detail="Un administrateur ne peut pas gerer un autre compte administrateur.",
+        )
+    if _bank_id(user) != bank_scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous ne pouvez gerer que les comptes rattaches a votre banque.",
         )
 
 
@@ -379,22 +394,23 @@ async def list_users(
     first: int = Query(0, ge=0, description="Pagination offset"),
     max: int = Query(20, ge=1, le=100, description="Page size"),
     claims: dict = Depends(require_back_office),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
     params: dict[str, Any] = {"first": first, "max": max}
     if search:
         params["search"] = search
-    # Scope an "admin" to the accounts they created. Filtering server-side
+    # Scope an "admin" to their bank's accounts. Filtering server-side
     # (Keycloak's `q=key:value` attribute search) rather than in Python keeps
     # pagination honest -- a post-filter would return short pages.
-    _scope_to_owner(params, claims)
+    _scope_to_bank(params, bank_scope)
 
     users, roles, logins = await asyncio.gather(
         kc_get("/users", params), _role_by_user(), _last_login_by_user()
     )
-    # Defence in depth: `q` already excludes them (an admin cannot create a
-    # super admin), but never surface an account we would refuse to act on.
+    # Defence in depth: never surface an account _assert_may_target would
+    # refuse to act on -- another admin, or any super admin.
     if not is_super_admin(claims):
-        users = [u for u in users if roles.get(u["id"]) != SUPER_ADMIN_ROLE]
+        users = [u for u in users if roles.get(u["id"]) not in (SUPER_ADMIN_ROLE, ADMIN_ROLE)]
     return [_map_user(u, roles.get(u["id"]), logins.get(u["id"])) for u in users]
 
 
@@ -402,13 +418,14 @@ async def list_users(
 async def count_users(
     search: Optional[str] = Query(None),
     claims: dict = Depends(require_back_office),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
     params: dict[str, Any] = {}
     if search:
         params["search"] = search
     # Same scoping as list_users -- otherwise an admin sees "3 of 47" while
     # only 3 rows exist for them.
-    _scope_to_owner(params, claims)
+    _scope_to_bank(params, bank_scope)
     return {"count": await kc_get("/users/count", params)}
 
 
@@ -524,10 +541,11 @@ async def update_user(
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
     # Both directions: an admin may neither target an existing super admin
-    # nor promote anyone (including themselves) to super_admin.
-    await _assert_may_target(claims, user_id)
+    # (or another admin) nor promote anyone (including themselves) to super_admin.
+    await _assert_may_target(claims, user_id, bank_scope)
     _assert_may_assign(claims, payload.role)
     _assert_bank_required(payload.role, payload.bank_id)
     await _validate_bank_id(db, payload.bank_id)
@@ -591,8 +609,9 @@ async def set_user_enabled(
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
-    await _assert_may_target(claims, user_id)
+    await _assert_may_target(claims, user_id, bank_scope)
     user = await kc_get(f"/users/{user_id}")
     was = _status(user)
     user["enabled"] = payload.enabled
@@ -621,8 +640,9 @@ async def set_user_archived(
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
-    await _assert_may_target(claims, user_id)
+    await _assert_may_target(claims, user_id, bank_scope)
     user = await kc_get(f"/users/{user_id}")
     was = _status(user)
     attributes = user.get("attributes") or {}
@@ -659,8 +679,9 @@ async def reset_user_password(
     claims: dict = Depends(require_back_office),
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
+    bank_scope: Optional[int] = Depends(get_bank_scope),
 ):
-    await _assert_may_target(claims, user_id)
+    await _assert_may_target(claims, user_id, bank_scope)
     # 404 passthrough if the user doesn't exist.
     user = await kc_get(f"/users/{user_id}")
     email = user.get("email")

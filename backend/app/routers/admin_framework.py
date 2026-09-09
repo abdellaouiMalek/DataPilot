@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_super_admin
+from app.core.auth import require_back_office, require_super_admin
 from app.db.database import get_db
 from app.models import Assessment, FrameworkDraft, QuestionnaireVersion
 from app.models.audit_log import MODULE_FRAMEWORK, MODULE_VERSIONS
@@ -46,11 +46,16 @@ from app.services.framework_publish import (
     next_version_number,
     promote_draft_recommendations,
 )
+from app.services.notifications import notify_admins_of_new_questionnaire_version
 
 router = APIRouter(
     prefix="/api/super-admin/framework",
     tags=["super-admin-framework"],
-    dependencies=[Depends(require_super_admin)],
+    # No blanket dependency here (unlike before) -- reads (state/versions) are
+    # open to the reduced "admin" role too (require_back_office), writes stay
+    # require_super_admin, declared explicitly per endpoint below. The
+    # blanket gate used to 403 AdminVersions.tsx's load for an admin caller
+    # even though that page is already reused at /admin/versions.
 )
 
 # The framework has one pending state, shared by whoever is editing it.
@@ -128,7 +133,7 @@ async def _set_active(db: AsyncSession, version: QuestionnaireVersion) -> None:
     await db.flush()
 
 
-@router.get("/state", response_model=FrameworkState)
+@router.get("/state", response_model=FrameworkState, dependencies=[Depends(require_back_office)])
 async def get_state(db: AsyncSession = Depends(get_db)):
     """Live tree + any staged draft + the version the editor is based on."""
     snapshot = await build_snapshot(db)
@@ -169,7 +174,7 @@ async def save_draft(
     return DraftRead.model_validate(draft)
 
 
-@router.delete("/draft", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/draft", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_super_admin)])
 async def discard_draft(
     db: AsyncSession = Depends(get_db),
     audit: Audit = Depends(audit_context),
@@ -275,6 +280,10 @@ async def publish(
         db.add(version)
         await db.flush()
         await _set_active(db, version)
+        # Same transaction as the publish itself (see the function's own
+        # docstring) -- a version can never go live without the admins
+        # hearing about it.
+        await notify_admins_of_new_questionnaire_version(db, version)
 
         draft = await _get_draft(db)
         if draft is not None:
@@ -309,7 +318,7 @@ async def publish(
     return _detail(version, await _assessment_counts(db))
 
 
-@router.get("/versions", response_model=list[VersionSummary])
+@router.get("/versions", response_model=list[VersionSummary], dependencies=[Depends(require_back_office)])
 async def list_versions(db: AsyncSession = Depends(get_db)):
     """Newest first, archived ones included.
 
@@ -323,7 +332,7 @@ async def list_versions(db: AsyncSession = Depends(get_db)):
     return [_summary(v, counts) for v in versions]
 
 
-@router.get("/versions/{version_id}", response_model=VersionDetail)
+@router.get("/versions/{version_id}", response_model=VersionDetail, dependencies=[Depends(require_back_office)])
 async def get_version(version_id: int, db: AsyncSession = Depends(get_db)):
     version = await db.get(QuestionnaireVersion, version_id)
     if version is None:
@@ -331,7 +340,7 @@ async def get_version(version_id: int, db: AsyncSession = Depends(get_db)):
     return _detail(version, await _assessment_counts(db))
 
 
-@router.patch("/versions/{version_id}", response_model=VersionDetail)
+@router.patch("/versions/{version_id}", response_model=VersionDetail, dependencies=[Depends(require_super_admin)])
 async def edit_version(
     version_id: int,
     payload: VersionEdit,
@@ -372,7 +381,7 @@ async def edit_version(
     return _detail(version, await _assessment_counts(db))
 
 
-@router.put("/versions/{version_id}/archived", response_model=VersionDetail)
+@router.put("/versions/{version_id}/archived", response_model=VersionDetail, dependencies=[Depends(require_super_admin)])
 async def set_version_archived(
     version_id: int,
     payload: VersionArchivedUpdate,
@@ -413,7 +422,7 @@ async def set_version_archived(
     return _detail(version, await _assessment_counts(db))
 
 
-@router.delete("/versions/{version_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/versions/{version_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_super_admin)])
 async def delete_version(
     version_id: int,
     db: AsyncSession = Depends(get_db),

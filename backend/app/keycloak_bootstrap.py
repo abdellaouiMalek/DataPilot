@@ -66,14 +66,24 @@ async def ensure_login_events() -> None:
 
 
 async def ensure_realm_smtp() -> None:
+    """Idempotent, but idempotent against **.env**, not just "is something set":
+    checking only ``current.get("host")`` used to skip forever once a host was
+    present at all, even a stale one -- this instance's realm got
+    ``user``/``from`` = ``you@example.com`` (the ``backend/.env.example``
+    placeholder) baked in from a run before ``.env`` had real credentials, and
+    every later run silently kept it, since real reset-password/SMTP-configured
+    emails just failed with a Gmail 535 auth error (wrong account) while this
+    guard kept reporting "already configured". Comparing host+user against the
+    current ``.env`` values instead means a corrected ``.env`` actually gets
+    re-applied, while a realm that already matches still costs no write."""
     if not (SMTP_USER and SMTP_PASSWORD):
         print("- realm SMTP: skipped (no SMTP_USER/SMTP_PASSWORD in backend/.env)")
         return
 
     realm = await kc_get("")
     current = realm.get("smtpServer") or {}
-    if current.get("host"):
-        print(f"- realm SMTP: already configured (host {current['host']})")
+    if current.get("host") == SMTP_HOST and current.get("user") == SMTP_USER:
+        print(f"- realm SMTP: already configured (host {current['host']}, user {current['user']})")
         return
 
     realm["smtpServer"] = {

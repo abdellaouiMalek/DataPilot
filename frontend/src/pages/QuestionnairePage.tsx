@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Check, ArrowRight, Save, Flag, Sparkles, Loa
 import { toast } from 'sonner';
 import { Navbar } from '@/components/Navbar';
 import { getDimensions } from '@/lib/config';
-import type { Dimension } from '@/lib/config';
+import type { Dimension, Question } from '@/lib/config';
 import { submitAssessment } from '@/lib/assessment';
 import type { AnswerIn } from '@/lib/assessment';
 import { getProfile } from '@/lib/profile';
@@ -45,13 +45,32 @@ function loadDraft(sub: string | undefined, profile: { bankId?: number; departme
   }
 }
 
-const likertOptions = [
-  { value: 1, label: 'Pas du tout', sublabel: 'Inexistant', color: '#ef4444', bg: '#fef2f2', dot: '●' },
-  { value: 2, label: 'Faiblement', sublabel: 'Embryonnaire', color: '#f97316', bg: '#fff7ed', dot: '●●' },
-  { value: 3, label: 'Partiellement', sublabel: 'En cours', color: '#eab308', bg: '#fefce8', dot: '●●●' },
-  { value: 4, label: 'Largement', sublabel: 'Avancé', color: '#22c55e', bg: '#f0fdf4', dot: '●●●●' },
-  { value: 5, label: 'Totalement', sublabel: 'Optimisé', color: '#3b82f6', bg: '#eff6ff', dot: '●●●●●' },
+// Colour + intensity-dot ramp for the 5 levels -- fixed regardless of a
+// question's wording, so the scale reads the same way (red→blue, ●→●●●●●)
+// across every question in the survey.
+const LEVEL_STYLE = [
+  { color: '#ef4444', bg: '#fef2f2', dot: '●' },
+  { color: '#f97316', bg: '#fff7ed', dot: '●●' },
+  { color: '#eab308', bg: '#fefce8', dot: '●●●' },
+  { color: '#22c55e', bg: '#f0fdf4', dot: '●●●●' },
+  { color: '#3b82f6', bg: '#eff6ff', dot: '●●●●●' },
 ];
+
+// Used only for a question that was never given its own answer wording
+// (level_responses null) -- everything else shows the real survey text.
+const GENERIC_LEVEL_LABELS = ['Pas du tout', 'Faiblement', 'Partiellement', 'Largement', 'Totalement'];
+
+/** The 5 selectable options for one question: its own answer wording when
+ *  the admin configured it, the generic fallback otherwise. Built per
+ *  question (not a fixed array) precisely because the real survey gives
+ *  every question its own text for each level. */
+function optionsFor(question: Question) {
+  return LEVEL_STYLE.map((style, i) => ({
+    value: i + 1,
+    label: question.level_responses?.[i]?.label || GENERIC_LEVEL_LABELS[i],
+    ...style,
+  }));
+}
 
 export function QuestionnairePage() {
   const navigate = useNavigate();
@@ -412,7 +431,8 @@ export function QuestionnairePage() {
               {currentQuestions.map((question, qIndex) => {
                 const selectedValue = currentAnswers[qIndex];
                 const isAnswered = selectedValue !== undefined;
-                const selectedOption = likertOptions.find(o => o.value === selectedValue);
+                const options = optionsFor(question);
+                const selectedOption = options.find(o => o.value === selectedValue);
                 const isJustAnswered = justAnswered === qIndex;
 
                 return (
@@ -471,74 +491,61 @@ export function QuestionnairePage() {
                         </div>
                       </div>
 
-                      {/* Likert scale, horizontal pill row */}
-                      <div className="flex gap-2">
-                        {likertOptions.map((option) => {
+                      {/* Answer scale -- a vertical list, not the old horizontal
+                          pill row: each option now carries the survey's own
+                          full-sentence wording for that level (not a generic
+                          one-word label), which needs room to wrap legibly
+                          rather than being squeezed into a narrow flex-1 pill. */}
+                      <div className="flex flex-col gap-2">
+                        {options.map((option) => {
                           const isSelected = selectedValue === option.value;
                           return (
                             <motion.button
                               key={option.value}
                               onClick={() => handleAnswer(currentDimension.key, qIndex, option.value)}
-                              whileHover={{ y: -3, scale: 1.02 }}
-                              whileTap={{ scale: 0.95 }}
-                              className="flex-1 flex flex-col items-center gap-2 py-3.5 px-1 rounded-xl border-2 transition-all duration-200 relative overflow-hidden"
+                              whileHover={{ x: 2 }}
+                              whileTap={{ scale: 0.99 }}
+                              className="w-full flex items-start gap-3 py-3 px-4 rounded-xl border-2 text-left transition-all duration-200"
                               style={{
                                 borderColor: isSelected ? option.color : '#eeeeec',
                                 background: isSelected ? option.bg : '#fafaf8',
                               }}
                             >
-                              {/* Level dots */}
                               <span
-                                className="text-[8px] tracking-tighter leading-none font-black"
-                                style={{ color: isSelected ? option.color : '#d1d5db', letterSpacing: '1px' }}
+                                className="shrink-0 mt-0.5 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black"
+                                style={{
+                                  background: isSelected ? option.color : '#ffffff',
+                                  color: isSelected ? '#ffffff' : '#9ca3af',
+                                  border: isSelected ? 'none' : '1.5px solid #e5e5e2',
+                                }}
                               >
-                                {option.dot}
+                                {option.value}
                               </span>
                               <span
-                                className="text-[11px] font-bold leading-tight text-center"
-                                style={{ color: isSelected ? option.color : '#6b7280' }}
+                                className="flex-1 text-[13px] leading-snug font-medium pt-0.5"
+                                style={{ color: isSelected ? option.color : '#4b5563' }}
                               >
                                 {option.label}
                               </span>
                               <span
-                                className="text-[9px] leading-tight text-center font-medium"
-                                style={{ color: isSelected ? option.color + 'bb' : '#9ca3af' }}
+                                className="shrink-0 text-[8px] tracking-tighter leading-none font-black pt-1.5"
+                                style={{ color: isSelected ? option.color : '#d1d5db', letterSpacing: '1px' }}
                               >
-                                {option.sublabel}
+                                {option.dot}
                               </span>
-
                               {isSelected && (
-                                <motion.div
+                                <motion.span
                                   layoutId={`check-${qIndex}`}
-                                  className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                                  className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
                                   style={{ background: option.color }}
                                 >
-                                  <Check className="w-2.5 h-2.5 text-white" />
-                                </motion.div>
+                                  <Check className="w-3 h-3 text-white" />
+                                </motion.span>
                               )}
                             </motion.button>
                           );
                         })}
                       </div>
-
-                      {/* Feedback strip when answered */}
-                      <AnimatePresence>
-                        {isAnswered && selectedOption && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                            animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
-                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                            className="flex items-center gap-2 text-xs rounded-lg px-3 py-2"
-                            style={{ background: selectedOption.bg, color: selectedOption.color }}
-                          >
-                            <span className="font-black">Niveau {selectedOption.value}/5</span>
-                            <span className="opacity-60">·</span>
-                            <span className="font-semibold">{selectedOption.label}</span>
-                            <span className="opacity-60">·</span>
-                            <span>{selectedOption.sublabel}</span>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   </motion.div>
                 );

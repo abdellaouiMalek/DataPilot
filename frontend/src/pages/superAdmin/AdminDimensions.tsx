@@ -896,9 +896,11 @@ function QuestionsList({ dim, sub, onChanged, onEdit, onAdd, readOnly }: {
       {sub.questions.length === 0 && (
         <div style={{ fontSize: 12, color: "#9B9B9B", padding: "6px 2px" }}>Aucune question dans cette sous-dimension.</div>
       )}
-      <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
-        <Plus size={13} /> Ajouter une question
-      </button>
+      {!readOnly && (
+        <button onClick={onAdd} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 10, borderRadius: 8, border: `1.5px dashed ${dim.color}40`, backgroundColor: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: dim.color, marginTop: 2 }}>
+          <Plus size={13} /> Ajouter une question
+        </button>
+      )}
       {confirmDialog}
     </div>
   );
@@ -1516,23 +1518,30 @@ export function DimensionsManagement({ readOnly = false }: { readOnly?: boolean 
               </button>
             ))}
           </div>
-          <button onClick={() => setShowNewDim(true)} style={{ ...btnGhost, display: "flex", alignItems: "center", gap: 6, padding: "9px 16px" }}>
-            <Plus size={15} /> Nouvelle dimension
-          </button>
-          <button
-            onClick={() => setPublishOpen(true)}
-            disabled={!dirty}
-            title={dirty ? "Appliquer les modifications et créer une version" : "Aucune modification à publier"}
-            style={{ ...btnPrimary, padding: "9px 18px", boxShadow: dirty ? "0 4px 14px rgba(0,0,0,0.18)" : "none", opacity: dirty ? 1 : 0.45, cursor: dirty ? "pointer" : "not-allowed" }}
-          >
-            <UploadCloud size={15} /> Publier
-          </button>
+          {!readOnly && (
+            <>
+              <button onClick={() => setShowNewDim(true)} style={{ ...btnGhost, display: "flex", alignItems: "center", gap: 6, padding: "9px 16px" }}>
+                <Plus size={15} /> Nouvelle dimension
+              </button>
+              <button
+                onClick={() => setPublishOpen(true)}
+                disabled={!dirty}
+                title={dirty ? "Appliquer les modifications et créer une version" : "Aucune modification à publier"}
+                style={{ ...btnPrimary, padding: "9px 18px", boxShadow: dirty ? "0 4px 14px rgba(0,0,0,0.18)" : "none", opacity: dirty ? 1 : 0.45, cursor: dirty ? "pointer" : "not-allowed" }}
+              >
+                <UploadCloud size={15} /> Publier
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* Staged-changes bar, the framework only reaches respondents on publish,
-          so the page has to make "nothing is live yet" impossible to miss. */}
-      {!loading && !error && (
+          so the page has to make "nothing is live yet" impossible to miss.
+          Super-admin-only concern (see AdminRecommendations.tsx's same
+          reasoning on drafts) -- a read-only viewer has no use for "there's
+          unpublished work" or an "Abandonner" button they can't act on. */}
+      {!loading && !error && !readOnly && (
         <div style={{
           display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
           padding: "10px 16px", borderRadius: 8,

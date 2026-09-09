@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_back_office, require_super_admin
+from app.core.auth import is_super_admin, require_back_office, require_super_admin
 from app.db.database import get_db
 from app.models.audit_log import MODULE_FRAMEWORK
 from app.models import (
@@ -722,15 +722,28 @@ async def _get_recommendation_or_404(db: AsyncSession, recommendation_id: int) -
 @router.get(
     "/recommendations",
     response_model=list[RecommendationAdminRead],
-    dependencies=[Depends(require_super_admin)],
+    # Read-only for the reduced "admin" role too (see this file's module
+    # docstring) -- the catalogue's mutation endpoints below all stay
+    # require_super_admin, this is the one exception opening a GET.
+    dependencies=[Depends(require_back_office)],
 )
-async def list_recommendations(db: AsyncSession = Depends(get_db)):
+async def list_recommendations(
+    db: AsyncSession = Depends(get_db), claims: dict = Depends(require_back_office)
+):
     # Draft rows (draft_question_key IS NOT NULL, question_id IS NULL) sort
     # first -- NULLs sort last under plain ASC, which would otherwise bury a
     # just-created draft recommendation on the catalog's last page.
     stmt = select(Recommendation).order_by(
         Recommendation.draft_question_key.is_(None), Recommendation.question_id, Recommendation.trigger_level
     )
+    if not is_super_admin(claims):
+        # Drafts are a super-admin staging concept (see admin_framework.py's
+        # DRAFT_ID/build_snapshot) -- a read-only "admin" viewer would see a
+        # half-finished recommendation with no published question to attach
+        # it to. The frontend also skips the draft-tree fetch entirely for
+        # this role (AdminRecommendations.tsx's `load`), so this exclusion
+        # keeps both sides of the same call consistent.
+        stmt = stmt.where(Recommendation.draft_question_key.is_(None))
     return (await db.execute(stmt)).scalars().all()
 
 

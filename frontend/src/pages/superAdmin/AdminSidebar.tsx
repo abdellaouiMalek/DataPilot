@@ -10,10 +10,10 @@ import {
   History,
   Settings,
   ChevronRight,
-  Database,
   ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import eyLogo from "@/assets/ey-logo.png";
 
 export interface NavItem {
   path: string;
@@ -71,11 +71,7 @@ export function AdminSidebar({
         className="flex items-center gap-3 px-6 py-5 w-full"
         aria-label="Retour à l'accueil"
       >
-        <div
-          style={{ width: 36, height: 36, backgroundColor: "var(--ey-yellow)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-        >
-          <Database size={18} style={{ color: "var(--ey-black)" }} />
-        </div>
+        <img src={eyLogo} alt="EY" style={{ height: 30, width: "auto", objectFit: "contain", flexShrink: 0 }} />
         <div>
           <div style={{ fontWeight: 600, fontSize: 14, color: "white", letterSpacing: "0.02em" }}>
             EY DataMaturity

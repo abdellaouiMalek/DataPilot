@@ -1,28 +1,17 @@
-"""Tests manuels pour la regle d'affichage du plan d'action prioritaire.
+"""Tests pour la regle d'affichage du plan d'action prioritaire.
 
 Ce module ne touche ni la base, ni le LTR, ni SHAP -- ces tests
 construisent donc des candidats deja "classes" a la main (score LTR
-choisi arbitrairement) plutot que d'appeler le vrai pipeline. Pas de
-pytest ici, comme le reste du projet : ce script s'execute directement.
+choisi arbitrairement) plutot que d'appeler le vrai pipeline.
 
-    python backend/tests/test_action_plan.py
+    pytest backend/tests/test_action_plan.py
 """
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass
 
-# Rend `app` importable quel que soit le repertoire courant d'ou ce
-# script est lance.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from app.services.action_plan import (  # noqa: E402
-    TOP_N,
-    RankedCandidate,
-    build_priority_plan,
-)
+from app.services.action_plan import TOP_N, RankedCandidate, build_priority_plan
 
 
 @dataclass
@@ -57,7 +46,6 @@ def test_garde_fou_reglementaire() -> None:
     )
     codes = {c.reco.code for c in plan}
     assert "D1-REG" in codes, "la reco reglementaire doit etre dans le plan"
-    print("OK: garde-fou reglementaire respecte")
 
 
 def test_plafond_top_n() -> None:
@@ -78,7 +66,6 @@ def test_plafond_top_n() -> None:
         max_per_dimension=15,  # pour ne pas etre limite avant le plafond
     )
     assert len(plan) <= TOP_N
-    print(f"OK: plafond respecte ({len(plan)} <= {TOP_N})")
 
     # Avec plus de reglementaires que TOP_N, elles doivent TOUTES etre
     # conservees, meme au-dela de TOP_N.
@@ -90,7 +77,6 @@ def test_plafond_top_n() -> None:
         reg_candidates, dimension_scores, global_score, {1: "Dim1"}
     )
     assert len(plan2) == TOP_N + 5, "toutes les reglementaires doivent rester"
-    print("OK: les reglementaires depassent TOP_N sans etre coupees")
 
 
 def test_dimensions_faibles_et_notes_a_niveau() -> None:
@@ -114,7 +100,6 @@ def test_dimensions_faibles_et_notes_a_niveau() -> None:
     note_dims = {n.dimension_id for n in notes}
     assert 2 in note_dims, "la dimension forte doit produire une note"
     assert 1 not in note_dims, "la dimension faible ne doit pas avoir de note"
-    print("OK: dimensions faibles representees, notes 'a niveau' correctes")
 
 
 def test_banque_forte_partout() -> None:
@@ -139,7 +124,6 @@ def test_banque_forte_partout() -> None:
     codes = {c.reco.code for c in plan}
     assert "E-REG" in codes, "la reglementaire doit etre presente"
     assert {"A", "B", "C"}.issubset(codes), "les 3 meilleures doivent y etre"
-    print(f"OK: banque forte partout -> plan non vide ({len(codes)} recos)")
 
 
 def test_couverture_avec_nombreuses_dimensions_faibles() -> None:
@@ -166,7 +150,6 @@ def test_couverture_avec_nombreuses_dimensions_faibles() -> None:
     assert dims_in_plan == set(dimension_scores), (
         f"dimensions manquantes : {set(dimension_scores) - dims_in_plan}"
     )
-    print(f"OK: {len(dims_in_plan)} dimensions faibles toutes representees")
 
 
 def test_determinisme() -> None:
@@ -187,19 +170,3 @@ def test_determinisme() -> None:
     )
     assert [c.reco.code for c in plan1] == [c.reco.code for c in plan2]
     assert notes1 == notes2
-    print("OK: resultat deterministe (deux appels identiques -> meme sortie)")
-
-
-def main() -> int:
-    test_garde_fou_reglementaire()
-    test_plafond_top_n()
-    test_dimensions_faibles_et_notes_a_niveau()
-    test_banque_forte_partout()
-    test_couverture_avec_nombreuses_dimensions_faibles()
-    test_determinisme()
-    print("\nTOUS LES TESTS DU PLAN PRIORITAIRE SONT PASSES")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

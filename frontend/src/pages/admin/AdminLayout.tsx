@@ -1,5 +1,5 @@
 import { Outlet, useNavigation } from 'react-router-dom';
-import { LayoutDashboard, Settings, Users } from 'lucide-react';
+import { BarChart3, BookOpen, ClipboardList, GitBranch, LayoutDashboard, Layers, Settings, Users } from 'lucide-react';
 import { AdminSidebar } from '../superAdmin/AdminSidebar';
 import type { NavItem } from '../superAdmin/AdminSidebar';
 import { AdminTopbar } from '../superAdmin/AdminTopbar';
@@ -13,11 +13,22 @@ import { AdminLoader } from '../../components/AdminLoader';
  * questionnaire" reprend exactement le même path/label/icône que dans
  * `AdminSidebar`'s `navItems` par défaut (super admin) -- même entrée,
  * juste préfixée `/admin`.
+ *
+ * "Catalogue des recommandations", "Gestion du framework" et "Référentiel
+ * de scoring" réutilisent la même icône que leur entrée super admin --
+ * mêmes pages (`AdminRecommendations.tsx` / `AdminDimensions.tsx` /
+ * `AdminScoring.tsx`), en lecture seule ici (voir chacune leur
+ * `canEdit`/`readOnly` calculé via `isSuperAdmin()`).
  */
 const navItems: NavItem[] = [
-  { path: "/admin",          label: "Tableau de bord",          icon: LayoutDashboard },
-  { path: "/admin/users",    label: "Gestion des utilisateurs", icon: Users },
-  { path: "/admin/settings", label: "Paramètres",               icon: Settings },
+  { path: "/admin",               label: "Tableau de bord",             icon: LayoutDashboard },
+  { path: "/admin/users",         label: "Gestion des utilisateurs",    icon: Users },
+  { path: "/admin/evaluations",   label: "Évaluations",                 icon: ClipboardList },
+  { path: "/admin/recommendations", label: "Catalogue des recommandations", icon: BookOpen },
+  { path: "/admin/dimensions",    label: "Gestion du framework",        icon: Layers },
+  { path: "/admin/scoring",       label: "Référentiel de scoring",      icon: BarChart3 },
+  { path: "/admin/versions",      label: "Versions du questionnaire",   icon: GitBranch },
+  { path: "/admin/settings",      label: "Paramètres",                  icon: Settings },
 ];
 
 export function AdminLayout() {

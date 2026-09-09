@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react';
 import { Select as RadixSelect } from 'radix-ui';
 import { Navbar } from '../components/Navbar';
+import eyLogo from '../assets/EY_logo2.png';
 import { getBanks, getDepartments, getRoles, getDimensions, getMaturityLevels, bankLogoSrc } from '../lib/config';
 import type { Dimension, MaturityLevel } from '../lib/config';
 import { isSuperAdmin, isAdmin, isAuthenticated } from '../lib/keycloak';
@@ -491,9 +492,7 @@ export function LandingPage() {
       {/* ── FOOTER ── */}
       <footer className="border-t border-slate-200 bg-white px-6 md:px-12 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-6 h-6 bg-[#FFE600] flex items-center justify-center">
-            <span className="font-bold text-black text-[9px]">EY</span>
-          </div>
+          <img src={eyLogo} alt="EY" className="h-4 w-auto object-contain select-none" />
           <span className="text-xs text-slate-400">© {new Date().getFullYear()} Ernst &amp; Young</span>
         </div>
         <span className="text-xs text-slate-300">CONFIDENTIEL</span>

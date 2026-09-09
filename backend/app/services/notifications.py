@@ -32,6 +32,7 @@ from app.core.keycloak_admin import kc_get
 from app.core.mailer import send_email
 from app.db.database import AsyncSessionLocal
 from app.models import Notification, PlatformSettings
+from app.models.framework_version import QuestionnaireVersion
 from app.models.regulatory import RegulatoryCircular
 
 logger = logging.getLogger(__name__)
@@ -153,5 +154,57 @@ async def notify_admins_of_publication(
                     f"({circular.version}). Le questionnaire a été mis à jour."
                 ),
                 circular_id=circular.id,
+            )
+        )
+
+
+async def notify_admins_of_new_questionnaire_version(
+    db: AsyncSession, version: QuestionnaireVersion
+) -> None:
+    """Queue one in-app notification per ``admin`` user for a newly
+    published questionnaire version.
+
+    Same shape and same transaction-sharing contract as
+    ``notify_admins_of_publication`` above (see its docstring) -- written
+    on the caller's session without committing, from
+    ``app.routers.admin_framework``'s ``publish`` endpoint, so a version
+    can never go live without the admins hearing about it.
+
+    Deliberately no ``circular_id`` (left ``None``, "purely informative"
+    per ``NotificationsPanel.tsx``'s own comment): a ``QuestionnaireVersion``
+    is a different table than ``RegulatoryCircular``, so it can't reuse that
+    column's FK, and the existing click-through navigation
+    (``AdminTopbar.tsx``'s ``openCircularFromNotification``) is wired
+    specifically to the circular detail route -- reusing it here would send
+    an admin to the wrong resource. An admin who wants to see the change
+    already has "Versions du questionnaire" in their own sidebar
+    (``/admin/versions``, now readable by this role -- see
+    ``app.routers.admin_framework``), so the notification's job is only to
+    tell them a version now exists, not to deep-link into it.
+    """
+    try:
+        members = await kc_get("/roles/admin/users", {"max": 1000})
+    except Exception:
+        logger.exception(
+            "Notifications: could not list admins for version %s", version.id
+        )
+        return
+
+    label = version.label.strip() if version.label else f"v{version.number}"
+    changes = len(version.changelog or [])
+    for member in members:
+        user_id = member.get("id")
+        if not user_id:
+            continue
+        db.add(
+            Notification(
+                user_id=user_id,
+                type="info",
+                title="Nouvelle version du questionnaire publiée",
+                message=(
+                    f"{label} est désormais la version active "
+                    f"({changes} changement{'s' if changes != 1 else ''}). "
+                    "Consultez « Versions du questionnaire » pour le détail."
+                ),
             )
         )
