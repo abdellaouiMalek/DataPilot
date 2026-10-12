@@ -3,7 +3,7 @@
 # the repo root mounts the jar instead.
 
 # 1) Build the Keycloakify theme jar (Node + JDK + Maven).
-FROM node:22-bookworm-slim AS theme
+FROM node:26-bookworm-slim AS theme
 RUN mkdir -p /usr/share/man/man1 \
     && apt-get update \
     && apt-get install -y --no-install-recommends openjdk-17-jdk-headless maven \
