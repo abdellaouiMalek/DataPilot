@@ -1,7 +1,9 @@
 # Weekly dependency-update PRs. CI (.github/workflows/docker-publish.yml) runs
 # the tests and the image builds on each one: merge when it's green.
 # Minor/patch bumps are grouped into one PR per ecosystem to keep the noise
-# down; major bumps arrive as separate PRs, since those are the ones that break.
+# down. Major bumps of npm packages and base images are not proposed at all:
+# they need real migration work (React 19, TypeScript 7, Node 26...) rather
+# than a one-click merge, so upgrade those by hand when you choose to.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -19,6 +21,9 @@ updates:
     groups:
       frontend-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /keycloakify-starter
@@ -27,6 +32,9 @@ updates:
     groups:
       theme-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   # Base images in the three Dockerfiles.
   - package-ecosystem: docker
@@ -34,6 +42,8 @@ updates:
     schedule:
       interval: weekly
     ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
       # Stay on Python 3.12: CI's test job uses the same version, and native
       # wheels (shap, lightgbm) tend to lag behind new Python releases.
       - dependency-name: python
