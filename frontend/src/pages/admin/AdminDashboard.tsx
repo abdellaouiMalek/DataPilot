@@ -180,7 +180,7 @@ export function AdminDashboard() {
                     <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#00000020" }} />
                     <YAxis domain={[0, 5]} tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#00000020" }} />
                     <Tooltip
-                      formatter={(value: number) => [`${Number(value).toFixed(2)} / 5`, "Score global"]}
+                      formatter={(value) => [`${Number(value).toFixed(2)} / 5`, "Score global"]}
                       contentStyle={{ border: "1px solid #00000010", borderRadius: 6, fontSize: 12 }}
                     />
                     {maturityLevels.slice(1).map(level => (

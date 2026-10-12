@@ -1,9 +1,11 @@
 import Keycloak from "keycloak-js";
 
+import { KEYCLOAK_CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL } from "./env";
+
 const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL,
-  realm: import.meta.env.VITE_KEYCLOAK_REALM,
-  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
+  url: KEYCLOAK_URL,
+  realm: KEYCLOAK_REALM,
+  clientId: KEYCLOAK_CLIENT_ID,
 });
 
 

@@ -8,6 +8,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Runtime config (see src/lib/env.ts); must load before the bundle. -->
+    <script src="%BASE_URL%env.js"></script>
     <script type="module" src="%BASE_URL%src/main.tsx"></script>
   </body>
 </html>

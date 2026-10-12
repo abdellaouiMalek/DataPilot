@@ -1,6 +1,7 @@
+import { API_URL } from "./env";
 import keycloak from "./keycloak";
 
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export { API_URL };
 
 
 async function getFreshToken(): Promise<string | undefined> {

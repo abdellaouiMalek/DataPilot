@@ -1,0 +1,25 @@
+.env
+.env.*
+!.env.example
+.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Not needed at runtime: test suite, model-training scripts/notebooks
+# (the trained model the app loads lives in app/ml_models/).
+tests/
+ml/
+llm/test_ollama.py
+requirements-test.txt
+pytest.ini
+package-lock.json
+
+# Uploaded logos are runtime data, not image content.
+app/static/logos/*
+!app/static/logos/.gitkeep
+
+Dockerfile
+.dockerignore

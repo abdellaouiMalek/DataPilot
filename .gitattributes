@@ -4,3 +4,7 @@
 # a tree here"), taking app/services/ranking.py down at import time.
 # Keep it LF in the working tree regardless of the user's autocrlf setting.
 backend/app/ml_models/*.txt -text
+
+# Shell scripts run inside Linux containers: a CRLF checkout (autocrlf=true)
+# turns the shebang into "sh\r" and the container dies on start.
+*.sh text eol=lf

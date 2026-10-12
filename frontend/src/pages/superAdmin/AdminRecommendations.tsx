@@ -283,9 +283,8 @@ function occupiedLevelsFor(recs: FlatRecommendation[], questionId: string): numb
     .map(r => r.triggerLevel);
 }
 
-function WizardDrawer({ dimensions, categories, existingRecs, editing, presetQuestionId, onClose, onSaved }: {
+function WizardDrawer({ dimensions, existingRecs, editing, presetQuestionId, onClose, onSaved }: {
   dimensions: Dimension[];
-  categories: string[];
   /** Catalogue actuel, pour connaître les paliers déjà pris par une question
    *  et proposer directement le prochain palier libre. */
   existingRecs: FlatRecommendation[];
@@ -1181,7 +1180,6 @@ export function RecommendationCatalog() {
       {showWizard && (
         <WizardDrawer
           dimensions={mergedDimensions}
-          categories={categories}
           existingRecs={recs}
           presetQuestionId={presetQuestionId ?? undefined}
           onClose={() => { setShowWizard(false); setPresetQuestionId(null); }}
@@ -1190,7 +1188,7 @@ export function RecommendationCatalog() {
       )}
 
       {editRec && (
-        <WizardDrawer dimensions={mergedDimensions} categories={categories} existingRecs={recs} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
+        <WizardDrawer dimensions={mergedDimensions} existingRecs={recs} editing={editRec} onClose={() => setEditRec(null)} onSaved={load} />
       )}
 
       {deleteTarget && (
