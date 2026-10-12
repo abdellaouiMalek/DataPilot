@@ -4,6 +4,5 @@ dist_keycloak/
 build/
 storybook-static/
 .storybook/
-yarn.lock
 Dockerfile
 .dockerignore

@@ -4,4 +4,4 @@
 #
 # Install with: pip install -r requirements-test.txt
 # Run with:     pytest
-pytest
+pytest==9.1.1
