@@ -74,7 +74,7 @@ export function AdminSidebar({
         <img src={eyLogo} alt="EY" style={{ height: 30, width: "auto", objectFit: "contain", flexShrink: 0 }} />
         <div>
           <div style={{ fontWeight: 600, fontSize: 14, color: "white", letterSpacing: "0.02em" }}>
-            EY DataMaturity
+            EY Data Pilot
           </div>
           <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
             {subtitle}

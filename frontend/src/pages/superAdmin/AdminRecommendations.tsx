@@ -968,7 +968,7 @@ export function RecommendationCatalog() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A", margin: 0, letterSpacing: "-0.02em" }}>Catalogue des recommandations</h1>
-          <p style={{ fontSize: 13, color: "#9B9B9B", margin: "4px 0 0", fontWeight: 400 }}>Référentiel global utilisé par le moteur d'analyse EY DataMaturity</p>
+          <p style={{ fontSize: 13, color: "#9B9B9B", margin: "4px 0 0", fontWeight: 400 }}>Référentiel global utilisé par le moteur d'analyse EY Data Pilot</p>
         </div>
         {canEdit && (
           <button

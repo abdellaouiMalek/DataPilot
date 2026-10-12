@@ -9,6 +9,10 @@ const Login = lazy(() => import("./pages/Login"));
 const UpdatePassword = lazy(() => import("./pages/UpdatePassword"));
 const LoginResetPassword = lazy(() => import("./pages/LoginResetPassword"));
 const Error = lazy(() => import("./pages/Error"));
+const Info = lazy(() => import("./pages/Info"));
+const LoginPageExpired = lazy(() => import("./pages/LoginPageExpired"));
+const LogoutConfirm = lazy(() => import("./pages/LogoutConfirm"));
+const LoginUpdateProfile = lazy(() => import("./pages/LoginUpdateProfile"));
 const UserProfileFormFields = lazy(
     () => import("keycloakify/login/UserProfileFormFields")
 );
@@ -62,6 +66,48 @@ export default function KcPage(props: { kcContext: KcContext }) {
                                 classes={classes}
                                 Template={CustomTemplate}
                                 doUseDefaultCss={false}
+                            />
+                        );
+                    case "info.ftl":
+                        return (
+                            <Info
+                                kcContext={kcContext}
+                                i18n={i18n}
+                                classes={classes}
+                                Template={CustomTemplate}
+                                doUseDefaultCss={false}
+                            />
+                        );
+                    case "login-page-expired.ftl":
+                        return (
+                            <LoginPageExpired
+                                kcContext={kcContext}
+                                i18n={i18n}
+                                classes={classes}
+                                Template={CustomTemplate}
+                                doUseDefaultCss={false}
+                            />
+                        );
+                    case "logout-confirm.ftl":
+                        return (
+                            <LogoutConfirm
+                                kcContext={kcContext}
+                                i18n={i18n}
+                                classes={classes}
+                                Template={CustomTemplate}
+                                doUseDefaultCss={false}
+                            />
+                        );
+                    case "login-update-profile.ftl":
+                        return (
+                            <LoginUpdateProfile
+                                kcContext={kcContext}
+                                i18n={i18n}
+                                classes={classes}
+                                Template={CustomTemplate}
+                                doUseDefaultCss={false}
+                                UserProfileFormFields={UserProfileFormFields}
+                                doMakeUserConfirmPassword={doMakeUserConfirmPassword}
                             />
                         );
                     default:

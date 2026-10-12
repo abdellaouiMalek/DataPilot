@@ -28,7 +28,7 @@ export function Navbar() {
         />
         <div className="flex flex-col border-l border-gray-300 pl-4">
           <span className="text-xs font-bold tracking-[0.2em] text-gray-900 leading-none">
-            DATA MATURITY
+            DATA PILOT
           </span>
           <span className="text-[10px] text-gray-500 tracking-widest mt-1">
             ASSESSMENT PLATFORM

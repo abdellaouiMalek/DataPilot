@@ -136,7 +136,7 @@ export function Settings() {
     <div style={{ padding: 32 }}>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--ey-black)", margin: 0, letterSpacing: "-0.02em" }}>Paramètres</h2>
-        <p style={{ fontSize: 13, color: "var(--ey-gray-mid)", margin: "4px 0 0" }}>Configuration générale de la plateforme EY DataMaturity</p>
+        <p style={{ fontSize: 13, color: "var(--ey-gray-mid)", margin: "4px 0 0" }}>Configuration générale de la plateforme EY Data Pilot</p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20 }}>

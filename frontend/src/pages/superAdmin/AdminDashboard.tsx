@@ -294,7 +294,7 @@ export function AdminDashboard() {
             Tableau de bord
           </h1>
           <p style={{ fontSize: 13, color: "#9B9B9B", margin: "3px 0 0" }}>
-            Plateforme EY DataMaturity
+            Plateforme EY Data Pilot
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

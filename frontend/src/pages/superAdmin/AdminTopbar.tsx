@@ -198,7 +198,7 @@ export function AdminTopbar({ scope = "super-admin" }: { scope?: "super-admin" |
       gap: 12,
     }}>
       <div style={{ fontSize: 14, fontWeight: 600, color: "#1A1A1A" }}>
-        Bonjour, <span style={{ color: "#1A1A1A", fontWeight: 800 }}>{user?.name || 'Admin'}</span> 👋
+        Bonjour, <span style={{ color: "#1A1A1A", fontWeight: 800 }}>{user?.name || 'Admin'}</span>
       </div>
 
       <div style={{ flex: 1 }} />
