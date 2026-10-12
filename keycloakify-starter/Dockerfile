@@ -16,12 +16,12 @@ RUN npm run build-keycloak-theme
 
 # 2) Pre-build Keycloak for Postgres with the theme as a provider, so the
 #    container can `start --optimized` without a build step on every boot.
-FROM quay.io/keycloak/keycloak:26.1 AS builder
+FROM quay.io/keycloak/keycloak:26.8 AS builder
 ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true
 COPY --from=theme /theme/dist_keycloak/keycloak-theme-for-kc-all-other-versions.jar /opt/keycloak/providers/datapilot-theme.jar
 RUN /opt/keycloak/bin/kc.sh build
 
-FROM quay.io/keycloak/keycloak:26.1
+FROM quay.io/keycloak/keycloak:26.8
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]
