@@ -15,8 +15,8 @@
 # frontend from source: own project name and volumes, and ports that don't
 # clash with the dev ones (5173 / 8000 / 8085), so both can run at once.
 #
-# Local use only: default passwords, plain HTTP, and the dev realm (users and
-# client secret) from keycloak/import/.
+# Local use only: default passwords, plain HTTP, and by default the test
+# realm (users and client secret) from keycloak/import/.
 name: datapilot-app
 
 x-backend-env: &backend-env
@@ -86,7 +86,12 @@ services:
     ports:
       - "8086:8080"
     volumes:
-      - ./keycloak/import:/opt/keycloak/data/import:ro
+      # The realm (and its users) imported on first start. Defaults to the
+      # public test realm in the repo; point KEYCLOAK_IMPORT_DIR (in a .env
+      # next to this file) at a git-ignored export of your own realm, e.g.
+      # ./keycloak/export/dev-realm, to start with your real accounts. Users
+      # are imported only into an empty database: `down -v` first.
+      - ${KEYCLOAK_IMPORT_DIR:-./keycloak/import}:/opt/keycloak/data/import:ro
     healthcheck:
       # Healthy once the datapilot realm answers, not just the server: since
       # 26.8 Keycloak imports the realm in the background after reporting
