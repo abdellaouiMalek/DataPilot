@@ -11,7 +11,11 @@ from fastapi import HTTPException, status
 
 load_dotenv()
 
-KEYCLOAK_URL = (os.getenv("KEYCLOAK_URL") or "").rstrip("/")
+# Server-to-server only, so prefer the backend's own route to Keycloak when
+# it differs from the browser-facing one (see app/core/auth.py).
+KEYCLOAK_URL = (
+    os.getenv("KEYCLOAK_INTERNAL_URL") or os.getenv("KEYCLOAK_URL") or ""
+).rstrip("/")
 REALM = os.getenv("KEYCLOAK_REALM")
 ADMIN_CLIENT_ID = os.getenv("KEYCLOAK_ADMIN_CLIENT_ID")
 ADMIN_CLIENT_SECRET = os.getenv("KEYCLOAK_ADMIN_CLIENT_SECRET")

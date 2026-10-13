@@ -16,6 +16,12 @@ from jose import JWTError, jwt
 load_dotenv()
 
 KEYCLOAK_URL = os.getenv("KEYCLOAK_URL")
+# Where the backend itself reaches Keycloak, when that differs from the
+# browser-facing KEYCLOAK_URL (which stays the expected token issuer). In
+# docker-compose.app.yml the browser uses http://localhost:8086, but inside
+# the backend container localhost is the container itself, so server-to-
+# server calls go to http://keycloak:8080 instead.
+KEYCLOAK_INTERNAL_URL = os.getenv("KEYCLOAK_INTERNAL_URL") or KEYCLOAK_URL
 REALM = os.getenv("KEYCLOAK_REALM")
 ALGORITHMS = [a.strip() for a in os.getenv("KEYCLOAK_ALGORITHMS", "RS256").split(",")]
 # Optional: if set, the token's `azp` must match (the SPA client id).
@@ -29,7 +35,7 @@ SUPER_ADMIN_ROLE = os.getenv("KEYCLOAK_SUPER_ADMIN_ROLE", "super_admin")
 ADMIN_ROLE = os.getenv("KEYCLOAK_ADMIN_ROLE", "admin")
 
 ISSUER = f"{KEYCLOAK_URL}/realms/{REALM}"
-CERTS_URL = f"{ISSUER}/protocol/openid-connect/certs"
+CERTS_URL = f"{KEYCLOAK_INTERNAL_URL}/realms/{REALM}/protocol/openid-connect/certs"
 
 security = HTTPBearer()
 

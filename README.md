@@ -288,7 +288,30 @@ The framework is specifically adapted to the Tunisian banking sector through:
 
 DataPilot runs as three local services: a **React** frontend, a **FastAPI** backend, and **Keycloak** (in Docker) for authentication, backed by **PostgreSQL**.
 
-## ✅ Prerequisites
+## 🐳 Quickest way: one command with Docker
+
+The whole app, from the images CI publishes to GitHub Container Registry. Nothing to install but **Docker Desktop**:
+
+```bash
+git clone https://github.com/abdellaouiMalek/DataPilot.git && cd DataPilot
+docker compose -f docker-compose.app.yml up -d
+```
+
+Then open **http://localhost:5174** and sign in with one of the realm's test accounts. The first start takes a few minutes (image download, Keycloak setup).
+
+| URL | What |
+| --- | --- |
+| http://localhost:5174 | The app |
+| http://localhost:8001 | The API |
+| http://localhost:8086 | Keycloak, admin console `admin` / `admin` (manage users here) |
+
+- **Update** to the latest published version: `docker compose -f docker-compose.app.yml pull`, then `up -d` again.
+- **Stop**: `docker compose -f docker-compose.app.yml down` (add `-v` to also wipe the data).
+- **AI features** use Ollama on your machine if it's running; otherwise they fall back to their non-AI output.
+
+It runs alongside the development setup below without clashing (different ports, separate data). It's meant for local use and demos only: default passwords, plain HTTP.
+
+## ✅ Prerequisites (running from source)
 
 | Requirement    | Version / Notes                                                        |
 | -------------- | --------------------------------------------------------------------- |
@@ -298,7 +321,7 @@ DataPilot runs as three local services: a **React** frontend, a **FastAPI** back
 | **Docker**     | Docker Desktop / Compose v2 (runs Keycloak)                           |
 | **JDK + Maven**| JDK 17+ & Maven: only to build the custom Keycloak (Keycloakify) theme |
 
-## ▶️ Running it locally
+## ▶️ Running it locally from source
 
 In short: configure env files → start Keycloak → run the backend → run the frontend.
 
