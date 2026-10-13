@@ -1,6 +1,7 @@
 /**
  * "Catalogue des recommandations" -- adapté du design donné
- * (RecommendationCatalog.tsx, racine du repo) et branché sur le vrai
+ * (RecommendationCatalog.tsx, autrefois à la racine du repo, voir
+ * l'historique git) et branché sur le vrai
  * catalogue (`/api/super-admin/recommendations`, voir
  * backend/app/models/recommendation.py).
  *
