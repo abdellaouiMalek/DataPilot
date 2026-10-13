@@ -1,0 +1,58 @@
+name: Security scan
+
+# Scans the published :latest images for known vulnerabilities with Grype and
+# reports them in the repository's Security tab (Code scanning). Runs after
+# every successful CI run on main, and weekly, since new CVEs get published
+# for images that haven't changed. Report-only: it never blocks CI or a merge.
+#
+# Third-party actions are pinned to full commit SHAs rather than tags: in
+# March 2026 the tags of aquasecurity/trivy-action were hijacked to steal CI
+# secrets (CVE-2026-33634). Dependabot keeps the pins up to date.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    name: scan ${{ matrix.image }}
+    # After CI, only when it succeeded: a failed run published no new images.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [datapilot-backend, datapilot-frontend, datapilot-keycloak]
+    steps:
+      - uses: actions/checkout@v7
+
+      # Image references must be lowercase; the owner name isn't.
+      - name: Resolve image reference
+        id: ref
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Scan with Grype
+        id: scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ steps.ref.outputs.image }}
+          fail-build: false
+          # Only vulnerabilities an upgrade can fix, so every alert is actionable.
+          only-fixed: true
+          # High/critical show as errors in the Security tab, the rest as warnings.
+          severity-cutoff: high
+
+      - name: Upload results to the Security tab
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+          category: ${{ matrix.image }}
