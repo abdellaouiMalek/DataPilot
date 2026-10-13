@@ -5,6 +5,12 @@
 # they need real migration work (React 19, TypeScript 7, Node 26...) rather
 # than a one-click merge, so upgrade those by hand when you choose to.
 version: 2
+
+multi-ecosystem-groups:
+  docker-images:
+    schedule:
+      interval: weekly
+
 updates:
   - package-ecosystem: pip
     directory: /backend
@@ -36,11 +42,13 @@ updates:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
 
-  # Base images in the three Dockerfiles.
+  # Base images in the three Dockerfiles, and the images of the dev stack in
+  # docker-compose.yml: one combined PR (multi-ecosystem group below), so a
+  # Keycloak update reaches the published image and the dev setup together.
   - package-ecosystem: docker
     directories: [/backend, /frontend, /keycloakify-starter]
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: docker-images
+    patterns: ["*"]
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
@@ -48,6 +56,14 @@ updates:
       # wheels (shap, lightgbm) tend to lag behind new Python releases.
       - dependency-name: python
         update-types: [version-update:semver-major, version-update:semver-minor]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    multi-ecosystem-group: docker-images
+    patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /

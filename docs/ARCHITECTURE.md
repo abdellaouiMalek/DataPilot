@@ -14,7 +14,7 @@ orchestrateur ni file de messages : les traitements longs passent par les
 | Plan | Composant | Techno | Port | Déploiement |
 |---|---|---|---|---|
 | **Présentation** | SPA React | React 18 + Vite 8 + TS 6 + Tailwind 4 | 5173 | Vite dev / build statique |
-| **Identité** | Keycloak 26.1 | OIDC + thème Keycloakify | 8085 | Docker |
+| **Identité** | Keycloak 26.8 | OIDC + thème Keycloakify | 8085 | Docker |
 | **Application** | API REST | FastAPI + SQLAlchemy 2 async | 8000 | Uvicorn (natif) |
 | **Données** | PostgreSQL 18 + **pgvector** | image `pgvector/pgvector:pg18` | 5434 | Docker |
 | **IA** | Ollama (local) + Gemini (cloud, optionnel) | LLM + embeddings | 11434 | natif / SaaS |
@@ -316,7 +316,7 @@ avant le build — un build à chaud échoue en EPERM sur Windows).
 ### Docker Compose (2 services)
 - `datapilot-postgres` — `pgvector/pgvector:pg18`, port `127.0.0.1:5434`,
   healthcheck `pg_isready`, volume `datapilot-pgdata`, init SQL monté en RO.
-- `keycloak` — `quay.io/keycloak/keycloak:26.1`, `start-dev --import-realm`,
+- `keycloak` — `quay.io/keycloak/keycloak:26.8`, `start-dev --import-realm`,
   dépend du healthcheck Postgres, import du realm **au premier boot seulement**.
 
 Backend et frontend tournent **nativement** (hors Docker).
@@ -370,7 +370,7 @@ Frontend : Vitest + Testing Library.
 └───────────────┬──────────────────────────┬────────────────────┘
                 │ OIDC PKCE                │ REST + Bearer JWT
 ┌───────────────▼──────────┐   ┌───────────▼───────────────────┐
-│  Keycloak 26.1 (Docker)  │◄──┤  FastAPI (18 routeurs)        │
+│  Keycloak 26.8 (Docker)  │◄──┤  FastAPI (18 routeurs)        │
 │  realm datapilot         │   │  ├ gardes 3 niveaux + bank    │
 │  thème Keycloakify JAR   │   │  ├ services métier            │
 │  2 clients, 5 rôles      │   │  └ BackgroundTasks            │

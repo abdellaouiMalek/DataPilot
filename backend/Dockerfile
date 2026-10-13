@@ -24,7 +24,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+# pip itself first: the copy bundled with the base image has known CVEs.
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
 
 COPY . .
 

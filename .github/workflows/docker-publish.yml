@@ -8,6 +8,9 @@ name: CI
 #   push to main   -> :latest and :sha-<short>
 #   tag vX.Y.Z     -> :X.Y.Z, :X.Y and :sha-<short>
 #   pull request   -> tests + image build only, nothing is pushed
+#   weekly         -> full rebuild of main without layer cache, so security
+#                     fixes in the base images and OS packages land even when
+#                     the code hasn't changed
 
 on:
   push:
@@ -15,6 +18,8 @@ on:
     tags: ["v*.*.*"]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 5 * * 1" # Mondays, 05:00 UTC (the security scan runs after it)
   workflow_dispatch:
 
 concurrency:
@@ -151,5 +156,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # A cached `apk upgrade` / `pip install --upgrade pip` layer would
+          # otherwise keep serving last week's packages.
+          no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
